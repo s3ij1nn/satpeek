@@ -94,12 +94,35 @@ return [
     // URL-shortener publisher APIs (ouo.io family). Keys here become the
     // names referenced by the ShortlinkProviderRegistry and surfaced in the
     // Filament admin action. Adding a new provider is a one-entry config
-    // addition — the wire shape is identical across the family.
+    // addition — the wire shape is identical across the family:
+    //   GET <api_base>?api=<token>&url=<long>&alias=<custom>&format=json
+    // Providers with no api_token in the env are silently filtered out by
+    // ShortlinkProviderRegistry::configuredNames(), so it's safe to leave
+    // them registered while the operator collects credentials over time.
+    //
+    // ouo.io and friends use a *path*-style token (`/api/<TOKEN>?s=<URL>`)
+    // — they need a separate transport class and are intentionally not
+    // listed here yet.
     'shortlink_providers' => [
         'btcut' => [
             'label' => 'btcut.io',
             'api_base' => env('BTCUT_API_BASE', 'https://btcut.io/api'),
             'api_token' => env('BTCUT_API_TOKEN', ''),
+        ],
+        'cuty' => [
+            'label' => 'cuty.io',
+            'api_base' => env('CUTY_API_BASE', 'https://cuty.io/api'),
+            'api_token' => env('CUTY_API_TOKEN', ''),
+        ],
+        'exe' => [
+            'label' => 'exe.io',
+            'api_base' => env('EXE_API_BASE', 'https://exe.io/api'),
+            'api_token' => env('EXE_API_TOKEN', ''),
+        ],
+        'shrtfly' => [
+            'label' => 'shrtfly.com',
+            'api_base' => env('SHRTFLY_API_BASE', 'https://shrtfly.com/api'),
+            'api_token' => env('SHRTFLY_API_TOKEN', ''),
         ],
     ],
 
