@@ -95,6 +95,7 @@
         <h2>Settings</h2>
         <ul class="kv" style="list-style:none; padding:0; margin:0;">
             <li><span class="label">Target URL</span> <span class="value"><a href="{{ $ad->target_url }}" target="_blank" rel="noopener noreferrer" style="color: var(--amber-soft); text-decoration: underline;">{{ $ad->target_url }}</a></span></li>
+            <li><span class="label">Display mode</span> <span class="value">{{ $ad->display_mode === 'iframe' ? 'Inline iframe (embedded in viewer page)' : 'New tab (opens in a separate window)' }}</span></li>
             <li><span class="label">Reward / view</span> <span class="value"><strong>{{ number_format($ad->reward_sat) }} sat</strong> to viewer</span></li>
             <li><span class="label">Cost / view</span> <span class="value">{{ number_format($ad->cost_per_view_sat) }} sat (incl. {{ (int) config('satpeek.ads.commission_pct') }}% fee)</span></li>
             <li><span class="label">Watch duration</span> <span class="value">{{ $ad->duration_sec }}s</span></li>

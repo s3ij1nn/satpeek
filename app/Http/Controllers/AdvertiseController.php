@@ -46,6 +46,9 @@ class AdvertiseController extends Controller
             'title' => ['required', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:500'],
             'target_url' => ['required', 'url', 'max:500'],
+            // Default `window` because most third-party URLs refuse iframe
+            // embedding (X-Frame-Options / CSP). Iframe stays opt-in.
+            'display_mode' => ['nullable', 'in:'.implode(',', PtcAd::DISPLAY_MODES)],
             'reward_sat' => ['required', 'integer', "min:{$cfg['reward_min_sat']}", "max:{$cfg['reward_max_sat']}"],
             'duration_sec' => ['required', 'integer', "min:{$cfg['duration_min_sec']}", "max:{$cfg['duration_max_sec']}"],
             'daily_limit_per_user' => ['required', 'integer', 'min:1', 'max:10'],
@@ -75,6 +78,7 @@ class AdvertiseController extends Controller
                 'title' => $validated['title'],
                 'description' => $validated['description'] ?? null,
                 'target_url' => $validated['target_url'],
+                'display_mode' => $validated['display_mode'] ?? 'window',
                 'reward_sat' => $validated['reward_sat'],
                 'cost_per_view_sat' => $costPerView,
                 'total_views_purchased' => $validated['total_views_purchased'],

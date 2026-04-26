@@ -66,7 +66,7 @@
                             <span class="status-badge status-{{ $ad->status }}">{{ str_replace('_', ' ', $ad->status) }}</span>
                         </h3>
                         <div class="row__meta">
-                            {{ number_format($ad->reward_sat) }} sat / view · {{ $ad->duration_sec }}s · created {{ $ad->created_at->diffForHumans() }}
+                            {{ number_format($ad->reward_sat) }} sat / view · {{ $ad->duration_sec }}s · {{ $ad->display_mode === 'iframe' ? 'iframe' : 'new tab' }} · created {{ $ad->created_at->diffForHumans() }}
                         </div>
                     </div>
                     <div class="row__progress">

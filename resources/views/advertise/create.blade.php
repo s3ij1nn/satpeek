@@ -19,6 +19,16 @@
     .field-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
     @media (max-width: 640px) { .field-row { grid-template-columns: 1fr; } }
 
+    /* Two-card radio for display_mode (iframe vs new tab). */
+    .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    @media (max-width: 640px) { .mode-grid { grid-template-columns: 1fr; } }
+    .mode-card { display: block; cursor: pointer; padding: 1rem 1.125rem; background: var(--bg-canvas); border: 1px solid var(--border-strong); border-radius: var(--radius-md); transition: border-color var(--dur-fast) var(--ease-out-expo), background var(--dur-fast) var(--ease-out-expo); }
+    .mode-card:hover { border-color: var(--border-strong); }
+    .mode-card input { position: absolute; opacity: 0; pointer-events: none; }
+    .mode-card:has(input:checked) { border-color: var(--amber); background: rgba(251,191,36,.06); box-shadow: 0 0 0 3px var(--amber-glow); }
+    .mode-card__title { display: block; font-size: var(--text-sm); color: var(--text-primary); font-weight: 500; margin-bottom: .25rem; }
+    .mode-card__desc { display: block; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.5; }
+
     .summary { background: var(--bg-elev); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem 1.25rem; }
     .summary h2 { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .14em; margin: 0 0 .75rem; font-weight: 500; }
     .summary table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); }
@@ -68,6 +78,23 @@
             <input id="target_url" name="target_url" type="url" required maxlength="500"
                    placeholder="https://your-affiliate-link.com/?ref=xxxx" value="{{ old('target_url') }}">
             <span class="field__hint">No malware, no phishing, no offers requiring captcha-solving services. Every submission is reviewed before going live.</span>
+        </div>
+
+        @php $mode = old('display_mode', 'window'); @endphp
+        <div class="field">
+            <label>How should viewers see this ad?</label>
+            <div class="mode-grid">
+                <label class="mode-card">
+                    <input type="radio" name="display_mode" value="window" @checked($mode === 'window')>
+                    <span class="mode-card__title">New tab (recommended)</span>
+                    <span class="mode-card__desc">Opens your URL in a separate tab when the viewer clicks. Works for every site, even ones that block embedding or top-frame-redirect.</span>
+                </label>
+                <label class="mode-card">
+                    <input type="radio" name="display_mode" value="iframe" @checked($mode === 'iframe')>
+                    <span class="mode-card__title">Inline iframe</span>
+                    <span class="mode-card__desc">Embeds your URL directly inside the viewer page. Pick this only if you control the destination and have confirmed it doesn't block iframes (no <code>X-Frame-Options</code> / CSP <code>frame-ancestors</code>).</span>
+                </label>
+            </div>
         </div>
 
         <div class="field-row">
