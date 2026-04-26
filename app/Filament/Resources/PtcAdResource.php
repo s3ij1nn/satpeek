@@ -1,0 +1,250 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Filament\Resources\PtcAdResource\Pages;
+use App\Models\PtcAd;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Support\Str;
+
+class PtcAdResource extends Resource
+{
+    protected static ?string $model = PtcAd::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+
+    protected static ?string $navigationGroup = 'Inventory';
+
+    protected static ?string $navigationLabel = 'PTC ads';
+
+    protected static ?int $navigationSort = 10;
+
+    public static function form(Form $form): Form
+    {
+        return $form->schema([
+            Forms\Components\Section::make('Ad')->schema([
+                Forms\Components\TextInput::make('title')
+                    ->required()
+                    ->maxLength(200),
+                Forms\Components\Textarea::make('description')
+                    ->rows(3)
+                    ->maxLength(500),
+                Forms\Components\TextInput::make('target_url')
+                    ->label('Target URL')
+                    ->url()
+                    ->required()
+                    ->maxLength(500),
+                Forms\Components\Select::make('display_mode')
+                    ->label('Display mode')
+                    ->options([
+                        'window' => 'New tab — opens target in a separate window (works for sites that block iframes / top-redirect)',
+                        'iframe' => 'Inline iframe — embeds the target inside the viewer page (only works if the site allows framing)',
+                    ])
+                    ->default('window')
+                    ->required()
+                    ->helperText('Pick "iframe" only when you control the destination and have verified it sets no X-Frame-Options/CSP frame-ancestors restriction.'),
+            ])->columns(1),
+
+            Forms\Components\Section::make('Reward & timing')->schema([
+                Forms\Components\TextInput::make('reward_sat')
+                    ->label('Reward (sat)')
+                    ->numeric()
+                    ->minValue(1)
+                    ->required()
+                    ->default(5),
+                Forms\Components\TextInput::make('duration_sec')
+                    ->label('View duration (seconds)')
+                    ->numeric()
+                    ->minValue(5)
+                    ->maxValue(300)
+                    ->required()
+                    ->default(15),
+                Forms\Components\TextInput::make('daily_limit_per_user')
+                    ->label('Daily limit per user')
+                    ->numeric()
+                    ->minValue(1)
+                    ->required()
+                    ->default(3),
+            ])->columns(3),
+
+            Forms\Components\Section::make('Source & status')->schema([
+                Forms\Components\Select::make('source')
+                    ->options([
+                        'internal' => 'Internal (own inventory)',
+                        'mock' => 'Mock (development)',
+                        'bitcotask' => 'BitcoTask',
+                    ])
+                    ->default('internal')
+                    ->required(),
+                Forms\Components\TextInput::make('external_id')
+                    ->helperText('Auto-generated for internal ads.')
+                    ->default(fn () => 'internal-'.Str::lower(Str::random(8))),
+                Forms\Components\Toggle::make('is_active')
+                    ->default(true),
+                Forms\Components\DateTimePicker::make('expires_at')
+                    ->helperText('Leave blank to run indefinitely.'),
+            ])->columns(2),
+        ]);
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $pending = \App\Models\PtcAd::where('status', 'pending_review')->count();
+        return $pending > 0 ? (string) $pending : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('id')->label('#')->sortable(),
+                Tables\Columns\TextColumn::make('source')
+                    ->badge()
+                    ->colors([
+                        'success' => 'internal',
+                        'gray' => 'mock',
+                        'warning' => 'bitcotask',
+                        'info' => 'user',
+                    ]),
+                Tables\Columns\TextColumn::make('advertiser.username')
+                    ->label('Advertiser')
+                    ->placeholder('— admin —')
+                    ->url(fn ($record) => $record->user_id ? UserResource::getUrl('edit', ['record' => $record->user_id]) : null)
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('title')->searchable()->wrap(),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->colors([
+                        'success' => 'approved',
+                        'warning' => 'pending_review',
+                        'info' => 'completed',
+                        'danger' => 'rejected',
+                        'gray' => fn ($state) => in_array($state, ['draft', 'paused'], true),
+                    ])
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('display_mode')
+                    ->label('Display')
+                    ->badge()
+                    ->colors(['gray' => 'iframe', 'success' => 'window'])
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('reward_sat')->label('Reward')->suffix(' sat')->sortable(),
+                Tables\Columns\TextColumn::make('cost_per_view_sat')->label('Cost/view')->suffix(' sat')->toggleable(),
+                Tables\Columns\TextColumn::make('views_remaining')
+                    ->label('Budget')
+                    ->getStateUsing(function ($record) {
+                        if ($record->user_id === null) return '∞';
+                        return number_format($record->views_remaining).' / '.number_format($record->total_views_purchased);
+                    })
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('duration_sec')->label('Duration')->suffix(' s')->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('daily_limit_per_user')->label('Daily/user')->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('verified_views')
+                    ->label('Verified')
+                    ->getStateUsing(fn ($record) => \App\Models\PtcView::where('ptc_ad_id', $record->id)->where('status', 'verified')->count())
+                    ->numeric()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('attempts')
+                    ->label('Attempts')
+                    ->getStateUsing(fn ($record) => \App\Models\PtcView::where('ptc_ad_id', $record->id)->count())
+                    ->numeric()
+                    ->toggleable(),
+                Tables\Columns\IconColumn::make('is_active')->boolean()->sortable()->toggleable(),
+                Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable(),
+            ])
+            ->filters([
+                Tables\Filters\SelectFilter::make('status')
+                    ->options(array_combine(\App\Models\PtcAd::STATUSES, \App\Models\PtcAd::STATUSES)),
+                Tables\Filters\SelectFilter::make('source')
+                    ->options([
+                        'internal' => 'Internal (admin)',
+                        'user' => 'User-submitted',
+                        'mock' => 'Mock',
+                        'bitcotask' => 'BitcoTask',
+                    ]),
+                Tables\Filters\TernaryFilter::make('is_active'),
+            ])
+            ->actions([
+                // Approve a pending submission — flips status + activates serving.
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-o-check')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn (\App\Models\PtcAd $r) => $r->status === 'pending_review')
+                    ->action(function (\App\Models\PtcAd $r) {
+                        $r->update([
+                            'status' => 'approved',
+                            'is_active' => true,
+                            'approved_at' => \Illuminate\Support\Carbon::now(),
+                            'reviewed_by' => auth()->id(),
+                        ]);
+                        if ($r->user_id) {
+                            try { \Illuminate\Support\Facades\Mail::to($r->advertiser->email)->queue(new \App\Mail\AdApprovedEmail($r->fresh())); } catch (\Throwable $e) {}
+                        }
+                    }),
+                // Reject a pending submission — refunds the full reserved budget.
+                Tables\Actions\Action::make('reject')
+                    ->label('Reject & refund')
+                    ->icon('heroicon-o-x-mark')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->visible(fn (\App\Models\PtcAd $r) => in_array($r->status, ['pending_review', 'approved'], true) && $r->user_id !== null)
+                    ->form([
+                        Forms\Components\Textarea::make('rejection_reason')
+                            ->label('Reason (visible to advertiser)')
+                            ->required(),
+                    ])
+                    ->action(function (\App\Models\PtcAd $r, array $data) {
+                        \Illuminate\Support\Facades\DB::transaction(function () use ($r, $data) {
+                            // Refund whatever budget hasn't been spent yet.
+                            $refund = (int) ($r->views_remaining * $r->cost_per_view_sat);
+                            if ($refund > 0) {
+                                \App\Models\BalanceLedger::create([
+                                    'user_id' => $r->user_id,
+                                    'delta_sat' => $refund,
+                                    'reason' => 'ad_refund',
+                                    'reference_type' => \App\Models\PtcAd::class,
+                                    'reference_id' => $r->id,
+                                ]);
+                                $r->advertiser->increment('balance_sat', $refund);
+                            }
+                            $r->update([
+                                'status' => 'rejected',
+                                'is_active' => false,
+                                'rejection_reason' => $data['rejection_reason'],
+                                'reviewed_by' => auth()->id(),
+                                'views_remaining' => 0,
+                            ]);
+                        });
+                        try { \Illuminate\Support\Facades\Mail::to($r->advertiser->email)->queue(new \App\Mail\AdRejectedEmail($r->fresh())); } catch (\Throwable $e) {}
+                    }),
+                Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->visible(fn (\App\Models\PtcAd $r) => $r->user_id === null),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                ]),
+            ])
+            ->defaultSort('created_at', 'desc');
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListPtcAds::route('/'),
+            'create' => Pages\CreatePtcAd::route('/create'),
+            'edit' => Pages\EditPtcAd::route('/{record}/edit'),
+        ];
+    }
+}

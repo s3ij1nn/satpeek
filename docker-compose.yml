@@ -1,0 +1,128 @@
+services:
+  app:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: satpeek-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+    # NB: Laravel reads DB_*/REDIS_* from .env. We deliberately do NOT inject
+    # them via docker `environment:` because OS env beats .env.testing during
+    # phpunit runs, which would force every test through PostgreSQL.
+    environment:
+      - SATPEEK_ROLE=app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - satpeek
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: satpeek-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/satpeek.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - satpeek
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: satpeek-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-satpeek}
+      POSTGRES_USER: ${DB_USERNAME:-satpeek}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-satpeek}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-satpeek} -d ${DB_DATABASE:-satpeek}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - satpeek
+
+  redis:
+    image: redis:7-alpine
+    container_name: satpeek-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - satpeek
+
+  # Local-only SMTP capture. Production overrides MAIL_HOST / MAIL_PORT to
+  # point at an external provider (Postmark / SendGrid / Mailgun / SES).
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: satpeek-mailpit
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      MP_MAX_MESSAGES: 5000
+    ports:
+      - "${MAILPIT_HTTP_PORT:-8025}:8025"   # web UI
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"   # smtp (host access for tooling)
+    volumes:
+      - mailpit-data:/data
+    networks:
+      - satpeek
+
+  queue:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: satpeek-queue
+    restart: unless-stopped
+    working_dir: /var/www
+    # `--max-time=3600` exits cleanly every hour to release leaked memory.
+    # `restart: unless-stopped` brings it straight back so jobs keep flowing.
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    volumes:
+      - ./:/var/www
+    environment:
+      - SATPEEK_ROLE=queue
+    depends_on:
+      - app
+    networks:
+      - satpeek
+
+  scheduler:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: satpeek-scheduler
+    restart: unless-stopped
+    working_dir: /var/www
+    command: sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    volumes:
+      - ./:/var/www
+    environment:
+      - SATPEEK_ROLE=scheduler
+    depends_on:
+      - app
+    networks:
+      - satpeek
+
+volumes:
+  postgres-data:
+  redis-data:
+  mailpit-data:
+
+networks:
+  satpeek:
+    driver: bridge

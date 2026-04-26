@@ -1,0 +1,4 @@
+-- Postgres database is created via POSTGRES_DB env. This file is reserved for
+-- additional bootstrapping (e.g. extensions). Add CREATE EXTENSION calls here
+-- as needed.
+-- CREATE EXTENSION IF NOT EXISTS pg_trgm;
