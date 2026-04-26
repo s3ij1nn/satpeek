@@ -6,10 +6,7 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Wraps the family of ouo.io-style URL shortener APIs.
- *
- * Most independent shorteners (btcut.io, ouo.io, cuty.io, exe.io, link.tl,
- * adf.ly variants…) expose the same shape:
+ * Query-token URL-shortener client (btcut.io / cuty.io / exe.io / shrtfly.com…).
  *
  *   GET <api_base>?api=<token>&url=<long>&alias=<custom>&format=json
  *   → { "status": "success" | "error",
@@ -18,15 +15,23 @@ use Illuminate\Support\Facades\Log;
  *
  * The text format returns the URL verbatim on success and an empty body on
  * error — we always request JSON so we can tell success from failure.
+ *
+ * For the path-token variant (ouo.io: /api/<token>?s=<url>) see
+ * {@see OuoShortenerClient}.
  */
-class GenericShortenerClient
+class GenericShortenerClient implements ShortenerClient
 {
     public function __construct(
         private readonly HttpFactory $http,
-        public readonly string $name,
+        private readonly string $name,
         private readonly string $apiBase,
         private readonly string $apiToken,
     ) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
 
     public function isConfigured(): bool
     {

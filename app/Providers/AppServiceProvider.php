@@ -25,6 +25,8 @@ use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
 use App\Shortlinks\Providers\GenericShortenerClient;
+use App\Shortlinks\Providers\OuoShortenerClient;
+use App\Shortlinks\Providers\ShortenerClient;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use GuzzleHttp\Client;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -51,11 +53,10 @@ class AppServiceProvider extends ServiceProvider
             $http = $app->make(HttpFactory::class);
             $clients = [];
             foreach ((array) config('satpeek.shortlink_providers', []) as $name => $cfg) {
-                $clients[(string) $name] = new GenericShortenerClient(
-                    http: $http,
-                    name: (string) $name,
-                    apiBase: (string) ($cfg['api_base'] ?? ''),
-                    apiToken: (string) ($cfg['api_token'] ?? ''),
+                $clients[(string) $name] = self::buildShortenerClient(
+                    $http,
+                    (string) $name,
+                    (array) $cfg,
                 );
             }
             return new ShortlinkProviderRegistry($clients);
@@ -117,4 +118,16 @@ class AppServiceProvider extends ServiceProvider
     }
 
     public function boot(): void {}
+
+    private static function buildShortenerClient(HttpFactory $http, string $name, array $cfg): ShortenerClient
+    {
+        $apiBase = (string) ($cfg['api_base'] ?? '');
+        $apiToken = (string) ($cfg['api_token'] ?? '');
+        $transport = (string) ($cfg['transport'] ?? 'query');
+
+        return match ($transport) {
+            'path' => new OuoShortenerClient($http, $name, $apiBase, $apiToken),
+            default => new GenericShortenerClient($http, $name, $apiBase, $apiToken),
+        };
+    }
 }

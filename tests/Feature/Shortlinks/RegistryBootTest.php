@@ -3,6 +3,7 @@
 namespace Tests\Feature\Shortlinks;
 
 use App\Shortlinks\Providers\GenericShortenerClient;
+use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Tests\TestCase;
 
@@ -48,13 +49,39 @@ class RegistryBootTest extends TestCase
     public function test_default_config_registers_the_expected_provider_set(): void
     {
         // Ship-config sanity: the defaults in config/satpeek.php must register
-        // each provider as a GenericShortenerClient. Tokens stay env-driven.
+        // each provider with the right transport class. Tokens stay env-driven.
         $registry = $this->app->make(ShortlinkProviderRegistry::class);
         $names = array_keys($registry->all());
 
-        // btcut + cuty + exe + shrtfly — bumping this list means updating the
-        // .env.example + Filament action's allowlist of provider labels.
-        $this->assertEqualsCanonicalizing(['btcut', 'cuty', 'exe', 'shrtfly'], $names);
+        // Bumping this list means updating .env.example as well.
+        $this->assertEqualsCanonicalizing(['btcut', 'cuty', 'exe', 'shrtfly', 'ouo'], $names);
+    }
+
+    public function test_transport_switch_picks_the_right_client_class(): void
+    {
+        config()->set('satpeek.shortlink_providers', [
+            'btcut' => [
+                'transport' => 'query',
+                'api_base' => 'https://btcut.io/api',
+                'api_token' => 'tk',
+            ],
+            'ouo' => [
+                'transport' => 'path',
+                'api_base' => 'https://ouo.io/api',
+                'api_token' => 'tk',
+            ],
+            'fallback' => [
+                // No transport key → defaults to query for backwards compat.
+                'api_base' => 'https://fallback.example/api',
+                'api_token' => 'tk',
+            ],
+        ]);
+        $this->app->forgetInstance(ShortlinkProviderRegistry::class);
+        $registry = $this->app->make(ShortlinkProviderRegistry::class);
+
+        $this->assertInstanceOf(GenericShortenerClient::class, $registry->get('btcut'));
+        $this->assertInstanceOf(OuoShortenerClient::class, $registry->get('ouo'));
+        $this->assertInstanceOf(GenericShortenerClient::class, $registry->get('fallback'));
     }
 
     public function test_registry_handles_empty_provider_map(): void

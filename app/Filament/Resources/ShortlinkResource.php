@@ -126,7 +126,7 @@ class ShortlinkResource extends Resource
                         try {
                             $client = app(ShortlinkProviderRegistry::class)->get((string) $data['provider']);
                             $short = $client->shorten($record->target_url, $data['alias'] ?? null);
-                            $record->update(['target_url' => $short, 'source' => $client->name]);
+                            $record->update(['target_url' => $short, 'source' => $client->name()]);
                             Notification::make()
                                 ->title('Shortened')
                                 ->body("Target URL replaced with {$short}")
