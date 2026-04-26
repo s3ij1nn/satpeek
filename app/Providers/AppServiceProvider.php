@@ -24,7 +24,10 @@ use App\IpReputation\Contracts\IpReputationProvider;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
+use App\Shortlinks\Providers\GenericShortenerClient;
+use App\Shortlinks\ShortlinkProviderRegistry;
 use GuzzleHttp\Client;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -42,6 +45,20 @@ class AppServiceProvider extends ServiceProvider
             $registry->register(new MockAdapter());
             $registry->register(new BitcoTaskAdapter($app->make(Client::class)));
             return $registry;
+        });
+
+        $this->app->singleton(ShortlinkProviderRegistry::class, function ($app) {
+            $http = $app->make(HttpFactory::class);
+            $clients = [];
+            foreach ((array) config('satpeek.shortlink_providers', []) as $name => $cfg) {
+                $clients[(string) $name] = new GenericShortenerClient(
+                    http: $http,
+                    name: (string) $name,
+                    apiBase: (string) ($cfg['api_base'] ?? ''),
+                    apiToken: (string) ($cfg['api_token'] ?? ''),
+                );
+            }
+            return new ShortlinkProviderRegistry($clients);
         });
 
         $this->app->singleton(IpReputationProvider::class, function ($app) {

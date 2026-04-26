@@ -91,6 +91,18 @@ return [
         'views_max' => (int) env('ADS_VIEWS_MAX', 1000000),
     ],
 
+    // URL-shortener publisher APIs (ouo.io family). Keys here become the
+    // names referenced by the ShortlinkProviderRegistry and surfaced in the
+    // Filament admin action. Adding a new provider is a one-entry config
+    // addition — the wire shape is identical across the family.
+    'shortlink_providers' => [
+        'btcut' => [
+            'label' => 'btcut.io',
+            'api_base' => env('BTCUT_API_BASE', 'https://btcut.io/api'),
+            'api_token' => env('BTCUT_API_TOKEN', ''),
+        ],
+    ],
+
     'offerwalls' => [
         // Default is *empty* — site runs on internal admin-managed inventory
         // (Filament PtcAd / Shortlink resources). Add 'bitcotask' here only

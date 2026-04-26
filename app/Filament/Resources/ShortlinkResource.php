@@ -4,8 +4,11 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ShortlinkResource\Pages;
 use App\Models\Shortlink;
+use App\Shortlinks\Providers\ShortenerException;
+use App\Shortlinks\ShortlinkProviderRegistry;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -93,6 +96,50 @@ class ShortlinkResource extends Resource
                 Tables\Filters\TernaryFilter::make('is_active'),
             ])
             ->actions([
+                // Shortens the row's `target_url` through a configured publisher
+                // shortener (btcut.io et al.) and overwrites it with the returned
+                // shortened URL. The action is only visible when at least one
+                // provider has a token configured in .env.
+                Tables\Actions\Action::make('shorten')
+                    ->label('Shorten via…')
+                    ->icon('heroicon-o-scissors')
+                    ->color('warning')
+                    ->visible(fn () => count(app(ShortlinkProviderRegistry::class)->configuredNames()) > 0)
+                    ->form(function () {
+                        $registry = app(ShortlinkProviderRegistry::class);
+                        $opts = [];
+                        foreach ($registry->configuredNames() as $name) {
+                            $label = (string) (config("satpeek.shortlink_providers.{$name}.label") ?? $name);
+                            $opts[$name] = $label;
+                        }
+                        return [
+                            Forms\Components\Select::make('provider')
+                                ->options($opts)
+                                ->required()
+                                ->default(array_key_first($opts)),
+                            Forms\Components\TextInput::make('alias')
+                                ->helperText('Optional custom slug. Leave blank for auto-generated.')
+                                ->maxLength(64),
+                        ];
+                    })
+                    ->action(function (Shortlink $record, array $data) {
+                        try {
+                            $client = app(ShortlinkProviderRegistry::class)->get((string) $data['provider']);
+                            $short = $client->shorten($record->target_url, $data['alias'] ?? null);
+                            $record->update(['target_url' => $short, 'source' => $client->name]);
+                            Notification::make()
+                                ->title('Shortened')
+                                ->body("Target URL replaced with {$short}")
+                                ->success()
+                                ->send();
+                        } catch (ShortenerException $e) {
+                            Notification::make()
+                                ->title('Shortener failed')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
             ])
