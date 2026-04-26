@@ -5,6 +5,12 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/framework/cache/data
+/storage/framework/sessions
+/storage/framework/views
+/storage/framework/testing
+/storage/logs
+/storage/.seeded
 /.phpunit.cache
 .env
 .env.backup
