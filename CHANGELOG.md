@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Two operator-facing widgets on the Filament `/admin` dashboard:
+  - **In-flight withdrawals** — count + total `amount_sat` of
+    `queued`/`processing` rows, plus separate cards for the manual-
+    review `hold` queue and the rolling 24-h `failed` count. Each card
+    taps through to the `/admin/withdrawals` list filtered to that
+    status. Catches the failure mode where the queue worker dies and
+    `In flight` rises monotonically without any other obvious signal.
+  - **Bot tier distribution** — count of users per `bot_scores.tier`
+    (trust / suspect / likely_bot / banned). Surfaces population
+    shifts (a new attack wave pushing `likely_bot` upward, or
+    `banned` swelling after a fingerprint rotation) at a glance.
+  - Both widgets use single grouped queries against indexed columns
+    (`bot_scores.tier`, `withdrawals.(status, created_at)`), so they
+    add no measurable load to the dashboard render. Admin-only via
+    the existing `User::canAccessPanel()` panel guard. 7 new tests
+    in `tests/Feature/Admin/DashboardWidgetTest.php` lock the
+    aggregate-query layer (zero-state, status-bucket isolation,
+    24-h window cutoff, tier grouping).
+
 ## [0.2.0] — 2026-04-27
 
 Theme: BitcoTasks publisher integration lands end-to-end, plus operational
