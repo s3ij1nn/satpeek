@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Read-only Filament Operations resource at
+  `/admin/balance-ledgers` for the most common operator workflow:
+  "user X says they didn't get paid for view Y" → search by user,
+  filter by reason (`ptc_view` / `shortlink` / `bitcotask_postback` /
+  `referral_commission` / `withdraw_*`), the reference id is right
+  there. Signed-Δ rendering with green for credits, red for debits.
+  - canCreate / canEdit / canDelete pinned to false. The ledger is
+    the source of truth for `users.balance_sat` — an admin write
+    here would either silently desync the cached balance or
+    (worse) hide a real accounting bug. Corrections still flow
+    through the existing typed actions (refund a withdrawal, etc.)
+    that write matched ledger pairs.
+  - 3 new feature tests pin the read-only contract, the non-admin
+    gate, and the signed-Δ rendering.
+
 ## [0.4.1] — 2026-04-27
 
 Patch release: tier-driven captcha difficulty actually wired, SharedIpSignal
