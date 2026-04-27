@@ -10,6 +10,14 @@ use Illuminate\Support\Facades\Route;
 // Public landing
 Route::view('/', 'home')->name('home');
 
+// Operations health endpoint — JSON payload reporting DB / Redis / MaxMind /
+// shortlink provider / IP-reputation provider status. Public so a load balancer
+// or external uptime monitor can reach it without credentials. Returns 503
+// when a critical component (db / redis) is down so the LB pulls the node;
+// returns 200 with `status: degraded` for non-critical issues so monitoring
+// can alert without paging.
+Route::get('/up', [\App\Http\Controllers\HealthController::class, 'show'])->name('health');
+
 // Guest-only auth pages
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisterController::class, 'show'])->name('register');
