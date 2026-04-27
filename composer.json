@@ -3,7 +3,7 @@
     "type": "project",
     "description": "SatPeek — PTC site with anti-2captcha defense.",
     "keywords": ["satpeek", "ptc", "faucetpay"],
-    "license": "proprietary",
+    "license": "MIT",
     "require": {
         "php": "^8.3",
         "ext-bcmath": "*",
