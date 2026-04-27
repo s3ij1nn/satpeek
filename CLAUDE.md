@@ -168,6 +168,8 @@ Receiver enforces, in order: `s2s_secret` configured → IP in `BITCOTASK_IP_ALL
 
 Calls `POST {FAUCETPAY_API_BASE}/send`. Withdrawals enter `withdrawals` table → `ProcessWithdrawalJob` runs from the queue, with `requires_review` for `suspect+` tiers held for admin approval in Filament.
 
+Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPayUnreachableException` ONLY when the API host is unreachable at the TCP / DNS layer (Guzzle `ConnectException` — request never sent). The job has `$tries = 3` + `backoff() = [60, 300, 1800]` so a brief FaucetPay outage retries automatically over ~35 min. `ShouldBeUnique` keyed by withdrawal id (40-min lock) prevents the cron from racing the active retry. Every other failure mode (HTTP error, body status != 200, timeout mid-request) is treated as terminal — `status='failed'`, balance refunded, rejection email queued — because we can't tell whether FaucetPay processed the payout and a duplicate send is much worse than a delayed one. The `failed()` callback handles the final-exhaustion path with the same refund + notify sequence so funds are never silently stranded.
+
 ## Operations
 
 - **`/up`** — structured JSON health check (DB / Redis / MaxMind / shortlink_providers / ip_reputation_providers). Returns 503 on critical down (DB / Redis), 200 with `status: degraded` on non-critical degradation. Stable detail codes (`unconfigured`, `file_missing`, `no_token_set`, …) for dashboards. See `App\Http\Controllers\HealthController`.

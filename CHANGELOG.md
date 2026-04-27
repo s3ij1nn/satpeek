@@ -8,6 +8,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- FaucetPay payout job grew an automatic-retry + dead-letter path so a
+  transient outage no longer strands withdrawals at `processing`
+  forever waiting for an operator.
+  - `App\Payout\FaucetPayUnreachableException` is thrown by
+    `FaucetPayClient::send()` when the API host is unreachable at the
+    TCP / DNS layer (Guzzle `ConnectException`). This is the ONLY
+    failure mode that's safe to retry — the request never made it
+    onto the wire, so re-issuing it cannot double-pay.
+  - `ProcessWithdrawalJob` now sets `$tries = 3` with exponential
+    `backoff()` of `[60, 300, 1800]` (1 min / 5 min / 30 min) and
+    implements `ShouldBeUnique` (keyed by withdrawal id, 40-min
+    lock) so the cron's `satpeek:process-withdrawals` cannot race
+    the active retry and double-dispatch.
+  - All other FaucetPay failure modes (HTTP error, body status != 200,
+    timeout mid-request, JSON parse error) are TERMINAL: status flips
+    to `failed`, balance is refunded, rejection email queued. We
+    cannot tell whether FaucetPay processed the payout, and a
+    duplicate send is much worse than a delayed one.
+  - `failed()` is the dead-letter callback: invoked when $tries is
+    exhausted (FaucetPay still unreachable after ~35 min) or any
+    unhandled exception escapes `handle()`. Same refund + notify
+    sequence as a permanent failure, plus a `withdrawal job
+    dead-lettered` warning log so on-call sees it. Idempotent —
+    a stray invocation on an already-settled row is a no-op.
+  - `meta.attempts` + `meta.last_attempted_at` recorded per attempt
+    so the operator dashboard can show "in flight, retrying" with
+    real numbers.
+  - 7 new feature tests in `tests/Feature/Payout/ProcessWithdrawalJobTest.php`
+    lock the success / permanent-failure / unreachable-retry /
+    dead-letter / idempotency / requires_review / late-dispatch paths.
 - `/up` health probe now reports an `offerwall_providers` block so an
   operator can spot a misconfigured BitcoTasks integration without
   hitting the partner's first request.
