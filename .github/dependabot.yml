@@ -1,0 +1,80 @@
+# Dependabot watches composer + GitHub Actions deps and opens grouped PRs
+# weekly. CI (lint + phpunit) runs against each PR automatically, so a green
+# build on a Dependabot PR is the green-light to merge.
+#
+# Scope kept narrow:
+#   - Two ecosystems: composer (PHP) and github-actions.
+#   - PRs grouped so a single Monday batch covers the week (one PR per group).
+#   - Major bumps land as standalone PRs by default — Dependabot won't fold
+#     a Laravel 11 → 12 jump into the patch group.
+#   - open-pull-requests-limit caps the noise if a group balloons (one
+#     trivial cron-job dep + a large transitive update can otherwise spawn
+#     a wall of red CI runs).
+version: 2
+
+updates:
+  # PHP dependencies. Filament + Laravel are the big surfaces; if either
+  # ships a feature release we want to see it as a standalone PR with a
+  # CI run that exercises the full suite.
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - composer
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      laravel:
+        patterns:
+          - laravel/*
+        update-types:
+          - minor
+          - patch
+      filament:
+        patterns:
+          - filament/*
+        update-types:
+          - minor
+          - patch
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      production-minor:
+        dependency-type: production
+        exclude-patterns:
+          - laravel/*
+          - filament/*
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions in .github/workflows/* — bumps to actions/checkout,
+  # actions/cache, shivammathur/setup-php, etc. Same weekly cadence.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions-minor:
+        update-types:
+          - minor
+          - patch
