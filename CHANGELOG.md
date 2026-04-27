@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- BitcoTasks REST publisher integration. The published spec
+  (https://bitcotasks.com/documentations, re-fetched 2026-04-27)
+  exposes three per-(user, IP) endpoints — PTC at `/api/`, Shortlink
+  at `/sl-api/`, Read Article at `/ra-api/` — each carrying a
+  separate `Authorization: Bearer <BITCOTASK_BEARER_TOKEN>` header.
+  - New `App\Offerwall\Contracts\OfferwallPerUserAdapter` interface
+    with `fetchPtcOffersFor(User, string $ip)`,
+    `fetchShortlinkOffersFor(User, string $ip)`,
+    `fetchReadArticleOffersFor(User, string $ip)`. Adapters whose
+    publisher API is per-user-scoped (no global inventory) implement
+    this alongside the zero-arg `OfferwallAdapter` contract.
+  - `BitcoTaskAdapter` now takes a `Http\Client\Factory` in its
+    constructor and implements both contracts. Zero-arg
+    `fetchPtcOffers()` / `fetchShortlinkOffers()` return `[]` so the
+    nightly `satpeek:sync-offerwalls` cron stays a safe no-op.
+  - Per-fetch family default durations: PTC 30 s, Shortlink 10 s,
+    Read Article 60 s. PTC's response carries an explicit `duration`
+    field which overrides the default. Shortlink/RA rows honour
+    `limit` for `dailyLimitPerUser`.
+  - All failure modes (missing config, garbage IP, transport
+    exception, non-2xx, malformed body) return an empty array and
+    log a `warning` so an operator can spot a bad bearer token
+    without breaking the merge with internal inventory.
+  - `BITCOTASK_BEARER_TOKEN` env var added to `.env.example`. It is
+    SEPARATE from `BITCOTASK_API_KEY` (which sits in the URL path);
+    the two come from different fields on the publisher dashboard.
+  - 11 new feature tests in `tests/Feature/Offerwall/BitcoTaskApiFetchTest.php`
+    cover URL construction, Bearer header, descriptor mapping
+    (reward conversion, duration defaults, limit → dailyLimitPerUser),
+    and every documented failure mode.
+
 ### Changed
 
 - BitcoTasks integration rewritten against the published spec

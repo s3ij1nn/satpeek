@@ -70,16 +70,20 @@ return [
     ],
 
     // BitcoTasks publisher integration. Per the docs (fetched 2026-04-27)
-    // there is NO REST API for listing offers — publisher integration is
-    // offerwall-iframe-only. The api_key / publisher_id are interpolated
-    // into the iframe URL <iframe src="https://bitcotasks.com/offerwall/
-    // <api_key>/<user_id>">; the s2s_secret signs the postback (MD5 of
-    // subId+transId+reward+secret). usd_to_sat converts the postback's
-    // decimal `payout` (USD) into satoshis for the balance ledger.
-    // ip_allowlist defaults to BitcoTasks's published postback IP.
+    // publishers can pull a per-user offer list from three REST endpoints:
+    //   - PTC          GET /api/<API_KEY>/<USER_ID>/<USER_IP>
+    //   - Shortlink    GET /sl-api/<API_KEY>/<USER_ID>/<USER_IP>
+    //   - Read Article GET /ra-api/<API_KEY>/<USER_ID>/<USER_IP>
+    // All three carry `Authorization: Bearer <BEARER_TOKEN>` — the bearer
+    // token is the API auth secret, separate from the api_key (which sits
+    // in the URL path). Reward delivery is still server-to-server: the
+    // s2s_secret signs the postback (MD5 of subId+transId+reward+secret)
+    // and usd_to_sat converts the postback's decimal `payout` (USD) into
+    // satoshis. ip_allowlist defaults to BitcoTasks's published postback IP.
     'bitcotask' => [
         'publisher_id' => env('BITCOTASK_PUBLISHER_ID'),
         'api_key' => env('BITCOTASK_API_KEY'),
+        'bearer_token' => env('BITCOTASK_BEARER_TOKEN'),
         'api_base' => env('BITCOTASK_API_BASE', 'https://bitcotasks.com'),
         's2s_secret' => env('BITCOTASK_S2S_SECRET'),
         'usd_to_sat' => (float) env('BITCOTASK_USD_TO_SAT', 0),

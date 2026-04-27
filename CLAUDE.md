@@ -123,20 +123,39 @@ User-submitted ads: `/advertise/create` charges the user's balance upfront, queu
 
 ## Offerwall adapters — `app/Offerwall/`
 
-`OfferwallAdapter` interface; concrete adapters for `MockAdapter` (development) and `BitcoTaskAdapter` (production). Add new networks (AdGate, Adscend, CPALead) by implementing the interface and registering in `AppServiceProvider`. Sync via `php artisan satpeek:sync-offerwalls` (cron every 15 min).
+Two contracts live in `app/Offerwall/Contracts/`:
 
-### BitcoTasks integration — iframe + S2S postback
+- `OfferwallAdapter` — zero-arg `fetchPtcOffers()` / `fetchShortlinkOffers()` for publishers that expose a global inventory the nightly `php artisan satpeek:sync-offerwalls` cron can pull.
+- `OfferwallPerUserAdapter` — `fetchPtcOffersFor(User, $ip)` / `fetchShortlinkOffersFor(User, $ip)` / `fetchReadArticleOffersFor(User, $ip)` for publishers (BitcoTasks today) that scope the offer set to a (user, IP) pair. Controllers call these on page render and merge with internal inventory.
 
-Per the published spec (https://bitcotasks.com/documentations) BitcoTasks does NOT expose a REST list-offers endpoint. Publisher integration is offerwall-iframe-only:
+Concrete adapters: `MockAdapter` (development), `BitcoTaskAdapter` (production, implements both contracts). Add new networks (AdGate, Adscend, CPALead) by implementing whichever contract matches the publisher's API and registering in `AppServiceProvider`.
 
-```html
-<iframe src="https://bitcotasks.com/offerwall/[BITCOTASK_API_KEY]/[USER_ID]"></iframe>
+### BitcoTasks integration — REST APIs + S2S postback
+
+Per the published spec (https://bitcotasks.com/documentations, fetched 2026-04-27), BitcoTasks exposes three per-(user, IP) REST endpoints for the publisher to pull offers:
+
+| Family | Path | Default duration |
+|---|---|---|
+| PTC | `GET /api/<API_KEY>/<USER_ID>/<USER_IP>` | 30 s (overridable per-row) |
+| Shortlink | `GET /sl-api/<API_KEY>/<USER_ID>/<USER_IP>` | 10 s |
+| Read Article | `GET /ra-api/<API_KEY>/<USER_ID>/<USER_IP>` | 60 s |
+
+All three carry `Authorization: Bearer <BITCOTASK_BEARER_TOKEN>` — the bearer token is the API auth secret, separate from `BITCOTASK_API_KEY` (which sits in the URL path). Response shape:
+
+```json
+{ "status": "200", "message": "success", "data": [
+  { "id": "...", "title": "...", "reward": "0.10",
+    "currency_name": "Cash", "url": "https://bitcotasks.com/...",
+    "duration": "30", "limit": "5" }
+]}
 ```
 
-The user completes offers inside the iframe; BitcoTasks credits via a server-to-server postback to the URL the operator configures in the BitcoTasks dashboard. SatPeek's receiver lives at `POST /webhooks/bitcotask` (no URL token — security comes from the signature + IP allow-list).
+`reward` (decimal USD) × `BITCOTASK_USD_TO_SAT` → integer satoshis on the resulting `OfferDescriptor`. Any failure mode (missing config, garbage IP, transport exception, non-2xx, malformed body) returns an empty array and logs a warning so the merge with internal inventory keeps working. Send the user to `OfferDescriptor::targetUrl` directly — there's no separate `startView` endpoint.
+
+Reward delivery is still server-to-server. SatPeek's receiver lives at `POST /webhooks/bitcotask` (no URL token — security comes from the signature + IP allow-list).
 
 Postback contract (form-encoded, lowercase fields):
-- `subId` — publisher's user ID (we pass it in the iframe URL, BitcoTasks echoes it back)
+- `subId` — publisher's user ID (we send it in the API URL path; BitcoTasks echoes it back)
 - `transId` — BitcoTasks transaction ID (idempotency key, stored in `balance_ledgers.external_ref`)
 - `reward` / `reward_value` / `payout` — decimal strings; `payout` is USD, converted to satoshis via `BITCOTASK_USD_TO_SAT`
 - `status` — `1` = credit, `2` = chargeback (negative ledger row)

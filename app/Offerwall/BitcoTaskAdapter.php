@@ -6,69 +6,69 @@ use App\Models\User;
 use App\Offerwall\Contracts\CallbackResult;
 use App\Offerwall\Contracts\OfferDescriptor;
 use App\Offerwall\Contracts\OfferwallAdapter;
+use App\Offerwall\Contracts\OfferwallPerUserAdapter;
 use App\Offerwall\Contracts\ViewSession;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use LogicException;
+use Throwable;
 
 /**
  * BitcoTasks publisher integration.
  *
  * Per the BitcoTasks publisher docs (https://bitcotasks.com/documentations,
- * fetched 2026-04-27), there is NO REST publisher API for listing PTC /
- * shortlink offers. Publisher integration is offerwall-iframe-only:
+ * fetched 2026-04-27), publishers can pull a per-user offer list from
+ * three REST endpoints (PTC / Shortlink / Read Article), then send the
+ * user to the per-offer URL the response carries. Reward delivery is
+ * still server-to-server: when the user completes an offer at the
+ * BitcoTasks-side URL, BitcoTasks calls our postback (`POST
+ * /webhooks/bitcotask`) with the documented form-encoded payload.
  *
- *     <iframe src="https://bitcotasks.com/offerwall/[API_KEY]/[USER_ID]">
+ * Endpoint shape (all three identical except for the path):
  *
- * The user completes offers inside the embedded wall; BitcoTasks credits
- * them via a server-to-server postback to a URL the operator sets in the
- * BitcoTasks dashboard.
+ *     GET https://bitcotasks.com/<api>/<API_KEY>/<USER_ID>/<USER_IP>
+ *     Authorization: Bearer <BEARER_TOKEN>
  *
- * Postback contract (form-encoded HTTP POST, lowercase form fields):
+ * Where <api> is one of:
+ *     - api      — PTC ads
+ *     - sl-api   — Shortlinks
+ *     - ra-api   — Read Article tasks
  *
- *     subId         publisher's user identifier (the SubId we passed in
- *                   the iframe URL)
- *     transId       BitcoTasks transaction ID — IDEMPOTENCY KEY
- *     offer_name    human-readable offer name
- *     offer_type    "ptc" | "offer" | "task" | "shortlink"
- *     reward        the publisher-side reward amount (decimal string)
- *     reward_name   "Points" / etc — operator-defined unit
- *     reward_value  reward amount in operator unit (decimal string)
- *     payout        operator's USD cost (decimal string)
- *     userIp        end-user IP at the moment they completed the offer
- *     country       2-letter country code
- *     status        1 = credit, 2 = chargeback (subtract)
- *     debug         1 = test postback (no real reward), 0 = live
- *     signature     md5(subId . transId . reward . s2s_secret)
+ * Response (HTTP 200, JSON):
  *
- * Verification:
- *   - signature MUST match md5(subId.transId.reward.secret) byte-for-byte.
- *   - source IP SHOULD match the BitcoTasks-published whitelist
- *     (45.14.135.48 at time of writing). The whitelist is config-driven
- *     so an operator can adjust without a code change.
+ *     {
+ *       "status": "200",
+ *       "message": "success",
+ *       "data": [
+ *         { "id": "...", "title": "...", "reward": "0.10",
+ *           "currency_name": "Cash", "url": "https://bitcotasks.com/...",
+ *           "duration": "30", ... },
+ *         ...
+ *       ]
+ *     }
  *
- * Response (handled by the controller, not this class):
- *   - The endpoint MUST respond with the literal string `ok` (lowercase,
- *     no whitespace, no JSON). BitcoTasks treats anything else as failure
- *     and may retry. 60-second timeout.
+ * Reward conversion: BitcoTasks `reward` is a decimal in the operator's
+ * configured currency (typically USD). We multiply by
+ * BITCOTASK_USD_TO_SAT (same knob the postback uses) to land satoshis
+ * in OfferDescriptor.
  *
- * Idempotency:
- *   - The handler stores `transId` in `balance_ledgers.external_ref`
- *     under `reason='bitcotask_postback'`. A unique index on
- *     (reason, external_ref) makes the second arrival a no-op.
+ * Postback verification (verifyCallback) is unchanged from the
+ * postback-only era — see method docblock + the routes/webhooks.php
+ * registration.
  */
-class BitcoTaskAdapter implements OfferwallAdapter
+class BitcoTaskAdapter implements OfferwallAdapter, OfferwallPerUserAdapter
 {
+    public function __construct(private readonly HttpFactory $http) {}
+
     public function name(): string
     {
         return 'bitcotask';
     }
 
     /**
-     * BitcoTasks doesn't expose a REST list-offers endpoint — offers are
-     * presented inside the offerwall iframe at runtime. We return an empty
-     * descriptor list so the SyncOfferwallsCommand cron is a safe no-op
-     * even when 'bitcotask' is in OFFERWALLS_ENABLED.
+     * Global zero-arg fetch: no global inventory exists; offers are
+     * (user, IP)-scoped. SyncOfferwallsCommand stays a safe no-op.
      *
      * @return array<int, OfferDescriptor>
      */
@@ -85,15 +85,152 @@ class BitcoTaskAdapter implements OfferwallAdapter
 
     public function startView(User $user, OfferDescriptor $offer): ViewSession
     {
-        // Same reasoning as fetch*Offers — there is no per-offer start
-        // endpoint. The iframe handles the entire watch / hold / claim
-        // flow internally and reports completion via postback. Throw so
-        // the call site notices it's a no-op rather than silently
-        // returning a half-built session.
+        // Per-offer "start" is whatever the user-facing URL in the
+        // OfferDescriptor does — there's no separate session-creation
+        // endpoint. Throwing here keeps the call site honest: if you
+        // got an OfferDescriptor from this adapter, send the user to
+        // $offer->targetUrl directly.
         throw new LogicException(
-            'BitcoTask offers run inside the offerwall iframe; '
-            .'there is no startView endpoint. Embed the iframe at '
-            .'https://bitcotasks.com/offerwall/<API_KEY>/<USER_ID> instead.'
+            'BitcoTask offers are followed by sending the user to '
+            .'OfferDescriptor::targetUrl directly; there is no '
+            .'startView endpoint to call.'
+        );
+    }
+
+    /** @return array<int, OfferDescriptor> */
+    public function fetchPtcOffersFor(User $user, string $ip): array
+    {
+        return $this->fetchOffers('api', $user, $ip, defaultDurationSec: 30);
+    }
+
+    /** @return array<int, OfferDescriptor> */
+    public function fetchShortlinkOffersFor(User $user, string $ip): array
+    {
+        return $this->fetchOffers('sl-api', $user, $ip, defaultDurationSec: 10);
+    }
+
+    /** @return array<int, OfferDescriptor> */
+    public function fetchReadArticleOffersFor(User $user, string $ip): array
+    {
+        return $this->fetchOffers('ra-api', $user, $ip, defaultDurationSec: 60);
+    }
+
+    /**
+     * Shared HTTP shape for all three endpoint families. Returns an empty
+     * list on any failure (network, non-200, malformed body, missing
+     * config) so the caller can merge with internal inventory without a
+     * conditional. All failure modes log a warning so an operator can
+     * spot a bad bearer token in dashboards.
+     *
+     * @return array<int, OfferDescriptor>
+     */
+    private function fetchOffers(string $apiPath, User $user, string $ip, int $defaultDurationSec): array
+    {
+        $cfg = config('satpeek.bitcotask');
+        $apiKey = (string) ($cfg['api_key'] ?? '');
+        $bearer = (string) ($cfg['bearer_token'] ?? '');
+        $base = rtrim((string) ($cfg['api_base'] ?? 'https://bitcotasks.com'), '/');
+
+        if ($apiKey === '' || $bearer === '') {
+            return [];
+        }
+        if ($ip === '' || ! filter_var($ip, FILTER_VALIDATE_IP)) {
+            // Per the spec, USER_IP is part of the URL path. An empty or
+            // garbage IP would either 404 or get a low-fill response;
+            // bail locally instead of burning a quota slot.
+            return [];
+        }
+
+        $url = sprintf('%s/%s/%s/%d/%s', $base, $apiPath, rawurlencode($apiKey), $user->id, rawurlencode($ip));
+
+        try {
+            $response = $this->http
+                ->withHeaders(['Authorization' => 'Bearer '.$bearer])
+                ->timeout(10)
+                ->get($url);
+        } catch (Throwable $e) {
+            Log::warning('bitcotask fetch failed (transport)', [
+                'api' => $apiPath,
+                'err' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        if (! $response->successful()) {
+            Log::warning('bitcotask fetch non-2xx', [
+                'api' => $apiPath,
+                'status' => $response->status(),
+            ]);
+
+            return [];
+        }
+
+        $body = $response->json();
+        if (! is_array($body) || ! isset($body['data']) || ! is_array($body['data'])) {
+            Log::warning('bitcotask fetch unexpected body shape', [
+                'api' => $apiPath,
+                'status' => $body['status'] ?? null,
+                'message' => $body['message'] ?? null,
+            ]);
+
+            return [];
+        }
+
+        $usdToSat = (float) ($cfg['usd_to_sat'] ?? 0);
+        $offers = [];
+        foreach ($body['data'] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $offer = self::rowToDescriptor($row, $usdToSat, $defaultDurationSec);
+            if ($offer !== null) {
+                $offers[] = $offer;
+            }
+        }
+
+        return $offers;
+    }
+
+    /**
+     * Map a single response row into an OfferDescriptor. Returns null
+     * for rows that lack the minimum (id + url + reward) so a future
+     * shape change doesn't crash the whole list.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private static function rowToDescriptor(array $row, float $usdToSat, int $defaultDurationSec): ?OfferDescriptor
+    {
+        $id = (string) ($row['id'] ?? '');
+        $url = (string) ($row['url'] ?? '');
+        $rewardStr = (string) ($row['reward'] ?? '');
+        if ($id === '' || $url === '' || $rewardStr === '') {
+            return null;
+        }
+
+        $rewardSat = $usdToSat > 0 ? (int) round(((float) $rewardStr) * $usdToSat) : 0;
+
+        // duration only present on PTC; sl-api / ra-api fall back to the
+        // family default (10 s for shortlinks, 60 s for read articles).
+        $durationSec = isset($row['duration']) && is_numeric($row['duration'])
+            ? max(1, (int) $row['duration'])
+            : $defaultDurationSec;
+
+        // limit (per-day cap) on shortlink + read-article rows; default 1.
+        $dailyLimit = isset($row['limit']) && is_numeric($row['limit'])
+            ? max(1, (int) $row['limit'])
+            : 1;
+
+        return new OfferDescriptor(
+            source: 'bitcotask',
+            externalId: $id,
+            title: (string) ($row['title'] ?? 'BitcoTasks offer'),
+            description: isset($row['description']) ? (string) $row['description'] : null,
+            targetUrl: $url,
+            rewardSat: $rewardSat,
+            durationSec: $durationSec,
+            dailyLimitPerUser: $dailyLimit,
+            meta: $row,
         );
     }
 
@@ -104,9 +241,9 @@ class BitcoTaskAdapter implements OfferwallAdapter
             return null;
         }
 
-        // IP allow-list — a defence-in-depth signal alongside the MD5
-        // signature. BitcoTasks publishes their postback IP and updates
-        // it rarely; operator-overridable via env when it changes.
+        // IP allow-list — defence-in-depth alongside the MD5 signature.
+        // BitcoTasks publishes their postback IP and updates it rarely;
+        // operator-overridable via env when it changes.
         $allowed = (array) config('satpeek.bitcotask.ip_allowlist', []);
         if ($allowed !== [] && ! in_array($request->ip(), $allowed, true)) {
             Log::warning('bitcotask postback from non-whitelisted IP', [
