@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-04-27
+
+Patch release: surface previously-hidden state to both operators and end
+users so silent degradations stop looking like glitches. All additive.
+
 ### Added
 
 - Tier-driven status banner on `/dashboard`. Trust users see no
@@ -693,7 +698,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/s3ij1nn/satpeek/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/s3ij1nn/satpeek/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/s3ij1nn/satpeek/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/s3ij1nn/satpeek/compare/v0.3.0...v0.4.0
