@@ -16,7 +16,7 @@ class GenericShortenerClientTest extends TestCase
 {
     public function test_shorten_returns_shortened_url_on_success(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             'btcut.io/api*' => $http->response([
                 'status' => 'success',
@@ -43,7 +43,7 @@ class GenericShortenerClientTest extends TestCase
 
     public function test_alias_is_omitted_when_blank(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             '*' => $http->response(['status' => 'success', 'shortenedUrl' => 'https://btcut.io/no-alias'], 200),
         ]);
@@ -56,7 +56,7 @@ class GenericShortenerClientTest extends TestCase
 
     public function test_status_error_response_throws_with_provider_message(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             '*' => $http->response([
                 'status' => 'error',
@@ -74,7 +74,7 @@ class GenericShortenerClientTest extends TestCase
 
     public function test_empty_shortened_url_in_response_is_treated_as_error(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             '*' => $http->response(['status' => 'success', 'shortenedUrl' => ''], 200),
         ]);
@@ -87,7 +87,7 @@ class GenericShortenerClientTest extends TestCase
 
     public function test_http_failure_throws_with_status_code(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             '*' => $http->response('Service down', 503),
         ]);
@@ -101,7 +101,7 @@ class GenericShortenerClientTest extends TestCase
 
     public function test_unconfigured_client_refuses_without_calling_remote(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake();
 
         $client = new GenericShortenerClient($http, 'btcut', 'https://btcut.io/api', '');
@@ -119,7 +119,7 @@ class GenericShortenerClientTest extends TestCase
 
     public function test_empty_url_argument_is_rejected_locally(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake();
 
         $client = new GenericShortenerClient($http, 'btcut', 'https://btcut.io/api', 'TOKEN_xyz');

@@ -19,6 +19,7 @@ class SyncOfferwallsCommand extends Command
         $enabled = $registry->enabled();
         if (empty($enabled)) {
             $this->info('No offerwall adapters enabled — internal inventory only. Nothing to sync.');
+
             return self::SUCCESS;
         }
         foreach ($enabled as $adapter) {
@@ -34,6 +35,7 @@ class SyncOfferwallsCommand extends Command
                 $this->upsertShortlink($offer);
             }
         }
+
         return self::SUCCESS;
     }
 

@@ -50,6 +50,7 @@ class WithdrawController extends Controller
                 'reference_id' => $w->id,
             ]);
             $user->decrement('balance_sat', (int) $validated['amount_sat']);
+
             return $w;
         });
 

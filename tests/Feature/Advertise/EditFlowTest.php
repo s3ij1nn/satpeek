@@ -142,7 +142,7 @@ class EditFlowTest extends TestCase
         $owner = User::factory()->create();
         $rejected = $this->seedAd(['user_id' => $owner->id, 'status' => 'rejected', 'is_active' => false]);
         $completed = $this->seedAd(['user_id' => $owner->id, 'status' => 'completed', 'is_active' => false]);
-        $approved  = $this->seedAd(['user_id' => $owner->id, 'status' => 'approved']);
+        $approved = $this->seedAd(['user_id' => $owner->id, 'status' => 'approved']);
 
         $this->actingAs($owner)
             ->get(route('advertise.show', ['id' => $rejected->id]))

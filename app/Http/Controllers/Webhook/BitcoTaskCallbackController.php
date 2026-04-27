@@ -41,6 +41,7 @@ class BitcoTaskCallbackController extends Controller
         $user = User::find($result->userId);
         if (! $user) {
             Log::warning('bitcotask callback for unknown user', ['user_id' => $result->userId]);
+
             return response()->json(['error' => 'unknown_user'], 404);
         }
 

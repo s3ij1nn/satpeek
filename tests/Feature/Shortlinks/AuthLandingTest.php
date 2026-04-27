@@ -143,6 +143,7 @@ class AuthLandingTest extends TestCase
         if (! isset($overrides['shortlink_id'])) {
             $overrides['shortlink_id'] = $this->seedLink()->id;
         }
+
         return ShortlinkClick::create(array_merge($defaults, $overrides));
     }
 
@@ -150,6 +151,7 @@ class AuthLandingTest extends TestCase
     {
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
         $issuedAt = Carbon::now()->subSeconds(3);
+
         return CaptchaChallenge::create([
             'challenge_id' => 'cc_test_'.uniqid(),
             'user_id' => null,

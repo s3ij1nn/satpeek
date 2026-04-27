@@ -19,6 +19,7 @@ class ProcessWithdrawalsCommand extends Command
             ProcessWithdrawalJob::dispatch($w->id);
         }
         $this->info("dispatched {$rows->count()} withdrawals");
+
         return self::SUCCESS;
     }
 }

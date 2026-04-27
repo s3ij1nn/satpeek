@@ -94,6 +94,7 @@ class AsnStaticListSignal implements Signal
                 $out[] = $n;
             }
         }
+
         return array_values(array_unique($out));
     }
 }

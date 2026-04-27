@@ -28,6 +28,7 @@ class WithdrawalResource extends Resource
     public static function getNavigationBadge(): ?string
     {
         $pending = Withdrawal::whereIn('status', ['hold', 'queued'])->count();
+
         return $pending > 0 ? (string) $pending : null;
     }
 

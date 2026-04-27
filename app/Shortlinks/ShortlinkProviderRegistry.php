@@ -36,6 +36,7 @@ class ShortlinkProviderRegistry
         if (! isset($this->clients[$name])) {
             throw new ShortenerException("No shortener provider registered under name `{$name}`.");
         }
+
         return $this->clients[$name];
     }
 
@@ -48,6 +49,7 @@ class ShortlinkProviderRegistry
                 $names[] = $name;
             }
         }
+
         return $names;
     }
 }

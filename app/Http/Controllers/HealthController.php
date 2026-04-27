@@ -62,6 +62,7 @@ class HealthController extends Controller
             // Lightweight round-trip — opens a connection if pooled but
             // doesn't query a real table that might be migrating.
             DB::connection()->select('select 1 as ok');
+
             return ['status' => 'ok', 'critical' => true];
         } catch (Throwable $e) {
             return ['status' => 'down', 'critical' => true, 'detail' => 'connect_failed'];
@@ -76,6 +77,7 @@ class HealthController extends Controller
             // Predis returns the literal string "PONG"; phpredis returns
             // either true or "+PONG" depending on the driver mode.
             $ok = $reply === true || (is_string($reply) && stripos($reply, 'PONG') !== false);
+
             return $ok
                 ? ['status' => 'ok', 'critical' => true]
                 : ['status' => 'down', 'critical' => true, 'detail' => 'unexpected_ping_reply'];
@@ -94,6 +96,7 @@ class HealthController extends Controller
         if (! is_file($path) || ! is_readable($path)) {
             return ['status' => 'down', 'critical' => false, 'detail' => 'file_missing'];
         }
+
         return ['status' => 'ok', 'critical' => false];
     }
 
@@ -106,6 +109,7 @@ class HealthController extends Controller
             if ($configured === 0) {
                 return ['status' => 'degraded', 'critical' => false, 'detail' => 'no_token_set', 'configured' => 0];
             }
+
             return ['status' => 'ok', 'critical' => false, 'configured' => $configured];
         } catch (Throwable) {
             return ['status' => 'down', 'critical' => false, 'detail' => 'registry_unavailable'];
@@ -131,6 +135,7 @@ class HealthController extends Controller
         if ($sources === []) {
             return ['status' => 'degraded', 'critical' => false, 'detail' => 'no_provider_configured', 'sources' => []];
         }
+
         return ['status' => 'ok', 'critical' => false, 'sources' => $sources];
     }
 }

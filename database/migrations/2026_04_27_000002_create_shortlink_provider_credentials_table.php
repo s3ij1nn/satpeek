@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Schema;
  * — config still drives label / transport / api_base defaults so adding a new
  * provider only requires a config entry plus an admin filling the token.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('shortlink_provider_credentials', function (Blueprint $table) {

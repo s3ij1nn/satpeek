@@ -4,7 +4,6 @@ namespace Tests\Unit\BotDetection;
 
 use App\BotDetection\ScoreEngine;
 use App\BotDetection\Signals\Signal;
-use App\Models\BotScore;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -49,9 +48,15 @@ class ScoreEngineTest extends TestCase
 
     private function fakeSignal(string $name, float $value): Signal
     {
-        return new class($name, $value) implements Signal {
+        return new class($name, $value) implements Signal
+        {
             public function __construct(private string $n, private float $v) {}
-            public function name(): string { return $this->n; }
+
+            public function name(): string
+            {
+                return $this->n;
+            }
+
             public function evaluate(User $user): array
             {
                 return ['score' => $this->v, 'detail' => []];

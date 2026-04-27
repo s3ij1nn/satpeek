@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Filament\Resources\PtcViewResource;
+use App\Filament\Resources\ShortlinkClickResource;
 use App\Models\PtcAd;
 use App\Models\PtcView;
 use App\Models\Shortlink;
@@ -74,13 +76,13 @@ class DebugResourceAccessTest extends TestCase
         // when getPages() omits create/edit), but pinning the policy here
         // means a future refactor that re-adds those pages must explicitly
         // flip these flags.
-        $this->assertFalse(\App\Filament\Resources\PtcViewResource::canCreate());
-        $this->assertFalse(\App\Filament\Resources\PtcViewResource::canEdit(new PtcView()));
-        $this->assertFalse(\App\Filament\Resources\PtcViewResource::canDelete(new PtcView()));
+        $this->assertFalse(PtcViewResource::canCreate());
+        $this->assertFalse(PtcViewResource::canEdit(new PtcView));
+        $this->assertFalse(PtcViewResource::canDelete(new PtcView));
 
-        $this->assertFalse(\App\Filament\Resources\ShortlinkClickResource::canCreate());
-        $this->assertFalse(\App\Filament\Resources\ShortlinkClickResource::canEdit(new ShortlinkClick()));
-        $this->assertFalse(\App\Filament\Resources\ShortlinkClickResource::canDelete(new ShortlinkClick()));
+        $this->assertFalse(ShortlinkClickResource::canCreate());
+        $this->assertFalse(ShortlinkClickResource::canEdit(new ShortlinkClick));
+        $this->assertFalse(ShortlinkClickResource::canDelete(new ShortlinkClick));
     }
 
     private function seedPtcView(): PtcView
@@ -104,6 +106,7 @@ class DebugResourceAccessTest extends TestCase
             'status' => 'approved',
         ]);
         $viewer = User::factory()->create();
+
         return PtcView::create([
             'user_id' => $viewer->id,
             'ptc_ad_id' => $ad->id,
@@ -128,6 +131,7 @@ class DebugResourceAccessTest extends TestCase
             'is_active' => true,
         ]);
         $clicker = User::factory()->create();
+
         return ShortlinkClick::create([
             'user_id' => $clicker->id,
             'shortlink_id' => $link->id,

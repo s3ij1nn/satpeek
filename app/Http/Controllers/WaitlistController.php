@@ -111,6 +111,7 @@ class WaitlistController extends Controller
                 'recently_created' => $recentlyCreated,
             ]);
         }
+
         return redirect()->route('register')->with('status', $message);
     }
 
@@ -123,6 +124,7 @@ class WaitlistController extends Controller
                 'message' => $message,
             ], 422);
         }
+
         return redirect()
             ->route('register')
             ->withErrors(['captcha' => $message])

@@ -4,9 +4,9 @@ namespace App\Filament\Pages\Auth;
 
 use App\Captcha\ChallengeVerifier;
 use Filament\Forms\Components\Component;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\View;
 use Filament\Forms\Form;
+use Filament\Http\Responses\Auth\Contracts\LoginResponse;
 use Filament\Pages\Auth\Login as BaseLogin;
 use Illuminate\Validation\ValidationException;
 
@@ -41,7 +41,7 @@ class Login extends BaseLogin
             ->columnSpanFull();
     }
 
-    public function authenticate(): ?\Filament\Http\Responses\Auth\Contracts\LoginResponse
+    public function authenticate(): ?LoginResponse
     {
         // Filament submits the form via Livewire's /livewire/update endpoint,
         // which serialises the component's *public properties* — not raw form

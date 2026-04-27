@@ -20,6 +20,7 @@ class BotScoreGate
         if ($user && $this->policy->tier($user) === 'banned') {
             return response()->json(['error' => 'tier_banned'], 403);
         }
+
         return $next($request);
     }
 }

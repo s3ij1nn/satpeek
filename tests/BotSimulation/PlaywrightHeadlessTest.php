@@ -19,7 +19,7 @@ class PlaywrightHeadlessTest extends TestCase
     public function test_synthetic_uniform_dt_trajectory_is_rejected(): void
     {
         $this->seedConfig();
-        $provider = new TrajectoryTraceProvider();
+        $provider = new TrajectoryTraceProvider;
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
 
         $points = [];
@@ -61,7 +61,7 @@ class PlaywrightHeadlessTest extends TestCase
     public function test_2captcha_relay_response_window_rejects(): void
     {
         $this->seedConfig();
-        $provider = new TrajectoryTraceProvider();
+        $provider = new TrajectoryTraceProvider;
         $shape = TrajectoryTraceProvider::sampleCurve('linear', 30, 120, 280, 120, 0, 1, 6000, 60);
         // Even if the relay returned a perfectly valid trajectory, the round
         // trip through 2captcha takes 25-45s, blowing the upper time bound.
@@ -117,6 +117,7 @@ class PlaywrightHeadlessTest extends TestCase
                 'pressure' => 0.5,
             ];
         }
+
         return $points;
     }
 }

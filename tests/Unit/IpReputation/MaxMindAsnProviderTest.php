@@ -96,6 +96,7 @@ class MaxMindAsnProviderTest extends TestCase
         $reader->method('asn')->willReturn($this->fakeAsnRecord(15169, 'GOOGLE'));
         $factory = function () use (&$built, $reader): Reader {
             $built++;
+
             return $reader;
         };
         $provider = new MaxMindAsnProvider('/unused.mmdb', $factory);

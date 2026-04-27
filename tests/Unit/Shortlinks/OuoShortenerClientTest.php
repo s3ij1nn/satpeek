@@ -17,7 +17,7 @@ class OuoShortenerClientTest extends TestCase
 {
     public function test_shorten_returns_url_from_plain_text_body(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             'ouo.io/api/*' => $http->response("https://ouo.io/Abc123\n", 200, ['Content-Type' => 'text/plain']),
         ]);
@@ -34,7 +34,7 @@ class OuoShortenerClientTest extends TestCase
 
     public function test_alias_argument_is_ignored_for_path_token_provider(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             '*' => $http->response('https://ouo.io/Abc123', 200),
         ]);
@@ -49,7 +49,7 @@ class OuoShortenerClientTest extends TestCase
 
     public function test_html_challenge_response_with_200_is_treated_as_error(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake([
             '*' => $http->response('<!DOCTYPE html><html>Just a moment...</html>', 200, ['Content-Type' => 'text/html']),
         ]);
@@ -63,7 +63,7 @@ class OuoShortenerClientTest extends TestCase
 
     public function test_empty_body_with_200_is_treated_as_error(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake(['*' => $http->response('', 200)]);
 
         $client = new OuoShortenerClient($http, 'ouo', 'https://ouo.io/api', 'PUBLISHER_TOKEN');
@@ -74,7 +74,7 @@ class OuoShortenerClientTest extends TestCase
 
     public function test_http_error_status_throws_with_status_code(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake(['*' => $http->response('Forbidden', 403)]);
 
         $client = new OuoShortenerClient($http, 'ouo', 'https://ouo.io/api', 'BAD_TOKEN');
@@ -86,7 +86,7 @@ class OuoShortenerClientTest extends TestCase
 
     public function test_unconfigured_client_refuses_without_calling_remote(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         $http->fake();
 
         $client = new OuoShortenerClient($http, 'ouo', 'https://ouo.io/api', '');
@@ -103,7 +103,7 @@ class OuoShortenerClientTest extends TestCase
 
     public function test_response_body_with_whitespace_is_rejected(): void
     {
-        $http = new HttpFactory();
+        $http = new HttpFactory;
         // Defence against partial HTML bodies that happen to contain a URL.
         $http->fake(['*' => $http->response('Some prose https://ouo.io/Abc123 more prose', 200)]);
 

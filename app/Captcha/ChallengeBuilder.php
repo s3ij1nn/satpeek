@@ -12,7 +12,7 @@ class ChallengeBuilder
     public function __construct(private readonly CaptchaProvider $provider) {}
 
     /**
-     * @return array<string, mixed>  Public payload safe to send to the client (no expectedShape).
+     * @return array<string, mixed> Public payload safe to send to the client (no expectedShape).
      */
     public function issue(Request $request): array
     {

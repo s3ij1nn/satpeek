@@ -131,6 +131,7 @@ class RegisterFlowTest extends TestCase
             'issued_at' => $issuedAt,
             'expires_at' => $issuedAt->copy()->addSeconds(30),
         ]);
+
         return [$challenge, $shape];
     }
 

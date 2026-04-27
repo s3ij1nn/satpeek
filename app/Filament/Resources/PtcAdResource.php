@@ -3,12 +3,19 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PtcAdResource\Pages;
+use App\Mail\AdApprovedEmail;
+use App\Mail\AdRejectedEmail;
+use App\Models\BalanceLedger;
 use App\Models\PtcAd;
+use App\Models\PtcView;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 class PtcAdResource extends Resource
@@ -93,7 +100,8 @@ class PtcAdResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        $pending = \App\Models\PtcAd::where('status', 'pending_review')->count();
+        $pending = PtcAd::where('status', 'pending_review')->count();
+
         return $pending > 0 ? (string) $pending : null;
     }
 
@@ -141,7 +149,10 @@ class PtcAdResource extends Resource
                 Tables\Columns\TextColumn::make('views_remaining')
                     ->label('Budget')
                     ->getStateUsing(function ($record) {
-                        if ($record->user_id === null) return '∞';
+                        if ($record->user_id === null) {
+                            return '∞';
+                        }
+
                         return number_format($record->views_remaining).' / '.number_format($record->total_views_purchased);
                     })
                     ->toggleable(),
@@ -149,12 +160,12 @@ class PtcAdResource extends Resource
                 Tables\Columns\TextColumn::make('daily_limit_per_user')->label('Daily/user')->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('verified_views')
                     ->label('Verified')
-                    ->getStateUsing(fn ($record) => \App\Models\PtcView::where('ptc_ad_id', $record->id)->where('status', 'verified')->count())
+                    ->getStateUsing(fn ($record) => PtcView::where('ptc_ad_id', $record->id)->where('status', 'verified')->count())
                     ->numeric()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('attempts')
                     ->label('Attempts')
-                    ->getStateUsing(fn ($record) => \App\Models\PtcView::where('ptc_ad_id', $record->id)->count())
+                    ->getStateUsing(fn ($record) => PtcView::where('ptc_ad_id', $record->id)->count())
                     ->numeric()
                     ->toggleable(),
                 Tables\Columns\IconColumn::make('is_active')->boolean()->sortable()->toggleable(),
@@ -162,7 +173,7 @@ class PtcAdResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options(array_combine(\App\Models\PtcAd::STATUSES, \App\Models\PtcAd::STATUSES)),
+                    ->options(array_combine(PtcAd::STATUSES, PtcAd::STATUSES)),
                 Tables\Filters\SelectFilter::make('source')
                     ->options([
                         'internal' => 'Internal (admin)',
@@ -179,16 +190,19 @@ class PtcAdResource extends Resource
                     ->icon('heroicon-o-check')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (\App\Models\PtcAd $r) => $r->status === 'pending_review')
-                    ->action(function (\App\Models\PtcAd $r) {
+                    ->visible(fn (PtcAd $r) => $r->status === 'pending_review')
+                    ->action(function (PtcAd $r) {
                         $r->update([
                             'status' => 'approved',
                             'is_active' => true,
-                            'approved_at' => \Illuminate\Support\Carbon::now(),
+                            'approved_at' => Carbon::now(),
                             'reviewed_by' => auth()->id(),
                         ]);
                         if ($r->user_id) {
-                            try { \Illuminate\Support\Facades\Mail::to($r->advertiser->email)->queue(new \App\Mail\AdApprovedEmail($r->fresh())); } catch (\Throwable $e) {}
+                            try {
+                                Mail::to($r->advertiser->email)->queue(new AdApprovedEmail($r->fresh()));
+                            } catch (\Throwable $e) {
+                            }
                         }
                     }),
                 // Reject a pending submission — refunds the full reserved budget.
@@ -197,22 +211,22 @@ class PtcAdResource extends Resource
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn (\App\Models\PtcAd $r) => in_array($r->status, ['pending_review', 'approved'], true) && $r->user_id !== null)
+                    ->visible(fn (PtcAd $r) => in_array($r->status, ['pending_review', 'approved'], true) && $r->user_id !== null)
                     ->form([
                         Forms\Components\Textarea::make('rejection_reason')
                             ->label('Reason (visible to advertiser)')
                             ->required(),
                     ])
-                    ->action(function (\App\Models\PtcAd $r, array $data) {
-                        \Illuminate\Support\Facades\DB::transaction(function () use ($r, $data) {
+                    ->action(function (PtcAd $r, array $data) {
+                        DB::transaction(function () use ($r, $data) {
                             // Refund whatever budget hasn't been spent yet.
                             $refund = (int) ($r->views_remaining * $r->cost_per_view_sat);
                             if ($refund > 0) {
-                                \App\Models\BalanceLedger::create([
+                                BalanceLedger::create([
                                     'user_id' => $r->user_id,
                                     'delta_sat' => $refund,
                                     'reason' => 'ad_refund',
-                                    'reference_type' => \App\Models\PtcAd::class,
+                                    'reference_type' => PtcAd::class,
                                     'reference_id' => $r->id,
                                 ]);
                                 $r->advertiser->increment('balance_sat', $refund);
@@ -225,11 +239,14 @@ class PtcAdResource extends Resource
                                 'views_remaining' => 0,
                             ]);
                         });
-                        try { \Illuminate\Support\Facades\Mail::to($r->advertiser->email)->queue(new \App\Mail\AdRejectedEmail($r->fresh())); } catch (\Throwable $e) {}
+                        try {
+                            Mail::to($r->advertiser->email)->queue(new AdRejectedEmail($r->fresh()));
+                        } catch (\Throwable $e) {
+                        }
                     }),
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make()
-                    ->visible(fn (\App\Models\PtcAd $r) => $r->user_id === null),
+                    ->visible(fn (PtcAd $r) => $r->user_id === null),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

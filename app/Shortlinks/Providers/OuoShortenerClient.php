@@ -94,6 +94,7 @@ class OuoShortenerClient implements ShortenerClient
             return false;
         }
         $parts = parse_url($candidate);
+
         return is_array($parts) && ! empty($parts['host']);
     }
 }

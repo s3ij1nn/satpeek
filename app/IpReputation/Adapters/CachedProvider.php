@@ -39,6 +39,7 @@ class CachedProvider implements IpReputationProvider
         $cached = Cache::get($key);
         if (is_array($cached) && array_key_exists('verdict', $cached)) {
             $v = $cached['verdict'];
+
             return $v === null ? null : new IpVerdict(
                 ip: $v['ip'],
                 isProxy: (bool) $v['is_proxy'],
@@ -58,6 +59,7 @@ class CachedProvider implements IpReputationProvider
             ? ['verdict' => null]
             : ['verdict' => $verdict->toArray() + ['raw' => $verdict->raw]];
         Cache::put($key, $payload, $verdict === null ? $this->negativeTtlSeconds : $this->ttlSeconds);
+
         return $verdict;
     }
 
@@ -77,6 +79,7 @@ class CachedProvider implements IpReputationProvider
         if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
             return true; // not a valid IP — don't query.
         }
+
         return filter_var(
             $ip,
             FILTER_VALIDATE_IP,

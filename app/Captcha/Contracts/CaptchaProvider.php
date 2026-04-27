@@ -25,7 +25,6 @@ interface CaptchaProvider
      * @param  array<string, mixed>  $challenge  Stored challenge record (with expectedShape).
      * @param  array<int, array<string, mixed>>  $points  Submitted points.
      * @param  array<string, mixed>  $context  IP / fingerprint / timing.
-     * @return VerificationResult
      */
     public function verify(array $challenge, array $points, array $context): VerificationResult;
 }

@@ -55,6 +55,7 @@ class IpHubProvider implements IpReputationProvider
             ]);
         } catch (GuzzleException $e) {
             Log::debug('iphub lookup failed', ['ip' => $ip, 'err' => $e->getMessage()]);
+
             return null;
         }
 
@@ -96,6 +97,7 @@ class IpHubProvider implements IpReputationProvider
                 return true;
             }
         }
+
         return false;
     }
 }

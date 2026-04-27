@@ -69,6 +69,7 @@ class ScoreEngine
         if ($score >= ($cfg['suspect'] ?? 0.30)) {
             return 'suspect';
         }
+
         return 'trust';
     }
 }

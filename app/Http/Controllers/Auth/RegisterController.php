@@ -93,6 +93,7 @@ class RegisterController extends Controller
                 'message' => $message,
             ]);
         }
+
         return redirect()->route('dashboard')->with('status', $message);
     }
 
@@ -101,6 +102,7 @@ class RegisterController extends Controller
         if ($isAjax) {
             return response()->json(['status' => 'ok', 'message' => $message]);
         }
+
         return redirect()->route('register')->with('status', $message);
     }
 
@@ -109,6 +111,7 @@ class RegisterController extends Controller
         if ($isAjax) {
             return response()->json(['status' => 'error', 'reason' => $reason, 'message' => $message], 422);
         }
+
         return redirect()->route('register')->withErrors(['captcha' => $message])->withInput();
     }
 }

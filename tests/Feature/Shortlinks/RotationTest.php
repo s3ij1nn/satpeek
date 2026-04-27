@@ -147,14 +147,24 @@ class SequenceFakeShortener implements ShortenerClient
     public array $received = [];
 
     public function __construct(private string $name, private array $queue) {}
-    public function name(): string { return $this->name; }
-    public function isConfigured(): bool { return true; }
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
     public function shorten(string $url, ?string $alias = null): string
     {
         $this->received[] = $url;
         if (empty($this->queue)) {
             throw new ShortenerException('queue exhausted');
         }
+
         return array_shift($this->queue);
     }
 }
@@ -162,8 +172,17 @@ class SequenceFakeShortener implements ShortenerClient
 class ThrowingFakeShortener implements ShortenerClient
 {
     public function __construct(private string $name) {}
-    public function name(): string { return $this->name; }
-    public function isConfigured(): bool { return true; }
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
     public function shorten(string $url, ?string $alias = null): string
     {
         throw new ShortenerException('boom');
@@ -173,8 +192,17 @@ class ThrowingFakeShortener implements ShortenerClient
 class UnconfiguredFakeShortener implements ShortenerClient
 {
     public function __construct(private string $name) {}
-    public function name(): string { return $this->name; }
-    public function isConfigured(): bool { return false; }
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return false;
+    }
+
     public function shorten(string $url, ?string $alias = null): string
     {
         // Should never be reached because resolveRedirectUrl checks isConfigured() first.

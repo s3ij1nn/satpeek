@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Health;
 
+use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
@@ -47,7 +48,7 @@ class HealthEndpointTest extends TestCase
         config()->set('satpeek.ip_reputation.maxmind.asn_db', __FILE__); // any existing file
         config()->set('satpeek.ip_reputation.iphub.api_key', 'fake');
         config()->set('satpeek.shortlink_providers.btcut.api_token', 'fake');
-        $this->app->forgetInstance(\App\Shortlinks\ShortlinkProviderRegistry::class);
+        $this->app->forgetInstance(ShortlinkProviderRegistry::class);
 
         $response = $this->getJson('/up');
 
@@ -108,10 +109,10 @@ class HealthEndpointTest extends TestCase
         // Three providers, one with a token.
         config()->set('satpeek.shortlink_providers', [
             'btcut' => ['api_base' => 'https://b/api', 'api_token' => 'tk'],
-            'cuty'  => ['api_base' => 'https://c/api', 'api_token' => ''],
-            'ouo'   => ['api_base' => 'https://o/api', 'api_token' => ''],
+            'cuty' => ['api_base' => 'https://c/api', 'api_token' => ''],
+            'ouo' => ['api_base' => 'https://o/api', 'api_token' => ''],
         ]);
-        $this->app->forgetInstance(\App\Shortlinks\ShortlinkProviderRegistry::class);
+        $this->app->forgetInstance(ShortlinkProviderRegistry::class);
 
         $response = $this->getJson('/up');
 
@@ -126,7 +127,7 @@ class HealthEndpointTest extends TestCase
         config()->set('satpeek.shortlink_providers', [
             'btcut' => ['api_base' => 'https://b/api', 'api_token' => ''],
         ]);
-        $this->app->forgetInstance(\App\Shortlinks\ShortlinkProviderRegistry::class);
+        $this->app->forgetInstance(ShortlinkProviderRegistry::class);
 
         $response = $this->getJson('/up');
 

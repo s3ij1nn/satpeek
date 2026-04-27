@@ -2,7 +2,6 @@
 
 namespace App\BotDetection;
 
-use App\Models\BotScore;
 use App\Models\User;
 
 class PolicyEnforcer
@@ -15,6 +14,7 @@ class PolicyEnforcer
     public function canStartPtcView(User $user): bool
     {
         $tier = $this->tier($user);
+
         return ! in_array($tier, ['likely_bot', 'banned'], true);
     }
 

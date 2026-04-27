@@ -16,6 +16,7 @@ class EmailVerificationController extends Controller
         if ($request->user()?->hasVerifiedEmail()) {
             return redirect()->route('dashboard');
         }
+
         return view('auth.verify-email');
     }
 
@@ -28,6 +29,7 @@ class EmailVerificationController extends Controller
         if ($request->user()->markEmailAsVerified()) {
             event(new Verified($request->user()));
         }
+
         return redirect()->route('dashboard')->with('status', 'Email verified — your account is fully active.');
     }
 
@@ -38,6 +40,7 @@ class EmailVerificationController extends Controller
             return redirect()->route('dashboard');
         }
         $request->user()->sendEmailVerificationNotification();
+
         return back()->with('status', 'Verification email re-sent. Check your inbox.');
     }
 }

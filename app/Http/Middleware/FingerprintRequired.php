@@ -13,6 +13,7 @@ class FingerprintRequired
         if ((string) $request->header('X-SP-Fingerprint', '') === '') {
             return response()->json(['error' => 'fingerprint_required'], 400);
         }
+
         return $next($request);
     }
 }

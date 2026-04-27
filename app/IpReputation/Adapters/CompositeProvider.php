@@ -36,8 +36,14 @@ class CompositeProvider implements IpReputationProvider
             return $verdicts[0];
         }
 
-        $isProxy = false; $isVpn = false; $isDc = false; $isTor = false;
-        $asn = null; $country = null; $risk = 0; $raw = [];
+        $isProxy = false;
+        $isVpn = false;
+        $isDc = false;
+        $isTor = false;
+        $asn = null;
+        $country = null;
+        $risk = 0;
+        $raw = [];
         foreach ($verdicts as $v) {
             $isProxy = $isProxy || $v->isProxy;
             $isVpn = $isVpn || $v->isVpn;

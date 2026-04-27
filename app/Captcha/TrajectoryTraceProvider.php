@@ -27,8 +27,11 @@ use Illuminate\Support\Str;
 class TrajectoryTraceProvider implements CaptchaProvider
 {
     private const CANVAS_W = 320;
+
     private const CANVAS_H = 240;
+
     private const SHAPE_SAMPLES = 60;
+
     private const CURVES = ['linear', 'sine', 'lissajous'];
 
     public function name(): string
@@ -147,6 +150,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
         }
 
         $confidence = self::scoreConfidence($shapeDistance, $cfg['shape_tolerance_px'], $jitter, $jerkEntropy);
+
         return VerificationResult::pass($confidence, $signals);
     }
 
@@ -160,6 +164,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
         $buffer = '';
         $cursor = 0;
         $counter = 0;
+
         return function () use ($seed, &$buffer, &$cursor, &$counter): int {
             if ($cursor + 4 > strlen($buffer)) {
                 $buffer = hash('sha256', $seed.':'.$counter, true);
@@ -169,7 +174,8 @@ class TrajectoryTraceProvider implements CaptchaProvider
             $chunk = substr($buffer, $cursor, 4);
             $cursor += 4;
             $unpacked = unpack('N', $chunk);
-            return $unpacked[1] & 0x7fffffff;
+
+            return $unpacked[1] & 0x7FFFFFFF;
         };
     }
 
@@ -201,6 +207,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
             };
             $out[] = ['x' => round($x, 2), 'y' => round($y, 2), 't' => round($t, 1)];
         }
+
         return $out;
     }
 
@@ -234,6 +241,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
                 );
             }
         }
+
         return (float) $dp[$n - 1][$m - 1];
     }
 
@@ -241,6 +249,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
     {
         $dx = (float) $a['x'] - (float) $b['x'];
         $dy = (float) $a['y'] - (float) $b['y'];
+
         return sqrt($dx * $dx + $dy * $dy);
     }
 
@@ -258,6 +267,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
                 $deltas[] = $cur - $prev;
             }
         }
+
         return $deltas;
     }
 
@@ -272,6 +282,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
         sort($values);
         $n = count($values);
         $mid = intdiv($n, 2);
+
         return $n % 2 === 0
             ? ($values[$mid - 1] + $values[$mid]) / 2.0
             : $values[$mid];
@@ -293,6 +304,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
             $variance += ($d - $mean) ** 2;
         }
         $variance /= count($deltas);
+
         return sqrt($variance) / $median;
     }
 
@@ -342,6 +354,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
             $p = $count / $total;
             $entropy -= $p * log($p, 2);
         }
+
         return $entropy;
     }
 
@@ -361,6 +374,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
         if ($a0 === null || $a1 === null) {
             return null;
         }
+
         return abs($a1 - $a0) / $dt;
     }
 
@@ -376,6 +390,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
         }
         $v1 = self::distance($p0, $p1) / $dt1;
         $v2 = self::distance($p1, $p2) / $dt2;
+
         return ($v2 - $v1) / (($dt1 + $dt2) / 2.0);
     }
 
@@ -383,6 +398,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
     {
         $dx = (float) ($a['x'] ?? 0) - (float) ($b['x'] ?? 0);
         $dy = (float) ($a['y'] ?? 0) - (float) ($b['y'] ?? 0);
+
         return sqrt($dx * $dx + $dy * $dy);
     }
 
@@ -408,6 +424,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
                 return $tail - (float) ($points[$i + 1]['t'] ?? $tail);
             }
         }
+
         return $tail - (float) ($points[0]['t'] ?? $tail);
     }
 
@@ -420,6 +437,7 @@ class TrajectoryTraceProvider implements CaptchaProvider
         $shapeScore = max(0.0, 1.0 - $shapeDistance / max(1.0, $tolerance));
         $jitterScore = min(1.0, $jitter * 4.0);
         $entropyScore = min(1.0, $jerkEntropy / 4.0);
+
         return ($shapeScore * 0.5) + ($jitterScore * 0.25) + ($entropyScore * 0.25);
     }
 }

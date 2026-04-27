@@ -101,6 +101,7 @@ class AdvertiseController extends Controller
                 'reference_id' => $ad->id,
             ]);
             $user->decrement('balance_sat', $totalCost);
+
             return $ad;
         });
 
@@ -120,12 +121,14 @@ class AdvertiseController extends Controller
     public function show(Request $request, int $id): View
     {
         $ad = PtcAd::where('user_id', $request->user()->id)->findOrFail($id);
+
         return view('advertise.show', ['ad' => $ad]);
     }
 
     public function edit(Request $request, int $id): View
     {
         $ad = PtcAd::where('user_id', $request->user()->id)->findOrFail($id);
+
         return view('advertise.edit', ['ad' => $ad]);
     }
 
@@ -168,6 +171,7 @@ class AdvertiseController extends Controller
     public static function computeCost(int $rewardSat): int
     {
         $pct = (int) config('satpeek.ads.commission_pct', 25);
+
         return (int) ceil($rewardSat * (100 + $pct) / 100);
     }
 }

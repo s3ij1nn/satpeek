@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ShortlinkResource\Pages;
 use App\Models\Shortlink;
+use App\Models\ShortlinkClick;
 use App\Shortlinks\Providers\ShortenerException;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Filament\Forms;
@@ -97,18 +98,19 @@ class ShortlinkResource extends Resource
                 Tables\Columns\TextColumn::make('daily_limit_per_user')->label('Daily/user'),
                 Tables\Columns\TextColumn::make('verified_clicks')
                     ->label('Verified')
-                    ->getStateUsing(fn ($record) => \App\Models\ShortlinkClick::where('shortlink_id', $record->id)->where('status', 'verified')->count())
+                    ->getStateUsing(fn ($record) => ShortlinkClick::where('shortlink_id', $record->id)->where('status', 'verified')->count())
                     ->numeric()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('attempts')
                     ->label('Attempts')
-                    ->getStateUsing(fn ($record) => \App\Models\ShortlinkClick::where('shortlink_id', $record->id)->count())
+                    ->getStateUsing(fn ($record) => ShortlinkClick::where('shortlink_id', $record->id)->count())
                     ->numeric()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('total_paid_sat')
                     ->label('Paid out')
                     ->getStateUsing(function ($record) {
-                        $verified = \App\Models\ShortlinkClick::where('shortlink_id', $record->id)->where('status', 'verified')->count();
+                        $verified = ShortlinkClick::where('shortlink_id', $record->id)->where('status', 'verified')->count();
+
                         return number_format($verified * (int) $record->reward_sat).' sat';
                     })
                     ->toggleable(),
@@ -140,6 +142,7 @@ class ShortlinkResource extends Resource
                             $label = (string) (config("satpeek.shortlink_providers.{$name}.label") ?? $name);
                             $opts[$name] = $label;
                         }
+
                         return [
                             Forms\Components\Select::make('provider')
                                 ->options($opts)

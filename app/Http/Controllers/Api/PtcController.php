@@ -89,6 +89,7 @@ class PtcController extends Controller
     public function heartbeat(Request $request, int $viewId): JsonResponse
     {
         $view = PtcView::where('user_id', $request->user()->id)->findOrFail($viewId);
+
         return $this->runHeartbeat($request, $view);
     }
 
@@ -105,12 +106,14 @@ class PtcController extends Controller
         if (! $view) {
             return response()->json(['error' => 'view_not_found'], 404);
         }
+
         return $this->runHeartbeat($request, $view);
     }
 
     public function complete(Request $request, int $viewId): JsonResponse
     {
         $view = PtcView::where('user_id', $request->user()->id)->findOrFail($viewId);
+
         return $this->finishView($request, $view);
     }
 
@@ -123,6 +126,7 @@ class PtcController extends Controller
         if (! $view) {
             return response()->json(['error' => 'view_not_found'], 404);
         }
+
         return $this->finishView($request, $view);
     }
 
@@ -139,6 +143,7 @@ class PtcController extends Controller
             return response()->json(['error' => 'token_mismatch'], 422);
         }
         $view->increment('heartbeats_received');
+
         return response()->json(['ok' => true]);
     }
 
@@ -159,12 +164,14 @@ class PtcController extends Controller
         $minHeartbeats = (int) ceil($view->heartbeats_expected * 0.7);
         if ($view->heartbeats_received < $minHeartbeats) {
             $view->update(['status' => 'rejected', 'rejection_reason' => 'heartbeat_deficit', 'completed_at' => Carbon::now()]);
+
             return response()->json(['error' => 'heartbeat_deficit'], 422);
         }
 
         $elapsed = $view->started_at?->diffInSeconds(Carbon::now()) ?? 0;
         if ($elapsed < $view->ad->duration_sec - 1) {
             $view->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
+
             return response()->json(['error' => 'too_fast'], 422);
         }
 

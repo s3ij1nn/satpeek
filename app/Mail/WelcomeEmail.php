@@ -24,7 +24,7 @@ class WelcomeEmail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "Welcome to SatPeek — verify your email",
+            subject: 'Welcome to SatPeek — verify your email',
             tags: ['welcome', 'verify'],
         );
     }

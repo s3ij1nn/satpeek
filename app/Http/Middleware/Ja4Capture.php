@@ -54,6 +54,7 @@ class Ja4Capture
             // Lower-case the digest portion so equality + index lookups in
             // captcha_challenges.ja4 are stable regardless of upstream casing.
             $request->headers->set('X-SP-JA4', strtolower($candidate));
+
             return $next($request);
         }
 

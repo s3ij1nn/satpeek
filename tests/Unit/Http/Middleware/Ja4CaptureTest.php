@@ -91,9 +91,10 @@ class Ja4CaptureTest extends TestCase
 
     private function dispatch(Request $request): Request
     {
-        (new Ja4Capture())->handle($request, function (Request $r): Response {
-            return new Response();
+        (new Ja4Capture)->handle($request, function (Request $r): Response {
+            return new Response;
         });
+
         return $request; // mutated in place by the middleware
     }
 }

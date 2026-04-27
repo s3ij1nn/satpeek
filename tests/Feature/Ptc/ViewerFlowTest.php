@@ -3,7 +3,6 @@
 namespace Tests\Feature\Ptc;
 
 use App\Captcha\TrajectoryTraceProvider;
-use App\Models\BalanceLedger;
 use App\Models\CaptchaChallenge;
 use App\Models\PtcAd;
 use App\Models\PtcView;
@@ -260,6 +259,7 @@ class ViewerFlowTest extends TestCase
             'issued_at' => $issuedAt,
             'expires_at' => $issuedAt->copy()->addSeconds(60),
         ]);
+
         return [$challenge, $shape];
     }
 
@@ -291,6 +291,7 @@ class ViewerFlowTest extends TestCase
                 'pressure' => 0.5,
             ];
         }
+
         return $points;
     }
 }

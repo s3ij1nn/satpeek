@@ -12,7 +12,7 @@ class TrajectoryVerifierTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->provider = new TrajectoryTraceProvider();
+        $this->provider = new TrajectoryTraceProvider;
         config()->set('satpeek.captcha', [
             'ttl_ms' => 30000,
             'min_solve_ms' => 800,
@@ -156,6 +156,7 @@ class TrajectoryVerifierTest extends TestCase
                 'pressure' => 0.5,
             ];
         }
+
         return $points;
     }
 }

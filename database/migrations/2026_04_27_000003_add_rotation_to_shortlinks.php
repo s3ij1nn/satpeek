@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\Schema;
  *                             by tests + admin display; the rotation cadence
  *                             itself is per-click, no TTL.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('shortlinks', function (Blueprint $table) {

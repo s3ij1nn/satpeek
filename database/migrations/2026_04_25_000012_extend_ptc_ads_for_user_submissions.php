@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
  * compatible: `user_id` stays null, `status` defaults to 'approved', and the
  * legacy `is_active` flag continues to gate visibility.
  */
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('ptc_ads', function (Blueprint $table) {
@@ -36,8 +37,10 @@ return new class extends Migration {
         });
 
         // Backfill: every existing row was admin-created → keep them visible.
-        \DB::table('ptc_ads')
-            ->where(function ($q) { $q->whereNull('status')->orWhere('status', ''); })
+        DB::table('ptc_ads')
+            ->where(function ($q) {
+                $q->whereNull('status')->orWhere('status', '');
+            })
             ->update(['status' => 'approved']);
     }
 

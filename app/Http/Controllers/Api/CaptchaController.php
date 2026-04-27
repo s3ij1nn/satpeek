@@ -13,6 +13,7 @@ class CaptchaController extends Controller
     public function issue(Request $request, ChallengeBuilder $builder): JsonResponse
     {
         $payload = $builder->issue($request);
+
         return response()->json($payload);
     }
 
@@ -27,6 +28,7 @@ class CaptchaController extends Controller
             'points.*.pressure' => ['nullable', 'numeric'],
         ]);
         $result = $verifier->verify($request, $validated['challengeId'], $validated['points']);
+
         return response()->json([
             'passed' => $result->passed,
             'reason' => $result->reason,

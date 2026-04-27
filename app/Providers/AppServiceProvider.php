@@ -23,10 +23,10 @@ use App\IpReputation\Adapters\MaxMindAsnProvider;
 use App\IpReputation\Adapters\NullProvider;
 use App\IpReputation\Adapters\ProxyCheckProvider;
 use App\IpReputation\Contracts\IpReputationProvider;
+use App\Models\ShortlinkProviderCredential;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
-use App\Models\ShortlinkProviderCredential;
 use App\Shortlinks\Providers\GenericShortenerClient;
 use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\Providers\ShortenerClient;
@@ -39,16 +39,17 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(Client::class, fn () => new Client());
+        $this->app->singleton(Client::class, fn () => new Client);
 
         $this->app->singleton(CaptchaProvider::class, TrajectoryTraceProvider::class);
         $this->app->bind(ChallengeBuilder::class, fn ($app) => new ChallengeBuilder($app->make(CaptchaProvider::class)));
         $this->app->bind(ChallengeVerifier::class, fn ($app) => new ChallengeVerifier($app->make(CaptchaProvider::class)));
 
         $this->app->singleton(AdapterRegistry::class, function ($app) {
-            $registry = new AdapterRegistry();
-            $registry->register(new MockAdapter());
+            $registry = new AdapterRegistry;
+            $registry->register(new MockAdapter);
             $registry->register(new BitcoTaskAdapter($app->make(Client::class)));
+
             return $registry;
         });
 
@@ -94,7 +95,8 @@ class AppServiceProvider extends ServiceProvider
             $disabled = (bool) ($cfg['disabled'] ?? false);
             if ($disabled || in_array($env, ['local', 'testing'], true)) {
                 $local = self::buildLocalOnlyProvider($cfg);
-                return $local ?? new NullProvider();
+
+                return $local ?? new NullProvider;
             }
 
             $http = $app->make(Client::class);
@@ -123,6 +125,7 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $composite = new CompositeProvider($providers);
+
             return new CachedProvider(
                 $composite,
                 (int) ($cfg['cache_ttl'] ?? 86400),
@@ -132,6 +135,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(ScoreEngine::class, function ($app) {
             $reputation = $app->make(IpReputationProvider::class);
+
             return new ScoreEngine([
                 $app->make(ResponseTimeSignal::class),
                 $app->make(TrajectoryEntropySignal::class),
@@ -167,6 +171,7 @@ class AppServiceProvider extends ServiceProvider
         if ($path === '' || ! is_file($path)) {
             return null;
         }
+
         return new MaxMindAsnProvider($path);
     }
 
@@ -185,6 +190,7 @@ class AppServiceProvider extends ServiceProvider
                 (int) ($cfg['cache_negative_ttl'] ?? 600),
             );
         }
+
         return null;
     }
 

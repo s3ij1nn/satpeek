@@ -37,12 +37,14 @@ class BitcoTaskAdapter implements OfferwallAdapter
     public function fetchPtcOffers(): array
     {
         $payload = $this->call('GET', '/offers/ptc');
+
         return array_map(fn ($o) => $this->toOffer($o, isShortlink: false), $payload['data'] ?? []);
     }
 
     public function fetchShortlinkOffers(): array
     {
         $payload = $this->call('GET', '/offers/shortlinks');
+
         return array_map(fn ($o) => $this->toOffer($o, isShortlink: true), $payload['data'] ?? []);
     }
 
@@ -54,6 +56,7 @@ class BitcoTaskAdapter implements OfferwallAdapter
             'subid' => (string) $user->id,
             'click_token' => $token,
         ]);
+
         return new ViewSession(
             epochToken: $token,
             redirectUrl: (string) ($payload['redirect_url'] ?? $offer->targetUrl),
@@ -72,10 +75,12 @@ class BitcoTaskAdapter implements OfferwallAdapter
         $expected = hash_hmac('sha256', $request->getContent(), $secret);
         if (! is_string($signature) || ! hash_equals($expected, $signature)) {
             Log::warning('bitcotask callback signature mismatch', ['ip' => $request->ip()]);
+
             return null;
         }
         $body = $request->json()->all();
         $userId = isset($body['subid']) ? (int) $body['subid'] : null;
+
         return new CallbackResult(
             source: $this->name(),
             externalId: (string) ($body['offer_id'] ?? ''),
@@ -117,9 +122,11 @@ class BitcoTaskAdapter implements OfferwallAdapter
             ]);
             $body = (string) $response->getBody();
             $decoded = json_decode($body, true);
+
             return is_array($decoded) ? $decoded : [];
         } catch (GuzzleException $e) {
             Log::warning('bitcotask call failed', ['method' => $method, 'path' => $path, 'err' => $e->getMessage()]);
+
             return [];
         }
     }

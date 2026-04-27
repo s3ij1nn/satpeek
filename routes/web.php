@@ -1,10 +1,14 @@
 <?php
 
+use App\Http\Controllers\AdvertiseController;
 use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\HealthController;
+use App\Http\Controllers\PtcAuthController;
+use App\Http\Controllers\ShortlinkAuthController;
 use Illuminate\Support\Facades\Route;
 
 // Public landing
@@ -16,7 +20,7 @@ Route::view('/', 'home')->name('home');
 // when a critical component (db / redis) is down so the LB pulls the node;
 // returns 200 with `status: degraded` for non-critical issues so monitoring
 // can alert without paging.
-Route::get('/up', [\App\Http\Controllers\HealthController::class, 'show'])->name('health');
+Route::get('/up', [HealthController::class, 'show'])->name('health');
 
 // Guest-only auth pages
 Route::middleware('guest')->group(function () {
@@ -58,7 +62,7 @@ Route::middleware(['auth'])->group(function () {
     // Per-watch rotating landing URL (security: each watch → fresh 28-char
     // token → unguessable, single-use). Declared BEFORE /ptc/{id} so the
     // numeric pattern doesn't shadow /auth/<token>.
-    Route::get('/ptc/auth/{token}', [\App\Http\Controllers\PtcAuthController::class, 'show'])
+    Route::get('/ptc/auth/{token}', [PtcAuthController::class, 'show'])
         ->where('token', '[A-Za-z0-9_]+')
         ->name('ptc.auth');
     Route::get('/ptc/{id}', function (int $id) {
@@ -68,7 +72,7 @@ Route::middleware(['auth'])->group(function () {
     Route::view('/shortlinks', 'shortlinks.index')->name('shortlinks.index');
     // Per-click rotating landing URL (security: each click → fresh 28-char
     // token → unguessable, single-use). See ShortlinkAuthController.
-    Route::get('/shortlinks/auth/{token}', [\App\Http\Controllers\ShortlinkAuthController::class, 'show'])
+    Route::get('/shortlinks/auth/{token}', [ShortlinkAuthController::class, 'show'])
         ->where('token', '[A-Za-z0-9_]+')
         ->name('shortlinks.auth');
 
@@ -78,10 +82,10 @@ Route::middleware(['auth'])->group(function () {
     Route::view('/referral', 'referral.index')->name('referral.index');
 
     // Self-serve advertising — same account as earning, balance-funded campaigns.
-    Route::get('/advertise', [\App\Http\Controllers\AdvertiseController::class, 'index'])->name('advertise.index');
-    Route::get('/advertise/create', [\App\Http\Controllers\AdvertiseController::class, 'create'])->name('advertise.create');
-    Route::post('/advertise', [\App\Http\Controllers\AdvertiseController::class, 'store'])->name('advertise.store');
-    Route::get('/advertise/{id}', [\App\Http\Controllers\AdvertiseController::class, 'show'])->whereNumber('id')->name('advertise.show');
-    Route::get('/advertise/{id}/edit', [\App\Http\Controllers\AdvertiseController::class, 'edit'])->whereNumber('id')->name('advertise.edit');
-    Route::patch('/advertise/{id}', [\App\Http\Controllers\AdvertiseController::class, 'update'])->whereNumber('id')->name('advertise.update');
+    Route::get('/advertise', [AdvertiseController::class, 'index'])->name('advertise.index');
+    Route::get('/advertise/create', [AdvertiseController::class, 'create'])->name('advertise.create');
+    Route::post('/advertise', [AdvertiseController::class, 'store'])->name('advertise.store');
+    Route::get('/advertise/{id}', [AdvertiseController::class, 'show'])->whereNumber('id')->name('advertise.show');
+    Route::get('/advertise/{id}/edit', [AdvertiseController::class, 'edit'])->whereNumber('id')->name('advertise.edit');
+    Route::patch('/advertise/{id}', [AdvertiseController::class, 'update'])->whereNumber('id')->name('advertise.update');
 });

@@ -154,7 +154,10 @@ class ProviderStub implements IpReputationProvider
     /** @param array<string, int|null> $byIp */
     public function __construct(private array $byIp) {}
 
-    public function name(): string { return 'stub'; }
+    public function name(): string
+    {
+        return 'stub';
+    }
 
     public function lookup(string $ip): ?IpVerdict
     {
@@ -166,6 +169,7 @@ class ProviderStub implements IpReputationProvider
             // Provider returned a verdict but couldn't determine ASN.
             return new IpVerdict($ip, false, false, false, false, null, null, 0, 'stub');
         }
+
         return new IpVerdict($ip, false, false, false, false, $asn, null, 0, 'stub');
     }
 }

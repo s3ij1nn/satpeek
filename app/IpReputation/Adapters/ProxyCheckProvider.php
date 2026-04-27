@@ -64,6 +64,7 @@ class ProxyCheckProvider implements IpReputationProvider
             ]);
         } catch (GuzzleException $e) {
             Log::debug('proxycheck lookup failed', ['ip' => $ip, 'err' => $e->getMessage()]);
+
             return null;
         }
 
@@ -74,6 +75,7 @@ class ProxyCheckProvider implements IpReputationProvider
         }
         if (($data['status'] ?? '') === 'error' || ($data['status'] ?? '') === 'denied') {
             Log::debug('proxycheck error', ['ip' => $ip, 'status' => $data['status'], 'message' => $data['message'] ?? null]);
+
             return null;
         }
 

@@ -26,6 +26,7 @@ class ShortlinkController extends Controller
     public function index(Request $request): JsonResponse
     {
         $links = Shortlink::where('is_active', true)->orderByDesc('reward_sat')->limit(50)->get();
+
         return response()->json([
             'data' => $links->map(fn ($l) => [
                 'id' => $l->id,
@@ -103,6 +104,7 @@ class ShortlinkController extends Controller
                 'target_url' => $fresh,
                 'target_url_rotated_at' => Carbon::now(),
             ])->save();
+
             return $fresh;
         } catch (ShortenerException $e) {
             Log::warning('shortlink rotation failed — serving stale target_url', [
@@ -110,6 +112,7 @@ class ShortlinkController extends Controller
                 'provider' => $link->provider_name,
                 'err' => $e->getMessage(),
             ]);
+
             return (string) $link->target_url;
         }
     }
@@ -124,12 +127,14 @@ class ShortlinkController extends Controller
     private static function appendCacheBuster(string $url): string
     {
         $separator = parse_url($url, PHP_URL_QUERY) === null ? '?' : '&';
+
         return $url.$separator.'_r='.Str::lower(Str::random(8));
     }
 
     public function complete(Request $request, int $clickId): JsonResponse
     {
         $click = ShortlinkClick::where('user_id', $request->user()->id)->findOrFail($clickId);
+
         return $this->finishClick($request, $click);
     }
 
@@ -148,6 +153,7 @@ class ShortlinkController extends Controller
         if (! $click) {
             return response()->json(['error' => 'click_not_found'], 404);
         }
+
         return $this->finishClick($request, $click);
     }
 
@@ -167,6 +173,7 @@ class ShortlinkController extends Controller
         $elapsed = $click->started_at?->diffInSeconds(Carbon::now()) ?? 0;
         if ($elapsed < $click->shortlink->hold_seconds - 1) {
             $click->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
+
             return response()->json(['error' => 'too_fast'], 422);
         }
 

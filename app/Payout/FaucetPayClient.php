@@ -33,6 +33,7 @@ class FaucetPayClient
             $decoded = json_decode((string) $response->getBody(), true) ?: [];
             $ok = (int) ($decoded['status'] ?? 0) === 200;
             $payoutId = $decoded['payout_id'] ?? null;
+
             return [
                 'ok' => $ok,
                 'payout_id' => is_scalar($payoutId) ? (string) $payoutId : null,
@@ -66,6 +67,7 @@ class FaucetPayClient
             ]);
             $decoded = json_decode((string) $response->getBody(), true) ?: [];
             $balance = (int) ($decoded['balance'] ?? 0);
+
             return [
                 'ok' => (int) ($decoded['status'] ?? 0) === 200,
                 'balance_sat' => $balance,

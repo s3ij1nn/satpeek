@@ -75,6 +75,7 @@ class User extends Authenticatable implements FilamentUser, HasName, MustVerifyE
         do {
             $code = Str::upper(Str::random(8));
         } while (static::where('referral_code', $code)->exists());
+
         return $code;
     }
 

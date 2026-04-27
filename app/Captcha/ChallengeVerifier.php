@@ -24,6 +24,7 @@ class ChallengeVerifier
         }
         if ($challenge->expires_at && Carbon::now()->greaterThan($challenge->expires_at)) {
             $challenge->update(['status' => 'expired', 'rejection_reason' => 'ttl_exceeded']);
+
             return VerificationResult::fail('challenge_expired');
         }
 

@@ -35,6 +35,7 @@ class LoginController extends Controller
         $throttleKey = Str::lower($validated['email']).'|'.$request->ip();
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);
+
             return $this->fail($isAjax, 'rate_limited', "Too many attempts. Try again in {$seconds}s.", 429);
         }
 
@@ -45,11 +46,13 @@ class LoginController extends Controller
         $result = $this->verifier->verify($request, $validated['captcha_challenge_id'], $points);
         if (! $result->passed) {
             RateLimiter::hit($throttleKey, 60);
+
             return $this->fail($isAjax, $result->reason, 'Captcha rejected ('.$result->reason.'). Please try again.');
         }
 
         if (! Auth::attempt(['email' => $validated['email'], 'password' => $validated['password']], (bool) ($validated['remember'] ?? false))) {
             RateLimiter::hit($throttleKey, 60);
+
             return $this->fail($isAjax, 'invalid_credentials', 'The credentials we received do not match our records.');
         }
 
@@ -60,6 +63,7 @@ class LoginController extends Controller
         if ($isAjax) {
             return response()->json(['status' => 'ok', 'redirect' => $redirect]);
         }
+
         return redirect()->intended(route('dashboard'));
     }
 
@@ -68,6 +72,7 @@ class LoginController extends Controller
         if ($isAjax) {
             return response()->json(['status' => 'error', 'reason' => $reason, 'message' => $message], $code);
         }
+
         return redirect()->route('login')->withErrors(['email' => $message])->withInput(['email' => request('email')]);
     }
 }

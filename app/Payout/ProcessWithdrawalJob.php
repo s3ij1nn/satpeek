@@ -33,6 +33,7 @@ class ProcessWithdrawalJob implements ShouldQueue
         }
         if ($w->requires_review) {
             $w->update(['status' => 'hold']);
+
             return;
         }
 

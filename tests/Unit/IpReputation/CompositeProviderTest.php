@@ -34,8 +34,8 @@ class CompositeProviderTest extends TestCase
 
     public function test_or_combines_block_signals_and_takes_max_risk(): void
     {
-        $vA = new IpVerdict('1.2.3.4', isProxy: true,  isVpn: false, isDatacenter: false, isTor: false, asn: 1234, countryCode: 'US', risk: 60, source: 'a');
-        $vB = new IpVerdict('1.2.3.4', isProxy: false, isVpn: true,  isDatacenter: true,  isTor: false, asn: 5678, countryCode: 'JP', risk: 85, source: 'b');
+        $vA = new IpVerdict('1.2.3.4', isProxy: true, isVpn: false, isDatacenter: false, isTor: false, asn: 1234, countryCode: 'US', risk: 60, source: 'a');
+        $vB = new IpVerdict('1.2.3.4', isProxy: false, isVpn: true, isDatacenter: true, isTor: false, asn: 5678, countryCode: 'JP', risk: 85, source: 'b');
 
         $composite = new CompositeProvider([
             $this->fakeProvider('a', $vA),
@@ -54,10 +54,19 @@ class CompositeProviderTest extends TestCase
 
     private function fakeProvider(string $name, ?IpVerdict $verdict): IpReputationProvider
     {
-        return new class($name, $verdict) implements IpReputationProvider {
+        return new class($name, $verdict) implements IpReputationProvider
+        {
             public function __construct(private string $n, private ?IpVerdict $v) {}
-            public function name(): string { return $this->n; }
-            public function lookup(string $ip): ?IpVerdict { return $this->v; }
+
+            public function name(): string
+            {
+                return $this->n;
+            }
+
+            public function lookup(string $ip): ?IpVerdict
+            {
+                return $this->v;
+            }
         };
     }
 }

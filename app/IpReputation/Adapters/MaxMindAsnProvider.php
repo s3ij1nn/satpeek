@@ -31,12 +31,13 @@ use Throwable;
 class MaxMindAsnProvider implements IpReputationProvider
 {
     private ?Reader $reader = null;
+
     private bool $readerLoadFailed = false;
 
     /**
      * @param  Closure|null  $readerFactory  () => GeoIp2\Database\Reader
-     *         Optional injection point for tests; production wiring leaves
-     *         this null and we lazy-load the reader from $dbPath.
+     *                                       Optional injection point for tests; production wiring leaves
+     *                                       this null and we lazy-load the reader from $dbPath.
      */
     public function __construct(
         private readonly string $dbPath,
@@ -68,6 +69,7 @@ class MaxMindAsnProvider implements IpReputationProvider
             // Database file corrupt / unreadable — log once but degrade
             // gracefully so the rest of the composite still works.
             Log::warning('maxmind asn lookup failed', ['ip' => $ip, 'err' => $e->getMessage()]);
+
             return null;
         }
 
@@ -107,13 +109,16 @@ class MaxMindAsnProvider implements IpReputationProvider
         try {
             if ($this->readerFactory !== null) {
                 $this->reader = ($this->readerFactory)();
+
                 return $this->reader;
             }
             if ($this->dbPath === '' || ! is_file($this->dbPath)) {
                 $this->readerLoadFailed = true;
+
                 return null;
             }
             $this->reader = new Reader($this->dbPath);
+
             return $this->reader;
         } catch (Throwable $e) {
             // Bad file format (truncated download, wrong .mmdb type, …).
@@ -123,6 +128,7 @@ class MaxMindAsnProvider implements IpReputationProvider
                 'path' => $this->dbPath,
                 'err' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -136,6 +142,7 @@ class MaxMindAsnProvider implements IpReputationProvider
         if (! filter_var($ip, FILTER_VALIDATE_IP)) {
             return true; // garbage IPs short-circuit too
         }
+
         return ! filter_var(
             $ip,
             FILTER_VALIDATE_IP,

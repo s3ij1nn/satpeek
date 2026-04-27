@@ -24,6 +24,7 @@ class AdapterRegistry
                 $out[] = $this->adapters[$name];
             }
         }
+
         return $out;
     }
 
