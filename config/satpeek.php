@@ -168,5 +168,13 @@ return [
             'api_key' => env('PROXYCHECK_API_KEY'),
             'api_base' => env('PROXYCHECK_API_BASE', 'https://proxycheck.io/v2'),
         ],
+        // MaxMind GeoLite2-ASN — local .mmdb lookup, no API key, no quota.
+        // The file is operator-supplied (MaxMind license forbids redistribution);
+        // when the path is unset or the file missing, the provider degrades to
+        // "no signal" rather than failing the request. Mount as a Docker
+        // volume in production: `./data/GeoLite2-ASN.mmdb:/var/www/data/...:ro`.
+        'maxmind' => [
+            'asn_db' => env('MAXMIND_ASN_DB', ''),
+        ],
     ],
 ];

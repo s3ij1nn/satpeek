@@ -19,6 +19,7 @@ use App\Captcha\TrajectoryTraceProvider;
 use App\IpReputation\Adapters\CachedProvider;
 use App\IpReputation\Adapters\CompositeProvider;
 use App\IpReputation\Adapters\IpHubProvider;
+use App\IpReputation\Adapters\MaxMindAsnProvider;
 use App\IpReputation\Adapters\NullProvider;
 use App\IpReputation\Adapters\ProxyCheckProvider;
 use App\IpReputation\Contracts\IpReputationProvider;
@@ -86,15 +87,23 @@ class AppServiceProvider extends ServiceProvider
 
             // Disable remote reputation lookups in local/testing environments
             // or when explicitly turned off via env. The Null provider returns
-            // null for every IP — gate / signal treat it as "no signal".
+            // null for every IP — gate / signal treat it as "no signal". The
+            // MaxMind ASN provider is local, however, so we still register it
+            // when a database file is configured even in local dev.
             $env = $app->environment();
             $disabled = (bool) ($cfg['disabled'] ?? false);
             if ($disabled || in_array($env, ['local', 'testing'], true)) {
-                return new NullProvider();
+                $local = self::buildLocalOnlyProvider($cfg);
+                return $local ?? new NullProvider();
             }
 
             $http = $app->make(Client::class);
             $providers = [];
+
+            // Local providers first — sub-millisecond, no network, no quota.
+            if ($maxmind = self::buildMaxMindProvider($cfg)) {
+                $providers[] = $maxmind;
+            }
 
             if (! empty($cfg['iphub']['api_key'])) {
                 $providers[] = new IpHubProvider(
@@ -150,6 +159,33 @@ class AppServiceProvider extends ServiceProvider
             'path' => new OuoShortenerClient($http, $name, $apiBase, $apiToken),
             default => new GenericShortenerClient($http, $name, $apiBase, $apiToken),
         };
+    }
+
+    private static function buildMaxMindProvider(array $cfg): ?MaxMindAsnProvider
+    {
+        $path = (string) ($cfg['maxmind']['asn_db'] ?? '');
+        if ($path === '' || ! is_file($path)) {
+            return null;
+        }
+        return new MaxMindAsnProvider($path);
+    }
+
+    /**
+     * Returns a local-only IpReputationProvider for the local/testing
+     * environments. Right now MaxMind is the only offline source we wrap.
+     * Returns null when nothing local is configured (caller falls back to
+     * NullProvider).
+     */
+    private static function buildLocalOnlyProvider(array $cfg): ?IpReputationProvider
+    {
+        if ($maxmind = self::buildMaxMindProvider($cfg)) {
+            return new CachedProvider(
+                new CompositeProvider([$maxmind]),
+                (int) ($cfg['cache_ttl'] ?? 86400),
+                (int) ($cfg['cache_negative_ttl'] ?? 600),
+            );
+        }
+        return null;
     }
 
     /**
