@@ -1,0 +1,92 @@
+name: Bug report
+description: Something behaves incorrectly or contradicts the docs.
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Before filing**, please confirm:
+
+        - Is this a security bypass (captcha defeat, bot-detection
+          evasion, token leakage)? → use the
+          [private Security Advisory](https://github.com/s3ij1nn/satpeek/security/advisories/new)
+          instead.
+        - Have you run `docker compose exec app composer ci` against
+          the latest `main`? Many "bugs" disappear when the test
+          suite is current.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences. What's broken?
+      placeholder: |
+        /shortlinks/auth/{token} returns 500 instead of 410 when the
+        click was rejected (not just verified).
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: |
+        Concrete steps a maintainer can run from a fresh
+        `docker compose up`. Numbered, please.
+      placeholder: |
+        1. docker compose up -d
+        2. Log in as admin@satpeek.local / admin123
+        3. POST /api/shortlinks/1/start as a normal user
+        4. PATCH the click status to 'rejected' via tinker
+        5. GET /shortlinks/auth/{token} → 500 instead of 410
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include the exception message + relevant log lines if any.
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Commit / tag reproduced against
+      description: Output of `git rev-parse --short HEAD` or the release tag.
+      placeholder: e8ce13c (or v0.1.0)
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: |
+        OS + Docker version is usually enough. Add anything unusual
+        about your `.env` (custom DATACENTER_ASNS, real provider
+        tokens, etc. — but never paste the tokens themselves).
+      placeholder: |
+        macOS 14.5 (Apple Silicon)
+        Docker Desktop 4.30
+        BTCUT_API_TOKEN set, MAXMIND_ASN_DB unset
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: This is **not** a security bypass (those go to the Security Advisory channel).
+          required: true
+        - label: I ran `composer ci` against the reproducing commit and it stayed green / failed in a way unrelated to this report.
+          required: true

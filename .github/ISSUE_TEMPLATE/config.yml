@@ -1,0 +1,15 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security disclosure
+    url: https://github.com/s3ij1nn/satpeek/security/advisories/new
+    about: |
+      Found a way to defeat the captcha or bot-detection signals?
+      DO NOT open a public issue. Use GitHub's private Security
+      Advisory instead — public disclosure of an active bypass
+      damages every operator running this code.
+  - name: Question / discussion
+    url: https://github.com/s3ij1nn/satpeek/discussions
+    about: |
+      Open-ended questions, design discussions, "is this a bug or
+      working as intended?" — start a discussion before opening an
+      issue.

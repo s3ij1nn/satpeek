@@ -1,0 +1,81 @@
+name: Feature request
+description: Propose new behaviour or a meaningful change to existing behaviour.
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing a feature request, consider opening a
+        [Discussion](https://github.com/s3ij1nn/satpeek/discussions)
+        first — most "would it make sense to add X?" questions are
+        better resolved as a conversation before they're locked
+        into an issue with a fixed proposal.
+
+        Open follow-ups already on the roadmap live at the bottom
+        of [CLAUDE.md](https://github.com/s3ij1nn/satpeek/blob/main/CLAUDE.md).
+        Check there first to avoid duplicates.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: |
+        What user-visible pain or operator-visible gap motivates
+        this? Concrete scenario, not "wouldn't it be nice if".
+      placeholder: |
+        Operators can rotate shortener API tokens via Filament now,
+        but there's no way to test a token without saving it and
+        watching the next click rotation log. A "Test connection"
+        button would surface bad tokens immediately.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: |
+        Sketch the change. Routes / models / configs touched, new
+        Filament action / artisan command, etc. Code-level detail
+        helps but isn't required.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What else did you think about and reject? "Just hit the API
+        manually with curl" is a perfectly valid alternative — say
+        why it's not enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security implications
+      description: |
+        Would the new behaviour change any captcha / bot-detection
+        signal, leak destination URLs / tokens, or weaken per-click
+        rotation / owner-scoping / single-use semantics on the
+        auth-token URLs? "No impact" is fine — say so explicitly.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Captcha / bot-detection
+        - Shortlinks / shortener providers
+        - PTC / advertising
+        - Withdrawals / FaucetPay
+        - Admin (Filament)
+        - Operations (health, scheduler, CI)
+        - Documentation
+        - Other
+    validations:
+      required: true
