@@ -53,6 +53,25 @@ return [
             // it fires), not a coverage signal. ScoreEngine renormalises
             // by total weight so adding it doesn't mute the others.
             'asn_static_list' => 0.05,
+            // Cross-account IP overlap. SharedIpSignal counts distinct
+            // OTHER user_ids that have authenticated from the same IPs
+            // as this user. High weight because sock-puppet patterns
+            // (cookie-clear / incognito multi-account) defeat fingerprint
+            // dedup but always show up here. Tuned conservatively via
+            // the `shared_ip` block below so a shared NAT (campus,
+            // mobile, household) doesn't false-positive.
+            'shared_ip' => 0.15,
+        ],
+
+        // Tunables for SharedIpSignal. The defaults treat 1 sibling
+        // account as a soft suspect signal and 3+ siblings as
+        // strongly bot-like — which combined with the 0.15 weight
+        // pushes a 3-sibling user past the suspect threshold (0.30)
+        // even when every other signal is clean.
+        'shared_ip' => [
+            'min_others_for_signal' => (int) env('BOTSCORE_SHARED_IP_MIN_OTHERS', 1),
+            'score_per_other' => (float) env('BOTSCORE_SHARED_IP_SCORE_PER_OTHER', 0.3),
+            'max_score' => (float) env('BOTSCORE_SHARED_IP_MAX_SCORE', 1.0),
         ],
     ],
 

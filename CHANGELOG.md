@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `App\BotDetection\Signals\SharedIpSignal` — the multi-account-by-IP
+  observations recorded by `UserIpObserver` now feed an actual scoring
+  signal, not just a warning log. For each IP this user has
+  authenticated from, the signal counts distinct OTHER user_ids on
+  the same IP and scores by the worst (most cross-account) IP in the
+  user's history. ScoreEngine weight 0.15 — high enough that 3+
+  sibling accounts on a single IP push the user past the suspect
+  threshold (0.30) even with every other signal clean.
+  - Tunable via `BOTSCORE_SHARED_IP_*` env vars
+    (`min_others_for_signal`, `score_per_other`, `max_score`) so
+    operators in shared-NAT-heavy environments (campus, mobile,
+    household routers) can relax the threshold without code changes.
+  - Worst-IP-not-average strategy means a clean home IP can't
+    redeem a sock-puppet IP — the intuition is "even one shared IP
+    is suspicious".
+  - 7 new unit tests in `tests/Unit/BotDetection/Signals/SharedIpSignalTest.php`
+    cover empty / unique / single-shared / cap / mixed-history /
+    threshold-suppression / distinct-user-count paths.
 - Affiliate program now applies to every earnings surface, not just
   PTC. New `App\Services\ReferralPayout` is the single source of truth
   for referral commission settlement, wired into:

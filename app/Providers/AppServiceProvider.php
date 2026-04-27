@@ -9,6 +9,7 @@ use App\BotDetection\Signals\FingerprintConsistencySignal;
 use App\BotDetection\Signals\HeartbeatGapSignal;
 use App\BotDetection\Signals\IpReputationSignal;
 use App\BotDetection\Signals\ResponseTimeSignal;
+use App\BotDetection\Signals\SharedIpSignal;
 use App\BotDetection\Signals\Signal;
 use App\BotDetection\Signals\TlsFingerprintSignal;
 use App\BotDetection\Signals\TrajectoryEntropySignal;
@@ -156,6 +157,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(HeartbeatGapSignal::class),
                 new IpReputationSignal($reputation),
                 new AsnStaticListSignal($reputation),
+                new SharedIpSignal,
             ]);
         });
 

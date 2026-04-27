@@ -57,7 +57,7 @@ Triage: the read-only `PtcView` + `ShortlinkClick` Filament resources (Operation
 
 ## Bot detection — `app/BotDetection/`
 
-9 weighted signals → unit-interval risk score → tier policy:
+10 weighted signals → unit-interval risk score → tier policy:
 
 | Signal | Source | Weight |
 |---|---|---|
@@ -65,6 +65,7 @@ Triage: the read-only `PtcView` + `ShortlinkClick` Filament resources (Operation
 | `trajectory_entropy` | jerk entropy across recent traces | 0.20 |
 | `failure_rate` | rolling captcha rejects | 0.15 |
 | `fingerprint_consistency` | browser fingerprint stability | 0.15 |
+| `shared_ip` | distinct other user_ids on the user's IPs (multi-account) | 0.15 |
 | `tls_fingerprint` | JA4 family vs claimed UA | 0.10 |
 | `heartbeat_gap` | PTC heartbeat cadence outliers | 0.10 |
 | `asn_datacenter` | live IpReputation composite (datacenter / vpn / proxy) | 0.10 |
