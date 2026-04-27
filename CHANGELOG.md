@@ -8,6 +8,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- 3 additional captcha-bypass scenarios in
+  `tests/BotSimulation/PlaywrightHeadlessTest.php` so each gate the
+  trajectory verifier owns has a regression test against a realistic
+  attack pattern, not just a unit-style fixture:
+  - **Recorded-trace replay against fresh challenge** — bot harvests
+    a known-good point stream from a previously-solved challenge and
+    submits it against a new one. The fresh-seed curve invariant
+    (`ChallengeBuilder::issue()` mints a different shape per request)
+    means the replayed points hit `shape_mismatch` regardless of how
+    plausible the inner timing / jerk / dwell signals look. This
+    invariant is the single most dangerous regression we can ship —
+    locking it in CI here.
+  - **No post-arrival dwell** — naive 2captcha-class bot solves the
+    curve correctly but submits the moment the cursor reaches the
+    goal, with no settle window. `no_completion_dwell` catches it
+    even when timing / shape / jerk all pass.
+  - **Sub-minimum solve time** — script that submits in under 800 ms
+    (front-runs the moving target). Pins the lower-bound gate so a
+    future config bump for accessibility doesn't accidentally drop
+    `min_solve_ms`.
 - Filament admin can now flip offerwall publisher integrations on /
   off without a redeploy. New `offerwall_provider_settings` table
   + `OfferwallProviderSetting` model + Filament resource at
