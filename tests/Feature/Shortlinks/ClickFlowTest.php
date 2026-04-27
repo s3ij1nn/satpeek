@@ -39,7 +39,7 @@ class ClickFlowTest extends TestCase
         $this->assertNotContains('Off link', $titles);
     }
 
-    public function test_start_returns_redirect_url_and_hold_seconds(): void
+    public function test_start_returns_satpeek_redirector_url_not_destination(): void
     {
         $user = User::factory()->create();
         $link = $this->seedLink([
@@ -51,10 +51,14 @@ class ClickFlowTest extends TestCase
         $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
 
         $response->assertOk();
-        $response->assertJson([
-            'redirect_url' => 'https://example.com/landing',
-            'hold_seconds' => 8,
-        ]);
+        $response->assertJson(['hold_seconds' => 8]);
+        $token = $response->json('epoch_token');
+        // /start returns the SatPeek redirector path keyed by the per-click
+        // epoch token — NOT the destination URL. A bot that XHR-scrapes
+        // /start gets a SatPeek URL it has to follow (and burn through
+        // the user's pending click) to learn the destination.
+        $this->assertSame(route('shortlinks.click', ['token' => $token]), $response->json('redirect_url'));
+        $this->assertStringNotContainsString('example.com', (string) $response->json('redirect_url'));
         $this->assertDatabaseHas('shortlink_clicks', [
             'user_id' => $user->id,
             'shortlink_id' => $link->id,

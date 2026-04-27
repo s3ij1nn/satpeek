@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PtcAuthController;
 use App\Http\Controllers\ShortlinkAuthController;
+use App\Http\Controllers\ShortlinkRedirectController;
 use Illuminate\Support\Facades\Route;
 
 // Public landing
@@ -75,6 +76,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/shortlinks/auth/{token}', [ShortlinkAuthController::class, 'show'])
         ->where('token', '[A-Za-z0-9_]+')
         ->name('shortlinks.auth');
+    // Server-side click redirector — the destination URL is minted at
+    // follow time and 302'd, never returned via JSON. Defeats XHR-scrape
+    // bots that try to learn the destination without spending the hold.
+    // See ShortlinkRedirectController.
+    Route::get('/sl/{token}', [ShortlinkRedirectController::class, 'show'])
+        ->where('token', '[A-Za-z0-9_]+')
+        ->name('shortlinks.click');
 
     // Withdrawals require email verification — the page renders a warning otherwise.
     Route::view('/withdraw', 'withdraw.index')->name('withdraw.index');

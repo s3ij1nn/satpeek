@@ -3,6 +3,7 @@
 namespace Tests\Feature\Shortlinks;
 
 use App\Models\Shortlink;
+use App\Models\ShortlinkClick;
 use App\Models\User;
 use App\Shortlinks\Providers\ShortenerClient;
 use App\Shortlinks\Providers\ShortenerException;
@@ -24,39 +25,43 @@ class RotationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_rotation_replaces_target_url_with_freshly_shortened_value(): void
+    public function test_each_sl_redirect_mints_a_freshly_shortened_url(): void
     {
+        // Rotation now happens at the /sl/{token} server-side redirector,
+        // not on /start (which only returns the SatPeek redirector path).
+        // Each follow of /sl/{token} hits the shortener with a cache-busted
+        // source so two clicks never see the same shortened slug.
         $user = User::factory()->create();
         $link = $this->seedRotatingLink([
             'source_url' => 'https://example.com/destination',
             'provider_name' => 'fake',
-            'target_url' => 'https://provider.test/old',
+            'target_url' => 'https://provider.test/seed',
         ]);
-
         $shortener = new SequenceFakeShortener('fake', [
             'https://provider.test/AAAAA',
             'https://provider.test/BBBBB',
         ]);
         $this->bindFakeProvider('fake', $shortener);
 
-        $first = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
-        $this->assertSame('https://provider.test/AAAAA', $first['redirect_url']);
+        $first = $this->startClick($user, $link);
+        $second = $this->startClick($user, $link);
+
+        // First /sl/{token} → 302 to AAAAA, target_url updated.
+        $this->actingAs($user)->get(route('shortlinks.click', ['token' => $first]))
+            ->assertRedirect('https://provider.test/AAAAA');
         $this->assertSame('https://provider.test/AAAAA', $link->fresh()->target_url);
         $this->assertNotNull($link->fresh()->target_url_rotated_at);
 
-        // Second click → second URL. Same shortlink, different output — that's
-        // the whole point of rotation.
-        $second = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
-        $this->assertSame('https://provider.test/BBBBB', $second['redirect_url']);
+        // Second /sl/{token} → 302 to BBBBB.
+        $this->actingAs($user)->get(route('shortlinks.click', ['token' => $second]))
+            ->assertRedirect('https://provider.test/BBBBB');
         $this->assertSame('https://provider.test/BBBBB', $link->fresh()->target_url);
 
-        // The two shorten() calls must have received DISTINCT input URLs —
-        // the cache-buster is what stops btcut.io / friends from returning
-        // the same slug for a repeat call.
+        // Each shorten() received a DISTINCT input URL thanks to the
+        // cache-buster — that's what stops btcut.io / friends from
+        // returning the same slug.
         $this->assertCount(2, $shortener->received);
         $this->assertNotSame($shortener->received[0], $shortener->received[1]);
-        // And the underlying canonical destination must still be present in
-        // both — we're appending, not rewriting.
         foreach ($shortener->received as $u) {
             $this->assertStringStartsWith('https://example.com/destination', $u);
             $this->assertMatchesRegularExpression('/[?&]_r=[a-z0-9]+/', $u);
@@ -73,10 +78,12 @@ class RotationTest extends TestCase
         ]);
         $this->bindFakeProvider('fake', new ThrowingFakeShortener('fake'));
 
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
-        $response->assertOk();
-        $this->assertSame('https://provider.test/cached-fallback', $response->json('redirect_url'));
-        // target_url must NOT be wiped out by the failure — keep serving stale.
+        $token = $this->startClick($user, $link);
+
+        // Shortener throws → 302 to the cached target_url so the click
+        // isn't wasted, target_url isn't wiped out.
+        $this->actingAs($user)->get(route('shortlinks.click', ['token' => $token]))
+            ->assertRedirect('https://provider.test/cached-fallback');
         $this->assertSame('https://provider.test/cached-fallback', $link->fresh()->target_url);
     }
 
@@ -88,13 +95,14 @@ class RotationTest extends TestCase
             'provider_name' => null,
             'target_url' => 'https://example.com/static',
         ]);
-        // Provider deliberately wired so a rogue rotation would explode the
-        // test — assert by absence that we don't touch it.
+        // Provider wired to throw so a rogue rotation would explode — we
+        // assert by absence that the static path doesn't touch it.
         $this->bindFakeProvider('fake', new ThrowingFakeShortener('fake'));
 
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
-        $response->assertOk();
-        $this->assertSame('https://example.com/static', $response->json('redirect_url'));
+        $token = $this->startClick($user, $link);
+
+        $this->actingAs($user)->get(route('shortlinks.click', ['token' => $token]))
+            ->assertRedirect('https://example.com/static');
         $this->assertNull($link->fresh()->target_url_rotated_at);
     }
 
@@ -106,12 +114,43 @@ class RotationTest extends TestCase
             'provider_name' => 'fake',
             'target_url' => 'https://provider.test/last-known-good',
         ]);
-        // Provider exists but reports unconfigured — must not throw.
         $this->bindFakeProvider('fake', new UnconfiguredFakeShortener('fake'));
 
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
-        $response->assertOk();
-        $this->assertSame('https://provider.test/last-known-good', $response->json('redirect_url'));
+        $token = $this->startClick($user, $link);
+
+        $this->actingAs($user)->get(route('shortlinks.click', ['token' => $token]))
+            ->assertRedirect('https://provider.test/last-known-good');
+    }
+
+    public function test_sl_redirector_404s_for_other_users_token(): void
+    {
+        $owner = User::factory()->create();
+        $stranger = User::factory()->create();
+        $link = $this->seedRotatingLink(['target_url' => 'https://example.com/x']);
+        $token = $this->startClick($owner, $link);
+
+        $this->actingAs($stranger)
+            ->get(route('shortlinks.click', ['token' => $token]))
+            ->assertNotFound();
+    }
+
+    public function test_sl_redirector_410s_for_already_resolved_click(): void
+    {
+        $user = User::factory()->create();
+        $link = $this->seedRotatingLink(['target_url' => 'https://example.com/x']);
+        $token = $this->startClick($user, $link);
+        ShortlinkClick::where('epoch_token', $token)->update(['status' => 'verified']);
+
+        $this->actingAs($user)
+            ->get(route('shortlinks.click', ['token' => $token]))
+            ->assertStatus(410);
+    }
+
+    private function startClick(User $user, Shortlink $link): string
+    {
+        return $this->actingAs($user)
+            ->postJson("/api/shortlinks/{$link->id}/start")
+            ->json('epoch_token');
     }
 
     private function seedRotatingLink(array $overrides): Shortlink
