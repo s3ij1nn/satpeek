@@ -38,6 +38,12 @@ return [
         'suspect' => (float) env('BOTSCORE_SUSPECT', 0.30),
         'likely_bot' => (float) env('BOTSCORE_LIKELY_BOT', 0.60),
         'ban' => (float) env('BOTSCORE_BAN', 0.85),
+        // Min seconds between automatic re-evaluations driven by
+        // `evaluateThrottled()`. Tight enough that a login/register burst
+        // from a sock-puppet operator still triggers a fresh score on the
+        // first hit; loose enough that a chatty user doesn't bombard the
+        // signal queries on every captcha solve.
+        'min_reevaluate_interval_seconds' => (int) env('BOTSCORE_MIN_REEVAL_SECONDS', 300),
         'weights' => [
             'response_time' => 0.20,
             'trajectory_entropy' => 0.20,

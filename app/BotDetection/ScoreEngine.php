@@ -14,6 +14,33 @@ class ScoreEngine
      */
     public function __construct(private readonly array $signals) {}
 
+    /**
+     * Throttled wrapper — skips re-evaluation when the user's BotScore row
+     * was updated within the last `$minIntervalSeconds` (defaults to the
+     * `bot_score.min_reevaluate_interval_seconds` config, 300 s). Returns
+     * the existing row in that case, freshly evaluated otherwise.
+     *
+     * Lets call sites (UserIpObserver, captcha verify paths) invoke this
+     * unconditionally without bombarding the DB on a chatty user. The
+     * throttle window is a tradeoff: too low burns query budget, too high
+     * lets a hot signal (sudden ban-tier transition) lag a bit. 5 min is
+     * tight enough that a login/register burst from a sock-puppet operator
+     * still triggers a fresh score on the first hit.
+     */
+    public function evaluateThrottled(User $user, ?int $minIntervalSeconds = null): BotScore
+    {
+        $minInterval = $minIntervalSeconds ?? (int) config('satpeek.bot_score.min_reevaluate_interval_seconds', 300);
+        $existing = BotScore::query()->where('user_id', $user->id)->first();
+        if ($existing && $existing->last_evaluated_at !== null) {
+            $sinceLast = (int) abs($existing->last_evaluated_at->diffInSeconds(Carbon::now()));
+            if ($sinceLast < $minInterval) {
+                return $existing;
+            }
+        }
+
+        return $this->evaluate($user);
+    }
+
     public function evaluate(User $user): BotScore
     {
         $weights = config('satpeek.bot_score.weights', []);

@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\BotDetection\ScoreEngine;
 use App\Models\User;
 use App\Models\UserIpObservation;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Records the IP a user authenticated from. Called at login submit /
@@ -89,6 +91,21 @@ class UserIpObserver
                 'ip' => $ip,
                 'source' => $source,
                 'other_user_count' => $otherUsers,
+            ]);
+        }
+
+        // Re-evaluate the bot score so SharedIpSignal (and any other
+        // signal whose inputs may have shifted at this auth event) updates
+        // the user's tier without waiting for the next captcha verify.
+        // Throttled — multiple auth events in quick succession only burn
+        // one signal sweep. Defensive try/catch so a scoring failure
+        // (DB blip, signal exception) never breaks the auth flow itself.
+        try {
+            app(ScoreEngine::class)->evaluateThrottled($user);
+        } catch (Throwable $e) {
+            Log::warning('bot score re-eval failed at ip observation', [
+                'user_id' => $user->id,
+                'err' => $e->getMessage(),
             ]);
         }
 

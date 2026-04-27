@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`ScoreEngine::evaluateThrottled()`** — production code finally
+  invokes the bot scoring pipeline. Previously every signal (including
+  `SharedIpSignal` shipped in v0.3.0) was registered in the engine but
+  the engine itself was never called outside unit tests, so
+  `bot_scores.tier` only updated through manual admin edits.
+  - `UserIpObserver::record()` now triggers an
+    `evaluateThrottled()` after every login / register IP write so a
+    sock-puppet operator's first sibling-account login lands on the
+    correct tier within the same request, rather than waiting for a
+    captcha verify path that may never come.
+  - Throttle window: 5 min by default
+    (`BOTSCORE_MIN_REEVAL_SECONDS`). Tight enough that a login burst
+    from an attacker still triggers a fresh score on the first hit;
+    loose enough that a chatty user doesn't bombard the signal queries.
+  - Defensive try/catch around the score eval inside the IP observer
+    so a scoring failure (DB blip, signal exception) never breaks
+    the auth flow itself — the warning log surfaces it for review.
+  - 7 new tests across
+    `tests/Unit/BotDetection/ScoreEngineThrottleTest.php` (4) and
+    `tests/Feature/BotDetection/SharedIpScoresAtAuthTest.php` (3)
+    cover throttle behaviour + end-to-end shared-IP → tier transition.
+
 ### Changed
 
 - **Laravel 11 → 12 upgrade** to close the security-EOL window
