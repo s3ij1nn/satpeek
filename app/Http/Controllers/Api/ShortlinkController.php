@@ -8,6 +8,7 @@ use App\Models\BalanceLedger;
 use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
 use App\Services\ReferralPayout;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -21,9 +22,33 @@ class ShortlinkController extends Controller
         private readonly ReferralPayout $referralPayout,
     ) {}
 
+    /**
+     * Source-of-truth filter for "shortlinks the platform is willing to
+     * serve to users". Single place so the index view, the JSON API, the
+     * `start` resolver, and any future caller stay in sync. Operator
+     * policy: only rotation-enabled internal entries (provider_name +
+     * source_url both set) — static shortlinks are no longer surfaced.
+     * BitcoTask shortlink offers come in via OfferwallMerge, not this
+     * table.
+     */
+    /**
+     * @return Builder<Shortlink>
+     */
+    public static function servableQuery(): Builder
+    {
+        return Shortlink::query()
+            ->where('is_active', true)
+            ->whereNotNull('provider_name')
+            ->whereNotNull('source_url');
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $links = Shortlink::where('is_active', true)->orderByDesc('reward_sat')->limit(50)->get();
+        // Only surface rotation-enabled entries (provider_name + source_url
+        // both set). Static shortlinks are no longer offered by /shortlinks
+        // — operator policy is "shortener-API rotation OR BitcoTask
+        // offerwall, never static". Mirror of the index.blade.php filter.
+        $links = self::servableQuery()->orderByDesc('reward_sat')->limit(50)->get();
 
         return response()->json([
             'data' => $links->map(fn ($l) => [
@@ -41,7 +66,7 @@ class ShortlinkController extends Controller
         if (! $this->policy->canStartPtcView($user)) {
             return response()->json(['error' => 'tier_blocked'], 403);
         }
-        $link = Shortlink::where('is_active', true)->findOrFail($id);
+        $link = self::servableQuery()->findOrFail($id);
 
         $usedToday = ShortlinkClick::where('user_id', $user->id)
             ->where('shortlink_id', $link->id)

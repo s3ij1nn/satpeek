@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `/shortlinks` now serves only rotation-enabled internal entries +
+  BitcoTask offerwall offers — static shortlinks (no `provider_name`
+  or no `source_url`) are hidden from both the Blade index AND the
+  `/api/shortlinks` JSON list. Operator policy: shortener-API
+  rotation OR BitcoTask offerwall, never static.
+  - Filament `ShortlinkResource` form now requires `source_url` AND
+    `provider_name`. The "Rotation provider" select is no longer
+    optional.
+  - New `ShortlinkController::servableQuery()` is the single source
+    of truth used by the Blade view, the JSON index API, and the
+    per-id `start` resolver — keeps every entrypoint in sync.
+  - Existing static rows in DB stay (operator can clean up via
+    Filament) but are unreachable from user-facing surfaces.
+    `/api/shortlinks/{id}/start` 404s on static-row ids even when
+    the attacker enumerates them directly.
+  - 4 new feature tests in
+    `tests/Feature/Shortlinks/ServableFilterTest.php` pin the
+    filter at all three layers (servableQuery / index / start).
+    Removed the now-contradictory
+    `test_static_shortlink_returns_target_url_without_rotation`
+    from RotationTest.
+
 ## [0.5.0] — 2026-04-27
 
 Theme: anti-adblock + framework refresh. Two operator-requested

@@ -126,6 +126,8 @@ class AuthLandingTest extends TestCase
             'external_id' => 'sl-auth-'.uniqid(),
             'title' => 'Auth landing test',
             'target_url' => 'https://destination.example.com/',
+            'source_url' => 'https://destination.example.com/source',
+            'provider_name' => 'mock',
             'reward_sat' => 5,
             'hold_seconds' => 5,
             'daily_limit_per_user' => 5,

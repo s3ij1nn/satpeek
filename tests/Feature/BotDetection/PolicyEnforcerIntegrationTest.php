@@ -80,6 +80,8 @@ class PolicyEnforcerIntegrationTest extends TestCase
             'external_id' => 'sl-'.uniqid(),
             'title' => 'go',
             'target_url' => 'https://example.com',
+            'source_url' => 'https://destination.example.com/source',
+            'provider_name' => 'mock',
             'reward_sat' => 5,
             'hold_seconds' => 5,
             'is_active' => true,

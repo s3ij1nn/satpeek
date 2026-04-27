@@ -7,7 +7,18 @@
     use Illuminate\Support\Carbon;
     $u = auth()->user();
     $today = Carbon::now()->startOfDay();
-    $links = Shortlink::where('is_active', true)->orderByDesc('reward_sat')->limit(50)->get();
+    // Only surface rotation-enabled internal entries (provider_name + source_url
+    // both set). Static shortlinks are no longer supported by the /shortlinks
+    // surface — operator policy is "shortener-API rotation OR BitcoTask
+    // offerwall, never static". BitcoTask offers come in via OfferwallMerge
+    // below.
+    $links = Shortlink::query()
+        ->where('is_active', true)
+        ->whereNotNull('provider_name')
+        ->whereNotNull('source_url')
+        ->orderByDesc('reward_sat')
+        ->limit(50)
+        ->get();
     $usedToday = ShortlinkClick::where('user_id', $u->id)
         ->where('status', 'verified')
         ->where('created_at', '>=', $today)

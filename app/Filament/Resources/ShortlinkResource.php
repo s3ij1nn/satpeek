@@ -41,19 +41,20 @@ class ShortlinkResource extends Resource
                     ->url()
                     ->required()
                     ->maxLength(500)
-                    ->helperText('What viewers are forwarded to right now. Auto-rotated on every click when "Rotation provider" is set.'),
+                    ->helperText('Initial shortened URL. Auto-rotated on every click via the configured provider.'),
                 Forms\Components\TextInput::make('source_url')
                     ->label('Source URL (canonical destination)')
                     ->url()
+                    ->required()
                     ->maxLength(500)
-                    ->helperText('The un-shortened URL passed to the rotator. Leave blank to disable rotation.'),
+                    ->helperText('Un-shortened destination URL passed to the rotator. Required — static (non-rotating) shortlinks are no longer supported by /shortlinks.'),
                 Forms\Components\Select::make('provider_name')
                     ->label('Rotation provider')
                     ->options(fn () => collect(app(ShortlinkProviderRegistry::class)->configuredNames())
                         ->mapWithKeys(fn ($n) => [$n => (string) (config("satpeek.shortlink_providers.{$n}.label") ?? $n)])
                         ->all())
-                    ->placeholder('— static, no rotation —')
-                    ->helperText('When set, /api/shortlinks/{id}/start re-shortens source_url on every click so viewers never see the same URL twice.'),
+                    ->required()
+                    ->helperText('/api/shortlinks/{id}/start re-shortens source_url through this provider on every click so viewers never see the same URL twice. Static shortlinks (no rotator) are no longer supported on /shortlinks — only shortener-API rotation and BitcoTask offerwall entries are surfaced to users.'),
             ]),
             Schemas\Components\Section::make('Reward & timing')->schema([
                 Forms\Components\TextInput::make('reward_sat')->numeric()->required()->default(3)->minValue(1),

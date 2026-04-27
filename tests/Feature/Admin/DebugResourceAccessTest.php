@@ -125,6 +125,8 @@ class DebugResourceAccessTest extends TestCase
             'external_id' => 'debug-sl-'.uniqid(),
             'title' => 'Debug shortlink',
             'target_url' => 'https://example.com/destination',
+            'source_url' => 'https://destination.example.com/source',
+            'provider_name' => 'mock',
             'reward_sat' => 5,
             'hold_seconds' => 5,
             'daily_limit_per_user' => 5,

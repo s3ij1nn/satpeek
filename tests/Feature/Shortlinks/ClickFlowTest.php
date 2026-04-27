@@ -223,6 +223,8 @@ class ClickFlowTest extends TestCase
             'external_id' => 'sl-'.uniqid(),
             'title' => 'Test shortlink',
             'target_url' => 'https://destination.example.com/',
+            'source_url' => 'https://destination.example.com/source',
+            'provider_name' => 'mock',
             'reward_sat' => 5,
             'hold_seconds' => 10,
             'daily_limit_per_user' => 5,

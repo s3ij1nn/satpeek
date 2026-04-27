@@ -87,24 +87,12 @@ class RotationTest extends TestCase
         $this->assertSame('https://provider.test/cached-fallback', $link->fresh()->target_url);
     }
 
-    public function test_static_shortlink_returns_target_url_without_rotation(): void
-    {
-        $user = User::factory()->create();
-        $link = $this->seedRotatingLink([
-            'source_url' => null,
-            'provider_name' => null,
-            'target_url' => 'https://example.com/static',
-        ]);
-        // Provider wired to throw so a rogue rotation would explode — we
-        // assert by absence that the static path doesn't touch it.
-        $this->bindFakeProvider('fake', new ThrowingFakeShortener('fake'));
-
-        $token = $this->startClick($user, $link);
-
-        $this->actingAs($user)->get(route('shortlinks.click', ['token' => $token]))
-            ->assertRedirect('https://example.com/static');
-        $this->assertNull($link->fresh()->target_url_rotated_at);
-    }
+    // NOTE: there used to be a `test_static_shortlink_returns_target_url_without_rotation`
+    // here that exercised non-rotating shortlinks. Removed because operator
+    // policy now forbids static shortlinks on /shortlinks (see
+    // ShortlinkController::servableQuery + the Filament form which makes
+    // both source_url and provider_name required). BitcoTask offerwall
+    // entries cover the "no internal rotation" case.
 
     public function test_unconfigured_provider_falls_back_without_calling_shorten(): void
     {
@@ -160,6 +148,8 @@ class RotationTest extends TestCase
             'external_id' => 'rot-'.uniqid(),
             'title' => 'Rotation test',
             'target_url' => 'https://provider.test/seed',
+            'source_url' => 'https://destination.example.com/source',
+            'provider_name' => 'mock',
             'reward_sat' => 5,
             'hold_seconds' => 5,
             'daily_limit_per_user' => 5,
