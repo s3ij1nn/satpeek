@@ -18,6 +18,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     sock-puppet operator's first sibling-account login lands on the
     correct tier within the same request, rather than waiting for a
     captcha verify path that may never come.
+  - `ChallengeVerifier::verify()` triggers `evaluateThrottled()` on a
+    successful captcha pass when the challenge has a `user_id`. Catches
+    every captcha-driven signal (response_time, trajectory_entropy,
+    failure_rate, fingerprint_consistency, heartbeat_gap) so a bot
+    grinding PTC views or shortlinks gets tier-bumped from its own
+    captcha behaviour without needing to log in again. Anonymous
+    challenges (pre-auth login form) are skipped — no user to score.
+    Failed captchas don't trigger re-eval (the failure_rate signal
+    picks up the rejection on the next score eval).
+  - 3 new feature tests in
+    `tests/Feature/Captcha/ChallengeVerifierScoresUserTest.php`
+    cover passing-captcha-scores / failing-captcha-skips /
+    anonymous-challenge-skips paths.
   - Throttle window: 5 min by default
     (`BOTSCORE_MIN_REEVAL_SECONDS`). Tight enough that a login burst
     from an attacker still triggers a fresh score on the first hit;

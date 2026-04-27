@@ -2,11 +2,15 @@
 
 namespace App\Captcha;
 
+use App\BotDetection\ScoreEngine;
 use App\Captcha\Contracts\CaptchaProvider;
 use App\Captcha\Contracts\VerificationResult;
 use App\Models\CaptchaChallenge;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ChallengeVerifier
 {
@@ -61,6 +65,32 @@ class ChallengeVerifier
             ]),
         ]);
 
+        // Re-score the user after a successful captcha verify so signals
+        // that read captcha behaviour (response_time, trajectory_entropy,
+        // failure_rate, fingerprint_consistency, heartbeat_gap) feed the
+        // tier transition without waiting for the next login. Throttle
+        // suppresses repeated re-evals on a chatty user. Defensive
+        // try/catch — a scoring failure must NEVER reject a captcha that
+        // the verifier already accepted.
+        if ($result->passed && $challenge->user_id !== null) {
+            self::reEvaluateUser((int) $challenge->user_id);
+        }
+
         return $result;
+    }
+
+    private static function reEvaluateUser(int $userId): void
+    {
+        try {
+            $user = User::find($userId);
+            if ($user) {
+                app(ScoreEngine::class)->evaluateThrottled($user);
+            }
+        } catch (Throwable $e) {
+            Log::warning('bot score re-eval failed at captcha verify', [
+                'user_id' => $userId,
+                'err' => $e->getMessage(),
+            ]);
+        }
     }
 }
