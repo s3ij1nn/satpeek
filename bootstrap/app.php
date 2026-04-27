@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\BotScoreGate;
+use App\Http\Middleware\CloudflareClientIp;
 use App\Http\Middleware\FingerprintRequired;
 use App\Http\Middleware\IpReputationGate;
 use App\Http\Middleware\Ja4Capture;
@@ -35,6 +36,14 @@ return Application::configure(basePath: dirname(__DIR__))
         // reads it. Runs globally so admin / api / web requests all benefit
         // when the deployment sits behind a TLS-fingerprinting proxy.
         $middleware->prepend(Ja4Capture::class);
+
+        // Resolve the real client IP from CF-Connecting-IP when behind
+        // Cloudflare orange-cloud. Off by default (TRUST_CLOUDFLARE_PROXY
+        // env), so dev / non-CF deployments behave unchanged. PREPENDED
+        // LAST so it runs FIRST in the chain — every downstream middleware
+        // (Ja4Capture / IpReputationGate / BotScoreGate / etc) and every
+        // controller call to request()->ip() sees the corrected value.
+        $middleware->prepend(CloudflareClientIp::class);
 
         // The Blade frontend is same-origin and uses session cookies, so the
         // /api routes need session start + CSRF + cookies. Stack the web

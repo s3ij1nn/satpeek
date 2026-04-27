@@ -177,6 +177,7 @@ Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPa
   - `/admin/ptc-views` — read-only PtcView listing with status filter + Auth URL action.
   - `/admin/shortlink-clicks` — symmetric for ShortlinkClick.
   - Both forbid create/edit/delete to prevent admins from bypassing reward guards.
+- **Cloudflare orange-cloud** (`TRUST_CLOUDFLARE_PROXY=true`): `App\Http\Middleware\CloudflareClientIp` promotes `CF-Connecting-IP` → `REMOTE_ADDR` so every IP-consuming code path (bot detection, captcha trace, BitcoTask URL, webhook allow-list) sees the real visitor. Without this flag the platform sees Cloudflare edge IPs and silently mis-classifies. Uses `CF-Connecting-IP` (overwritten by Cloudflare on every request) instead of `X-Forwarded-For` (Cloudflare appends, leaving the leftmost slot spoofable). **The origin firewall MUST restrict inbound to Cloudflare's published IP ranges (https://www.cloudflare.com/ips/)** when this flag is on; otherwise an attacker reaching the origin directly can spoof CF-Connecting-IP and bypass bot detection / IP reputation / captcha fingerprint locking.
 
 ## Tests
 

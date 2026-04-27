@@ -63,6 +63,17 @@ return [
         )
     ),
 
+    // Cloudflare orange-cloud trust flag. When true, CloudflareClientIp
+    // middleware promotes `CF-Connecting-IP` to REMOTE_ADDR so every
+    // downstream IP-consuming code path (bot detection / captcha /
+    // BitcoTask URL / webhook allow-list) sees the real visitor.
+    //
+    // SECURITY: only enable when the origin firewall restricts inbound to
+    // Cloudflare's published IP ranges. See .env.example for details.
+    'cloudflare' => [
+        'trust_proxy' => filter_var(env('TRUST_CLOUDFLARE_PROXY', false), FILTER_VALIDATE_BOOLEAN),
+    ],
+
     'faucetpay' => [
         'api_key' => env('FAUCETPAY_API_KEY'),
         'api_base' => env('FAUCETPAY_API_BASE', 'https://faucetpay.io/api/v1'),

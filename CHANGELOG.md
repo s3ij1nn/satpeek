@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `App\Http\Middleware\CloudflareClientIp` — when the deployment sits
+  behind Cloudflare orange-cloud proxy mode, promotes the
+  `CF-Connecting-IP` header to `REMOTE_ADDR` so every IP-consuming
+  code path (bot detection asn signals, IpReputationGate, captcha
+  client_ip locking, BitcoTask offer URL `USER_IP` segment, webhook
+  IP allow-list) sees the real visitor instead of a Cloudflare edge.
+  Off by default — `TRUST_CLOUDFLARE_PROXY=false` ships in
+  `.env.example`, so dev / non-CF deployments behave unchanged.
+  - Uses `CF-Connecting-IP` (which Cloudflare overwrites on every
+    relayed request) instead of `X-Forwarded-For` (which Cloudflare
+    appends to, leaving the leftmost slot spoofable). Garbage / empty
+    header values are ignored — the connection IP wins, never falls
+    back to a spoofable fallback.
+  - **Operator note**: when enabling this flag, the origin firewall
+    MUST restrict inbound traffic to Cloudflare's published IP ranges
+    (https://www.cloudflare.com/ips/). Otherwise an attacker reaching
+    the origin directly could spoof CF-Connecting-IP and bypass bot
+    detection / IP reputation / captcha fingerprint locking. Documented
+    in `.env.example` and CLAUDE.md.
+  - 5 new unit tests in
+    `tests/Unit/Http/Middleware/CloudflareClientIpTest.php`
+    cover off / on × header present / missing / garbage paths plus
+    IPv6 handling.
 - `/up` health probe now reports a `faucetpay` block:
   - `unconfigured` (degraded, 200) — `FAUCETPAY_API_KEY` blank.
     Withdrawals would all permanent-fail; ops needs this surfaced
