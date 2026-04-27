@@ -10,6 +10,12 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Cap parallel sessions per PR/issue thread so a rapid stream of @claude
+# mentions doesn't multiply quota burn. The latest mention always wins.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   claude:
     if: |
@@ -18,6 +24,10 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    # Hard cap on a single session so a runaway loop can't drain hours of
+    # quota silently. 15 min is generous for most code-context lookups;
+    # longer tasks should be broken into multiple mentions.
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read

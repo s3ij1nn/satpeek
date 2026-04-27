@@ -3,22 +3,28 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    # Skip docs/license/CI-only PRs — they don't need an AI code review and
+    # spending quota on them is wasteful. Behavioural code (app/, routes/,
+    # database/, tests/) still triggers normally.
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.github/dependabot.yml'
+
+# Cap to one review per PR HEAD; a rapid push burst (synchronize) cancels
+# the previous in-flight review and runs against the latest tip.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
+    # Skip Dependabot PRs — CI (lint + phpunit + phpstan) already vets them
+    # and a major-bump review without project context isn't useful. Manual
+    # @claude mention via claude.yml still works if a deeper look is wanted.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
