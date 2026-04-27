@@ -90,6 +90,26 @@
         </div>
     </header>
 
+    {{-- Tier-driven status banner. Hidden on the trust path so the
+         dashboard stays clean for the ~95 % of users who never see one
+         of these. The text explains the *current* posture in plain
+         language so a legit user hit by a shared-NAT false positive
+         can self-diagnose and so a real bot operator gets a clear
+         "you've been caught" signal. --}}
+    @if ($tier === 'suspect')
+        <div class="alert--warn">
+            <strong>Heads up:</strong> activity on your account looks unusual — you'll see a slightly stricter captcha and withdrawals may be held briefly for a review pass. Most often this resolves on its own as your activity history builds. If you're on shared wifi (campus / mobile / corporate), this is a known false-positive surface; reach out to support if it persists.
+        </div>
+    @elseif ($tier === 'likely_bot')
+        <div class="alert--err" style="padding: .875rem 1.125rem; border-radius: var(--radius-md); background: rgba(251,113,133,.08); border: 1px solid rgba(251,113,133,.3); color: var(--rose); font-size: var(--text-sm);">
+            <strong>PTC paused.</strong> Recent activity matched several bot-detection signals at once (cookie-clear / multi-IP / captcha-timing patterns). PTC viewing and withdrawals are temporarily on hold while the system reassesses. The captcha is also harder — completing several legitimately will rebuild trust. Email <a href="mailto:{{ config('mail.from.address') }}" style="color: var(--rose); text-decoration: underline;">support</a> if you believe this is wrong.
+        </div>
+    @elseif ($tier === 'banned' || $u->is_banned)
+        <div class="alert--err" style="padding: .875rem 1.125rem; border-radius: var(--radius-md); background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.45); color: var(--rose); font-size: var(--text-sm);">
+            <strong>Account suspended.</strong> Earning surfaces are disabled. @if ($u->ban_reason) Reason: <code>{{ $u->ban_reason }}</code>. @endif If this is wrong, email <a href="mailto:{{ config('mail.from.address') }}" style="color: var(--rose); text-decoration: underline;">support</a>.
+        </div>
+    @endif
+
     <div class="stats">
         <div class="stats__cell">
             <div class="stats__num">{{ number_format($u->balance_sat) }}<small>sat</small></div>

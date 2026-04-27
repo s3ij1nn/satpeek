@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Tier-driven status banner on `/dashboard`. Trust users see no
+  banner (the dashboard stays clean for the overwhelming majority of
+  legitimate users); suspect / likely_bot / banned each get a
+  tier-specific message in plain language. Two motivations:
+  - Legit users hit by a shared-NAT false positive (campus / mobile
+    / corporate proxy) can self-diagnose without a support ticket.
+  - Real bot operators get a clear "you've been caught" signal
+    instead of a silent rate-limit they might attribute to a glitch.
+  - Manually-banned users (operator clicked the toggle on
+    `/admin/users/{id}/edit`) see the suspension banner even when
+    no `bot_scores` row exists, so the manual-action path also
+    surfaces a clear reason in the UI.
+  - 6 new feature tests in `tests/Feature/Dashboard/TierBannerTest.php`
+    pin all four tier paths plus the manual-ban + no-eval edge cases.
 - WithdrawalResource (admin) now surfaces FaucetPay job retry
   telemetry that ProcessWithdrawalJob has been writing since v0.2.0
   but had no admin surface:
