@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Bot detection panel on the `/admin/users/{id}/edit` page.
+  Surfaces tier, score, last-evaluated timestamp, and a per-signal
+  breakdown table (weight · raw) so an operator triaging a `suspect`
+  / `likely_bot` user can see WHICH signals fired without reading
+  raw `bot_scores` rows by hand.
+  - New "Re-score" row action on the user list bypasses the
+    `evaluateThrottled` window — useful for triaging a manual ban /
+    unban decision when the operator wants a fresh signal sweep.
+  - Server-side rendered table (HtmlString) so the breakdown lives
+    in the initial HTML response, not a Livewire round-trip — also
+    means it's printable / screenshottable for incident reports.
+  - 3 new feature tests in
+    `tests/Feature/Admin/UserResourceBotPanelTest.php` cover the
+    no-eval / with-eval / non-admin-gate paths.
 - **`ScoreEngine::evaluateThrottled()`** — production code finally
   invokes the bot scoring pipeline. Previously every signal (including
   `SharedIpSignal` shipped in v0.3.0) was registered in the engine but
