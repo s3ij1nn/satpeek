@@ -71,9 +71,9 @@ class BitcoTaskAdapter implements OfferwallAdapter
         if ($secret === '') {
             return null;
         }
-        $signature = $request->header('X-BT-Signature', '');
+        $signature = (string) $request->header('X-BT-Signature', '');
         $expected = hash_hmac('sha256', $request->getContent(), $secret);
-        if (! is_string($signature) || ! hash_equals($expected, $signature)) {
+        if (! hash_equals($expected, $signature)) {
             Log::warning('bitcotask callback signature mismatch', ['ip' => $request->ip()]);
 
             return null;

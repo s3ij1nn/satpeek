@@ -15,6 +15,24 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
+/**
+ * Minimal PHPDoc — only the columns + relations app code reaches via Eloquent
+ * magic accessors that Larastan can't statically resolve. Full schema lives
+ * in the migrations.
+ *
+ * @property int $id
+ * @property string $username
+ * @property string $email
+ * @property int $balance_sat
+ * @property int $total_earned_sat
+ * @property int $total_withdrawn_sat
+ * @property int|null $referrer_id
+ * @property string $referral_code
+ * @property bool $is_admin
+ * @property bool $is_banned
+ * @property string|null $ban_reason
+ * @property-read BotScore|null $botScore
+ */
 class User extends Authenticatable implements FilamentUser, HasName, MustVerifyEmail
 {
     use HasApiTokens;

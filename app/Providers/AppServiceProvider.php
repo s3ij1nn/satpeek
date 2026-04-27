@@ -114,15 +114,14 @@ class AppServiceProvider extends ServiceProvider
                     (string) ($cfg['iphub']['api_base'] ?? 'https://v2.api.iphub.info'),
                 );
             }
-            if (true) {
-                // ProxyCheck supports anonymous queries (lower quota) — register
-                // even when no key is set. The provider sends an empty key.
-                $providers[] = new ProxyCheckProvider(
-                    $http,
-                    (string) ($cfg['proxycheck']['api_key'] ?? ''),
-                    (string) ($cfg['proxycheck']['api_base'] ?? 'https://proxycheck.io/v2'),
-                );
-            }
+            // ProxyCheck supports anonymous queries (lower quota) — register
+            // unconditionally even when no key is set. The provider sends an
+            // empty key in that mode.
+            $providers[] = new ProxyCheckProvider(
+                $http,
+                (string) ($cfg['proxycheck']['api_key'] ?? ''),
+                (string) ($cfg['proxycheck']['api_base'] ?? 'https://proxycheck.io/v2'),
+            );
 
             $composite = new CompositeProvider($providers);
 

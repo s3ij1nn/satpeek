@@ -168,7 +168,9 @@ class PtcController extends Controller
             return response()->json(['error' => 'heartbeat_deficit'], 422);
         }
 
-        $elapsed = $view->started_at?->diffInSeconds(Carbon::now()) ?? 0;
+        // started_at is non-nullable on the schema (set in start()) so the
+        // bare diff is safe — no ?-> guard needed.
+        $elapsed = (int) abs($view->started_at->diffInSeconds(Carbon::now()));
         if ($elapsed < $view->ad->duration_sec - 1) {
             $view->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
 

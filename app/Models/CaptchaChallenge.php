@@ -3,7 +3,27 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $challenge_id
+ * @property int|null $user_id
+ * @property string|null $session_id
+ * @property string $provider
+ * @property string $seed
+ * @property array<int, array{x: float, y: float, t: float}> $expected_shape
+ * @property string|null $fingerprint_hash
+ * @property string|null $client_ip
+ * @property string|null $ja4
+ * @property string|null $user_agent
+ * @property string $status
+ * @property string|null $rejection_reason
+ * @property Carbon $issued_at
+ * @property Carbon $expires_at
+ * @property Carbon|null $resolved_at
+ * @property array<string, mixed>|null $meta
+ */
 class CaptchaChallenge extends Model
 {
     protected $fillable = [

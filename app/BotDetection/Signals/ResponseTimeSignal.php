@@ -31,9 +31,11 @@ class ResponseTimeSignal implements Signal
 
         $solveMs = [];
         foreach ($solves as $row) {
-            if ($row->issued_at && $row->resolved_at) {
-                // Use raw timestamps — Carbon 3's diffInMilliseconds is signed
-                // and would return a negative value with this argument order.
+            // issued_at is non-nullable on the schema; resolved_at is filtered
+            // via whereNotNull above. Raw timestamp arithmetic — Carbon 3's
+            // diffInMilliseconds is signed and would go negative with this
+            // argument order.
+            if ($row->resolved_at !== null) {
                 $solveMs[] = max(0, (int) ($row->resolved_at->getPreciseTimestamp(3) - $row->issued_at->getPreciseTimestamp(3)));
             }
         }

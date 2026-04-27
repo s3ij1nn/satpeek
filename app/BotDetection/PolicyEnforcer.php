@@ -8,6 +8,14 @@ class PolicyEnforcer
 {
     public function tier(User $user): string
     {
+        // Larastan resolves $user->botScore through the HasOne method's
+        // declared return type as non-null, even with @property-read
+        // BotScore|null on the User model. The runtime nullability is
+        // real (no botScore row exists until ScoreEngine has evaluated
+        // the user at least once), so we keep the `?->` guard and the
+        // `?? 'trust'` default. The ignore is scoped to one line so any
+        // future false-positive elsewhere still surfaces.
+        // @phpstan-ignore-next-line nullsafe.neverNull
         return $user->botScore?->tier ?? 'trust';
     }
 

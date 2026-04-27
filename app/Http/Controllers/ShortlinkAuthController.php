@@ -36,7 +36,8 @@ class ShortlinkAuthController extends Controller
         }
 
         $link = $click->shortlink;
-        $elapsedSec = (int) ($click->started_at?->diffInSeconds(now(), absolute: true) ?? 0);
+        // started_at is non-nullable on the schema so no ?-> guard needed.
+        $elapsedSec = (int) $click->started_at->diffInSeconds(now(), absolute: true);
         $remainingSec = max(0, (int) $link->hold_seconds - $elapsedSec);
 
         return view('shortlinks.auth', [

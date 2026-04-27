@@ -22,7 +22,7 @@ class ChallengeVerifier
         if ($challenge->status !== 'issued') {
             return VerificationResult::fail('challenge_already_resolved:'.$challenge->status);
         }
-        if ($challenge->expires_at && Carbon::now()->greaterThan($challenge->expires_at)) {
+        if (Carbon::now()->greaterThan($challenge->expires_at)) {
             $challenge->update(['status' => 'expired', 'rejection_reason' => 'ttl_exceeded']);
 
             return VerificationResult::fail('challenge_expired');
@@ -31,9 +31,8 @@ class ChallengeVerifier
         // Carbon 3 (Laravel 11) returns a signed float from diffInMilliseconds —
         // when `now` is later than `issued_at`, the result is *negative*. Use
         // raw millisecond timestamps to compute a positive elapsed value.
-        $solveMs = $challenge->issued_at
-            ? max(0, (int) (Carbon::now()->getPreciseTimestamp(3) - $challenge->issued_at->getPreciseTimestamp(3)))
-            : -1;
+        // issued_at is non-nullable on the schema so no guard needed.
+        $solveMs = max(0, (int) (Carbon::now()->getPreciseTimestamp(3) - $challenge->issued_at->getPreciseTimestamp(3)));
 
         $fingerprint = (string) $request->header('X-SP-Fingerprint', '');
         $providedFp = $fingerprint !== '' ? hash('sha256', $fingerprint) : null;

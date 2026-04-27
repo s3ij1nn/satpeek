@@ -109,7 +109,9 @@ class ShortlinkController extends Controller
         if (! hash_equals($click->epoch_token, (string) $request->input('epoch_token'))) {
             return response()->json(['error' => 'token_mismatch'], 422);
         }
-        $elapsed = $click->started_at?->diffInSeconds(Carbon::now()) ?? 0;
+        // started_at is non-nullable on the schema (set in start()) so the
+        // bare diff is safe — no ?-> guard needed.
+        $elapsed = (int) abs($click->started_at->diffInSeconds(Carbon::now()));
         if ($elapsed < $click->shortlink->hold_seconds - 1) {
             $click->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
 

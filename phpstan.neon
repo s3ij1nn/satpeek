@@ -1,12 +1,14 @@
 includes:
     - vendor/larastan/larastan/extension.neon
-    - phpstan-baseline.neon
 
 parameters:
     # Level 5 — covers most of the type-safety wins (incompatible argument
     # types, undefined methods on resolved classes, return-type mismatches)
     # without flagging every Eloquent magic-method call that Larastan can't
-    # statically resolve. Tighten to 6+ once the baseline is empty.
+    # statically resolve. Baseline file used to live here; it's now empty
+    # (zero errors at level 5) so the include was dropped — the contract
+    # going forward is "no new errors, period". Bump to level 6+ when the
+    # remaining @phpstan-ignore-next-line comments can be unwound.
     level: 5
 
     paths:
