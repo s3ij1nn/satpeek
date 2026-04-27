@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-04-27
+
+Patch release: tier-driven captcha difficulty actually wired, SharedIpSignal
+gets an allowlist for known shared NATs, end-to-end PolicyEnforcer
+integration tests, GitHub Actions bumped past the Node 20 deprecation. All
+additive.
+
 ### Changed
 
 - `PolicyEnforcer::captchaDifficulty` is no longer dead code. The 1/2/3
@@ -618,7 +625,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/s3ij1nn/satpeek/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/s3ij1nn/satpeek/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/s3ij1nn/satpeek/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/s3ij1nn/satpeek/compare/v0.1.0...v0.2.0
