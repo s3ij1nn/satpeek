@@ -20,6 +20,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    # Style + manifest checks. Runs in parallel with `test` so a formatting
+    # nit doesn't gate the slower test step.
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: bcmath, mbstring, intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction --ignore-platform-req=ext-redis
+
+      - name: Validate composer manifest
+        # --strict catches missing keys + lock-file drift. Cheap, runs first
+        # so a malformed composer.json fails the lint step immediately.
+        run: composer validate --strict --no-check-publish
+
+      - name: Pint (code style, check-only)
+        # `--test` exits non-zero on any unformatted file. Pair with the
+        # baseline applied in the prior commit; future drift is caught here
+        # before it lands on main.
+        run: vendor/bin/pint --test
+
   test:
     name: PHPUnit
     runs-on: ubuntu-latest
