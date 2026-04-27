@@ -6,209 +6,161 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-27
+
+Theme: BitcoTasks publisher integration lands end-to-end, plus operational
+hardening across payout retry, health surface, admin toggles, and captcha
+regression coverage. The platform still ships zero-config — every external
+integration is opt-in, gated on credentials being present, and degrades to
+the internal inventory when not configured.
+
 ### Added
 
-- 3 additional captcha-bypass scenarios in
-  `tests/BotSimulation/PlaywrightHeadlessTest.php` so each gate the
-  trajectory verifier owns has a regression test against a realistic
-  attack pattern, not just a unit-style fixture:
-  - **Recorded-trace replay against fresh challenge** — bot harvests
-    a known-good point stream from a previously-solved challenge and
-    submits it against a new one. The fresh-seed curve invariant
-    (`ChallengeBuilder::issue()` mints a different shape per request)
-    means the replayed points hit `shape_mismatch` regardless of how
-    plausible the inner timing / jerk / dwell signals look. This
-    invariant is the single most dangerous regression we can ship —
-    locking it in CI here.
-  - **No post-arrival dwell** — naive 2captcha-class bot solves the
-    curve correctly but submits the moment the cursor reaches the
-    goal, with no settle window. `no_completion_dwell` catches it
-    even when timing / shape / jerk all pass.
-  - **Sub-minimum solve time** — script that submits in under 800 ms
-    (front-runs the moving target). Pins the lower-bound gate so a
-    future config bump for accessibility doesn't accidentally drop
-    `min_solve_ms`.
-- Filament admin can now flip offerwall publisher integrations on /
-  off without a redeploy. New `offerwall_provider_settings` table
-  + `OfferwallProviderSetting` model + Filament resource at
+#### BitcoTasks publisher integration
+
+- REST publisher API integration against the documented spec
+  (https://bitcotasks.com/documentations, fetched 2026-04-27). Three
+  per-(user, IP) endpoints — PTC `/api/`, Shortlink `/sl-api/`, Read
+  Article `/ra-api/` — each carrying `Authorization: Bearer
+  <BITCOTASK_BEARER_TOKEN>`. `BitcoTaskAdapter` implements the new
+  `OfferwallPerUserAdapter` contract alongside the zero-arg
+  `OfferwallAdapter`; the global `satpeek:sync-offerwalls` cron stays a
+  safe no-op (per-user adapters return `[]` from the zero-arg fetchers).
+- Per-(user, IP) merge surface: `/ptc`, `/shortlinks`, and a new
+  `/read-articles` page render external publisher offers alongside (or,
+  for read-articles, instead of) internal inventory via the new
+  `App\Offerwall\OfferwallMerge` service. Per-adapter exceptions are
+  caught and logged so one bad partner cannot 500 the page.
+- New `App\Offerwall\Contracts\OfferwallPerUserAdapter` interface with
+  `fetchPtcOffersFor(User, string $ip)` /
+  `fetchShortlinkOffersFor(User, string $ip)` /
+  `fetchReadArticleOffersFor(User, string $ip)`. The contract describes
+  publishers that scope their offer set to a (user, IP) pair rather
+  than exposing a global inventory.
+- `BITCOTASK_BEARER_TOKEN` env var (separate from `BITCOTASK_API_KEY`,
+  which sits in the URL path). Both come from different fields on the
+  publisher dashboard.
+
+#### Operator UX
+
+- Filament admin can flip offerwall publisher integrations on / off
+  without a redeploy. New `offerwall_provider_settings` table +
+  `OfferwallProviderSetting` model + Filament resource at
   `/admin/offerwall-provider-settings` (Inventory group, admin-only).
-  - `AppServiceProvider::applyOfferwallDbOverrides()` merges DB rows
-    over `OFFERWALLS_ENABLED` at request time before the
-    `AdapterRegistry` reads it. `is_enabled = true` includes the
-    adapter even when env omits it; `is_enabled = false` excludes it
-    even when env lists it (an emergency disable lever).
-  - Registry binding switched from `singleton` to `scoped` so per-
-    request DB reads pick up Filament edits without a queue worker
-    restart — same lifecycle as `ShortlinkProviderRegistry`.
-  - Schema-missing environments (early-boot console, fresh test DB)
-    silently fall back to env-only resolution, so artisan boot before
-    migrations stays safe.
-  - Credentials (BITCOTASK_API_KEY / BITCOTASK_BEARER_TOKEN /
-    BITCOTASK_S2S_SECRET) intentionally stay in env. Putting them in
-    DB would widen the secret-leak surface (DB dumps, replicas) for a
-    convenience win that doesn't apply to the operator's only
-    deploy-time setup step.
-  - 6 new feature tests in `tests/Feature/Offerwall/OfferwallProviderSettingTest.php`
-    cover the four override permutations + Filament admin gating.
-- FaucetPay payout job grew an automatic-retry + dead-letter path so a
-  transient outage no longer strands withdrawals at `processing`
-  forever waiting for an operator.
-  - `App\Payout\FaucetPayUnreachableException` is thrown by
-    `FaucetPayClient::send()` when the API host is unreachable at the
-    TCP / DNS layer (Guzzle `ConnectException`). This is the ONLY
-    failure mode that's safe to retry — the request never made it
-    onto the wire, so re-issuing it cannot double-pay.
-  - `ProcessWithdrawalJob` now sets `$tries = 3` with exponential
-    `backoff()` of `[60, 300, 1800]` (1 min / 5 min / 30 min) and
-    implements `ShouldBeUnique` (keyed by withdrawal id, 40-min
-    lock) so the cron's `satpeek:process-withdrawals` cannot race
-    the active retry and double-dispatch.
-  - All other FaucetPay failure modes (HTTP error, body status != 200,
-    timeout mid-request, JSON parse error) are TERMINAL: status flips
-    to `failed`, balance is refunded, rejection email queued. We
-    cannot tell whether FaucetPay processed the payout, and a
-    duplicate send is much worse than a delayed one.
-  - `failed()` is the dead-letter callback: invoked when $tries is
-    exhausted (FaucetPay still unreachable after ~35 min) or any
-    unhandled exception escapes `handle()`. Same refund + notify
-    sequence as a permanent failure, plus a `withdrawal job
-    dead-lettered` warning log so on-call sees it. Idempotent —
-    a stray invocation on an already-settled row is a no-op.
-  - `meta.attempts` + `meta.last_attempted_at` recorded per attempt
-    so the operator dashboard can show "in flight, retrying" with
-    real numbers.
-  - 7 new feature tests in `tests/Feature/Payout/ProcessWithdrawalJobTest.php`
-    lock the success / permanent-failure / unreachable-retry /
-    dead-letter / idempotency / requires_review / late-dispatch paths.
+  `AppServiceProvider::applyOfferwallDbOverrides()` merges DB rows over
+  `OFFERWALLS_ENABLED` at request time — `is_enabled=true` includes
+  the adapter even when env omits it, `is_enabled=false` excludes it
+  even when env lists it (an emergency disable lever).
+- `AdapterRegistry` binding switched from `singleton` to `scoped` so
+  per-request DB reads pick up Filament edits without a queue worker
+  restart. Same lifecycle as `ShortlinkProviderRegistry`.
+- Credentials intentionally stay in env. Putting `BITCOTASK_*` keys in
+  DB would widen the secret-leak surface (DB dumps, replicas) for a
+  convenience win that doesn't apply to the operator's one-time
+  deploy-step.
+
+#### Health & observability
+
 - `/up` health probe now reports an `offerwall_providers` block so an
   operator can spot a misconfigured BitcoTasks integration without
-  hitting the partner's first request.
-  - `unconfigured` (degraded, 200) — `OFFERWALLS_ENABLED` empty;
-    default state until the publisher review approves the operator's
-    account. Not a paging condition.
-  - `credentials_missing` (degraded, 200) — adapter is enabled but
-    one of `api_key` / `bearer_token` / `s2s_secret` is unset. The
-    `missing` field lists exactly which env vars are blank, e.g.
+  hitting the partner's first request:
+  - `unconfigured` (degraded, 200) — `OFFERWALLS_ENABLED` empty
+    (default until publisher review approves access). Not a paging
+    condition.
+  - `credentials_missing` (degraded, 200) — adapter enabled but one of
+    `api_key` / `bearer_token` / `s2s_secret` blank. The `missing`
+    field lists exactly which env vars are empty, e.g.
     `["bitcotask:bearer_token", "bitcotask:s2s_secret"]`.
   - `ok` — enabled and all credentials present.
-  - 3 new feature tests in `tests/Feature/Health/HealthEndpointTest.php`
-    cover the three states; existing `test_status_ok_returns_http_200`
-    updated to also configure the new component so overall stays `ok`.
-- Offerwall merge surface — `/ptc`, `/shortlinks`, and a new
-  `/read-articles` page now render external publisher offers
-  alongside (or, for read-articles, instead of) internal inventory.
-  - `App\Offerwall\OfferwallMerge` service iterates
-    `AdapterRegistry::enabled()`, calls the per-user fetcher on each
-    adapter that implements `OfferwallPerUserAdapter`, and merges
-    results. Per-adapter exceptions are caught + logged so one bad
-    partner can't 500 the page.
-  - **BitcoTasks-optional by design.** Default `OFFERWALLS_ENABLED=`
-    (empty) makes every merge return `[]`, so the platform keeps
-    rendering internal inventory while the operator waits for the
-    BitcoTasks publisher review to ship API credentials. The
-    `/read-articles` page degrades to a friendly "no partners
-    connected" state in the same condition; the nav link is hidden
-    entirely until at least one per-user adapter is enabled.
-  - 12 new tests across `tests/Feature/Offerwall/OfferwallMergeTest.php`
-    and `tests/Feature/ReadArticles/ReadArticlesPageTest.php` lock
-    the empty-by-default contract, exception isolation, and the
-    three render states (no partner / no offers / offers present).
-- BitcoTasks REST publisher integration. The published spec
-  (https://bitcotasks.com/documentations, re-fetched 2026-04-27)
-  exposes three per-(user, IP) endpoints — PTC at `/api/`, Shortlink
-  at `/sl-api/`, Read Article at `/ra-api/` — each carrying a
-  separate `Authorization: Bearer <BITCOTASK_BEARER_TOKEN>` header.
-  - New `App\Offerwall\Contracts\OfferwallPerUserAdapter` interface
-    with `fetchPtcOffersFor(User, string $ip)`,
-    `fetchShortlinkOffersFor(User, string $ip)`,
-    `fetchReadArticleOffersFor(User, string $ip)`. Adapters whose
-    publisher API is per-user-scoped (no global inventory) implement
-    this alongside the zero-arg `OfferwallAdapter` contract.
-  - `BitcoTaskAdapter` now takes a `Http\Client\Factory` in its
-    constructor and implements both contracts. Zero-arg
-    `fetchPtcOffers()` / `fetchShortlinkOffers()` return `[]` so the
-    nightly `satpeek:sync-offerwalls` cron stays a safe no-op.
-  - Per-fetch family default durations: PTC 30 s, Shortlink 10 s,
-    Read Article 60 s. PTC's response carries an explicit `duration`
-    field which overrides the default. Shortlink/RA rows honour
-    `limit` for `dailyLimitPerUser`.
-  - All failure modes (missing config, garbage IP, transport
-    exception, non-2xx, malformed body) return an empty array and
-    log a `warning` so an operator can spot a bad bearer token
-    without breaking the merge with internal inventory.
-  - `BITCOTASK_BEARER_TOKEN` env var added to `.env.example`. It is
-    SEPARATE from `BITCOTASK_API_KEY` (which sits in the URL path);
-    the two come from different fields on the publisher dashboard.
-  - 11 new feature tests in `tests/Feature/Offerwall/BitcoTaskApiFetchTest.php`
-    cover URL construction, Bearer header, descriptor mapping
-    (reward conversion, duration defaults, limit → dailyLimitPerUser),
-    and every documented failure mode.
+
+#### FaucetPay payout reliability
+
+- `ProcessWithdrawalJob` grew an automatic-retry + dead-letter path
+  (`$tries = 3`, `backoff() = [60, 300, 1800]`) so a brief FaucetPay
+  outage no longer strands withdrawals at `processing` waiting for an
+  operator. The retry policy is deliberately conservative — only the
+  pre-flight `FaucetPayUnreachableException` (Guzzle `ConnectException`,
+  request never made it onto the wire) re-tries; everything else
+  (HTTP error, body status != 200, mid-request timeout) is terminal
+  because we can't tell whether FaucetPay processed the payout, and a
+  duplicate send is much worse than a delayed one.
+- `ShouldBeUnique` (keyed by withdrawal id, 40-min lock) prevents the
+  cron from racing the active retry and double-dispatching. `failed()`
+  is the dead-letter callback: same refund + notify sequence as a
+  permanent failure, plus a `withdrawal job dead-lettered` warning
+  log. Idempotent on already-settled rows.
+
+#### Captcha regression coverage
+
+- 3 additional `tests/BotSimulation/` scenarios so each verifier gate
+  has a regression test against a realistic attack pattern:
+  - **Recorded-trace replay against fresh challenge** — bot harvests
+    a known-good point stream from a previously-solved challenge and
+    replays it. The fresh-seed-per-issue invariant means it hits
+    `shape_mismatch` regardless of how plausible the inner timing /
+    jerk / dwell signals look. This is the single most dangerous
+    regression we can ship — locked here.
+  - **No post-arrival dwell** — naive bot solves the curve correctly
+    but submits the moment the cursor reaches the goal, no settle
+    window. `no_completion_dwell` catches it.
+  - **Sub-minimum solve time** (<800 ms) — pins the lower-bound gate
+    so a future config bump for accessibility cannot drop it below
+    the human-plausible floor.
 
 ### Changed
 
-- BitcoTasks integration rewritten against the published spec
-  (https://bitcotasks.com/documentations, fetched 2026-04-27).
-  Closes the last item under "Open follow-ups" in CLAUDE.md.
-  - `BitcoTaskAdapter::verifyCallback`: now reads form-encoded
-    fields (`subId` / `transId` / `reward` / `payout` / `status` /
-    `signature` / `debug`), validates the documented MD5 signature
-    `md5(subId.transId.reward.s2s_secret)` (the previous HMAC-SHA256
-    over JSON body never matched a real BitcoTasks postback), and
-    enforces a config-driven IP allow-list defaulting to BitcoTasks's
-    published `45.14.135.48`.
-  - `BitcoTaskCallbackController` returns the literal string `ok`
-    (no JSON, no whitespace) — BitcoTasks treats anything else as
-    failure and retries up to its 60 s timeout.
-  - status=1 credits, status=2 chargebacks (negative ledger row +
-    decrement). Unknown status codes are logged + acked but not
-    credited so a future BitcoTasks status doesn't silently
-    double-credit.
-  - `debug=1` test postbacks are acked without crediting.
-  - Idempotency via a new `balance_ledgers.external_ref` column with
-    a unique index on `(reason, external_ref)` — duplicate `transId`
-    arrivals short-circuit with `ok` and zero balance change.
-  - USD-to-satoshi conversion via the operator-supplied
-    `BITCOTASK_USD_TO_SAT` env var — BitcoTasks reports `payout` in
-    decimal USD; the adapter multiplies by the configured rate.
-  - `fetchPtcOffers` / `fetchShortlinkOffers` now correctly return
-    empty arrays — BitcoTasks doesn't expose a REST list-offers
-    endpoint, only the offerwall iframe.
-  - `startView` throws `LogicException` instead of pretending to call
-    a nonexistent endpoint.
-  - Webhook route changed from `/webhooks/bitcotask/{token}` to
-    `/webhooks/bitcotask` — security comes from the form-field
-    signature + IP allow-list, the legacy `{token}` URL segment was
-    pre-spec defence-in-depth that the documented signature scheme
-    makes redundant.
-- PHPStan baseline reduced from 26 errors → 13 → 0 across two
-  maintenance passes (7fc8869, e8ce13c). The
-  `phpstan-baseline.neon` file is gone and CI now fails on the first
-  new type error — no more "shrinks over time" grace period.
+#### BitcoTasks postback contract
+
+- `BitcoTaskAdapter::verifyCallback` rewritten against the documented
+  spec: form-encoded fields (`subId` / `transId` / `reward` / `payout`
+  / `status` / `signature` / `debug`), MD5 signature
+  `md5(subId.transId.reward.s2s_secret)` (the previous HMAC-SHA256
+  over JSON body never matched a real BitcoTasks postback), and a
+  config-driven IP allow-list defaulting to BitcoTasks's published
+  `45.14.135.48`.
+- `BitcoTaskCallbackController` returns the literal string `ok`
+  (no JSON, no whitespace) — BitcoTasks treats anything else as
+  failure and retries up to its 60-s timeout. `status=1` credits,
+  `status=2` chargebacks (negative ledger row + decrement). Unknown
+  status codes are logged + acked but not credited.
+- `debug=1` test postbacks are acked without crediting.
+- Idempotency via the new `balance_ledgers.external_ref` column with a
+  unique index on `(reason, external_ref)` — duplicate `transId`
+  arrivals short-circuit with `ok` and zero balance change.
+- Webhook route changed from `/webhooks/bitcotask/{token}` to
+  `/webhooks/bitcotask` — security comes from the form-field signature
+  + IP allow-list, the legacy `{token}` URL segment was pre-spec
+  defence-in-depth that the documented signature scheme makes redundant.
+- `startView` throws `LogicException` instead of pretending to call a
+  nonexistent endpoint.
+
+#### Static-analysis baseline
+
+- PHPStan baseline reduced from 26 → 13 → 0 errors. The
+  `phpstan-baseline.neon` file is gone and CI fails on the first new
+  type error — no more "shrinks over time" grace period.
 - `@property` / `@property-read` PHPDoc added to PtcView,
   ShortlinkClick, Shortlink, PtcAd, Withdrawal, BotScore,
   CaptchaChallenge, and User (botScore relation). Larastan now
   resolves Eloquent magic accessors through the typed properties
   instead of falling back to `Model::$xxx → undefined`.
 - ChallengeVerifier / ResponseTimeSignal / Api PtcController +
-  ShortlinkController + ShortlinkAuthController: dropped redundant
-  `?->` and `??` guards on schema-non-nullable columns
-  (`expires_at`, `issued_at`, `started_at`). Carbon 3 signed-float
-  diffs are now bounded with `(int) abs($x->diffInSeconds(now()))`.
-- `BitcoTaskAdapter::callbackResult` casts the X-BT-Signature header
-  to string up-front instead of running a redundant `is_string()`
-  narrowing.
-- `AppServiceProvider::register` drops the `if (true) { ... }`
-  placeholder around the unconditional ProxyCheck registration; the
-  inline comment explaining the unconditional registration stays.
+  ShortlinkController + ShortlinkAuthController dropped redundant
+  `?->` / `??` guards on schema-non-nullable columns. Carbon 3
+  signed-float diffs are now bounded with
+  `(int) abs($x->diffInSeconds(now()))`.
 
 ### Notes
 
-- The remaining `@phpstan-ignore-next-line nullsafe.neverNull` on
-  `PolicyEnforcer::tier` documents a Larastan limitation (it narrows
-  `HasOne::botScore` to non-null even with `@property-read
-  BotScore|null` on User). The runtime nullability is real, so the
-  `?->` + `??` guards stay; the suppressed scope is one expression
-  so any future false-positive elsewhere still surfaces.
+- The single remaining `@phpstan-ignore-next-line nullsafe.neverNull`
+  on `PolicyEnforcer::tier` documents a Larastan limitation (it
+  narrows `HasOne::botScore` to non-null even with
+  `@property-read BotScore|null` on User). Runtime nullability is
+  real, so the `?->` + `??` guards stay; the suppressed scope is
+  one expression so any future false-positive elsewhere still
+  surfaces.
+- 47 new tests added across the release; total now 176 passing
+  (524 assertions), Pint clean, PHPStan zero.
 
 ## [0.1.0] — 2026-04-27
 
@@ -359,5 +311,6 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/s3ij1nn/satpeek/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/s3ij1nn/satpeek/releases/tag/v0.1.0
