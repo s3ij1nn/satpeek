@@ -35,6 +35,7 @@ class HealthEndpointTest extends TestCase
                 'maxmind_asn' => ['status', 'critical'],
                 'shortlink_providers' => ['status', 'critical'],
                 'ip_reputation_providers' => ['status', 'critical'],
+                'offerwall_providers' => ['status', 'critical'],
             ],
         ]);
         $this->assertContains($response->json('status'), ['ok', 'degraded', 'down']);
@@ -48,6 +49,10 @@ class HealthEndpointTest extends TestCase
         config()->set('satpeek.ip_reputation.maxmind.asn_db', __FILE__); // any existing file
         config()->set('satpeek.ip_reputation.iphub.api_key', 'fake');
         config()->set('satpeek.shortlink_providers.btcut.api_token', 'fake');
+        config()->set('satpeek.offerwalls.enabled', ['bitcotask']);
+        config()->set('satpeek.bitcotask.api_key', 'KEY');
+        config()->set('satpeek.bitcotask.bearer_token', 'BEARER');
+        config()->set('satpeek.bitcotask.s2s_secret', 'SECRET');
         $this->app->forgetInstance(ShortlinkProviderRegistry::class);
 
         $response = $this->getJson('/up');
@@ -57,6 +62,7 @@ class HealthEndpointTest extends TestCase
         $this->assertSame('ok', $response->json('checks.database.status'));
         $this->assertSame('ok', $response->json('checks.redis.status'));
         $this->assertSame('ok', $response->json('checks.maxmind_asn.status'));
+        $this->assertSame('ok', $response->json('checks.offerwall_providers.status'));
     }
 
     public function test_unconfigured_maxmind_yields_degraded_overall_with_200(): void
@@ -133,5 +139,60 @@ class HealthEndpointTest extends TestCase
 
         $this->assertSame('degraded', $response->json('checks.shortlink_providers.status'));
         $this->assertSame('no_token_set', $response->json('checks.shortlink_providers.detail'));
+    }
+
+    public function test_offerwall_providers_default_off_reports_unconfigured_not_down(): void
+    {
+        // Default ships with OFFERWALLS_ENABLED empty — the BitcoTasks
+        // publisher review hasn't shipped credentials yet. /up must still
+        // 200 on this path; "unconfigured" is not a paging condition.
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        config()->set('satpeek.offerwalls.enabled', []);
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('degraded', $response->json('checks.offerwall_providers.status'));
+        $this->assertSame('unconfigured', $response->json('checks.offerwall_providers.detail'));
+        $this->assertFalse($response->json('checks.offerwall_providers.critical'));
+    }
+
+    public function test_offerwall_enabled_with_full_credentials_reports_ok(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        config()->set('satpeek.offerwalls.enabled', ['bitcotask']);
+        config()->set('satpeek.bitcotask.api_key', 'KEY');
+        config()->set('satpeek.bitcotask.bearer_token', 'BEARER');
+        config()->set('satpeek.bitcotask.s2s_secret', 'SECRET');
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('ok', $response->json('checks.offerwall_providers.status'));
+        $this->assertSame(['bitcotask'], $response->json('checks.offerwall_providers.enabled'));
+    }
+
+    public function test_offerwall_enabled_but_missing_bearer_token_reports_degraded_with_field_list(): void
+    {
+        // Operator flipped OFFERWALLS_ENABLED on but pasted only the api_key —
+        // adapter would silently fetch [] from every endpoint. /up surfaces
+        // exactly which env vars are still empty.
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        config()->set('satpeek.offerwalls.enabled', ['bitcotask']);
+        config()->set('satpeek.bitcotask.api_key', 'KEY');
+        config()->set('satpeek.bitcotask.bearer_token', '');
+        config()->set('satpeek.bitcotask.s2s_secret', '');
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('degraded', $response->json('checks.offerwall_providers.status'));
+        $this->assertSame('credentials_missing', $response->json('checks.offerwall_providers.detail'));
+        $this->assertSame(
+            ['bitcotask:bearer_token', 'bitcotask:s2s_secret'],
+            $response->json('checks.offerwall_providers.missing'),
+        );
     }
 }

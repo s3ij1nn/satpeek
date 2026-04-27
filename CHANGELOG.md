@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `/up` health probe now reports an `offerwall_providers` block so an
+  operator can spot a misconfigured BitcoTasks integration without
+  hitting the partner's first request.
+  - `unconfigured` (degraded, 200) — `OFFERWALLS_ENABLED` empty;
+    default state until the publisher review approves the operator's
+    account. Not a paging condition.
+  - `credentials_missing` (degraded, 200) — adapter is enabled but
+    one of `api_key` / `bearer_token` / `s2s_secret` is unset. The
+    `missing` field lists exactly which env vars are blank, e.g.
+    `["bitcotask:bearer_token", "bitcotask:s2s_secret"]`.
+  - `ok` — enabled and all credentials present.
+  - 3 new feature tests in `tests/Feature/Health/HealthEndpointTest.php`
+    cover the three states; existing `test_status_ok_returns_http_200`
+    updated to also configure the new component so overall stays `ok`.
 - Offerwall merge surface — `/ptc`, `/shortlinks`, and a new
   `/read-articles` page now render external publisher offers
   alongside (or, for read-articles, instead of) internal inventory.

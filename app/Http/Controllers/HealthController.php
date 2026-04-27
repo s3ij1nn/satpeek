@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Offerwall\AdapterRegistry;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,7 @@ class HealthController extends Controller
             'maxmind_asn' => $this->checkMaxmind(),
             'shortlink_providers' => $this->checkShortlinkProviders(),
             'ip_reputation_providers' => $this->checkIpReputation(),
+            'offerwall_providers' => $this->checkOfferwallProviders(),
         ];
 
         $hasCriticalDown = false;
@@ -114,6 +116,80 @@ class HealthController extends Controller
         } catch (Throwable) {
             return ['status' => 'down', 'critical' => false, 'detail' => 'registry_unavailable'];
         }
+    }
+
+    /**
+     * Reports the per-publisher offerwall integrations (BitcoTasks today).
+     *
+     *   - `unconfigured` — adapter not in OFFERWALLS_ENABLED. Default state
+     *     while the operator waits for a publisher account review; not an
+     *     error, just "the surface is opt-in and you haven't opted in".
+     *   - `degraded` — adapter is enabled but the credentials it needs are
+     *     missing (e.g. the operator flipped the env var on but forgot to
+     *     paste BITCOTASK_BEARER_TOKEN). The adapter would silently return
+     *     `[]` from every fetch — easy to miss without a probe.
+     *   - `ok` — enabled and all required credentials present.
+     *
+     * @return array{status: string, critical: bool, detail?: string, enabled?: array<int, string>, missing?: array<int, string>}
+     */
+    private function checkOfferwallProviders(): array
+    {
+        $enabled = (array) config('satpeek.offerwalls.enabled', []);
+        $enabled = array_values(array_filter(array_map('strval', $enabled), fn (string $n): bool => $n !== ''));
+
+        if ($enabled === []) {
+            return ['status' => 'degraded', 'critical' => false, 'detail' => 'unconfigured', 'enabled' => []];
+        }
+
+        try {
+            $registry = app(AdapterRegistry::class);
+        } catch (Throwable) {
+            return ['status' => 'down', 'critical' => false, 'detail' => 'registry_unavailable'];
+        }
+
+        $missing = [];
+        foreach ($enabled as $name) {
+            if ($registry->get($name) === null) {
+                $missing[] = $name.':not_registered';
+
+                continue;
+            }
+            foreach (self::missingCredentials($name) as $field) {
+                $missing[] = $name.':'.$field;
+            }
+        }
+
+        if ($missing !== []) {
+            return [
+                'status' => 'degraded',
+                'critical' => false,
+                'detail' => 'credentials_missing',
+                'enabled' => $enabled,
+                'missing' => $missing,
+            ];
+        }
+
+        return ['status' => 'ok', 'critical' => false, 'enabled' => $enabled];
+    }
+
+    /**
+     * Per-adapter credential expectations. Returning [] means "all set".
+     * Kept as a static map rather than a method on each adapter because
+     * the health probe shouldn't trigger any side effects (HTTP probes,
+     * connection opens) — a structural check is enough.
+     *
+     * @return array<int, string>
+     */
+    private static function missingCredentials(string $name): array
+    {
+        return match ($name) {
+            'bitcotask' => array_values(array_filter([
+                config('satpeek.bitcotask.api_key') ? null : 'api_key',
+                config('satpeek.bitcotask.bearer_token') ? null : 'bearer_token',
+                config('satpeek.bitcotask.s2s_secret') ? null : 's2s_secret',
+            ])),
+            default => [],
+        };
     }
 
     /** @return array{status: string, critical: bool, detail?: string, sources?: array<int, string>} */
