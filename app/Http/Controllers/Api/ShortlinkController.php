@@ -7,15 +7,21 @@ use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
+use App\Shortlinks\Providers\ShortenerException;
+use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ShortlinkController extends Controller
 {
-    public function __construct(private readonly PolicyEnforcer $policy) {}
+    public function __construct(
+        private readonly PolicyEnforcer $policy,
+        private readonly ShortlinkProviderRegistry $shorteners,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -58,9 +64,67 @@ class ShortlinkController extends Controller
         return response()->json([
             'click_id' => $click->id,
             'epoch_token' => $click->epoch_token,
-            'redirect_url' => $link->target_url,
+            'redirect_url' => $this->resolveRedirectUrl($link),
             'hold_seconds' => $link->hold_seconds,
         ]);
+    }
+
+    /**
+     * Returns the URL to hand the viewer for this click. When the shortlink
+     * is rotation-enabled (provider_name + source_url set) we re-shorten the
+     * canonical destination through the configured provider on every click,
+     * so two viewers never see the same shortened URL — that breaks blocklists,
+     * defeats "I've seen this one already, just skip" pattern recognition,
+     * and forces extension heuristics back to per-domain detection.
+     *
+     * On any shortener failure we degrade gracefully to whatever target_url
+     * is currently stored: better to deliver a slightly-stale URL than to
+     * 500 the click and rob the viewer of their reward.
+     */
+    private function resolveRedirectUrl(Shortlink $link): string
+    {
+        if (! $link->rotates()) {
+            return (string) $link->target_url;
+        }
+
+        try {
+            $client = $this->shorteners->get((string) $link->provider_name);
+            if (! $client->isConfigured()) {
+                throw new ShortenerException("provider `{$link->provider_name}` has no token");
+            }
+            // Cache-buster: btcut.io and friends de-dupe by destination URL
+            // server-side and return the same shortened slug for repeat calls.
+            // A short random query param is harmless to the destination
+            // (servers ignore unknown params) but forces the shortener to
+            // mint a fresh slug per rotation.
+            $rotatedSource = self::appendCacheBuster((string) $link->source_url);
+            $fresh = $client->shorten($rotatedSource);
+            $link->forceFill([
+                'target_url' => $fresh,
+                'target_url_rotated_at' => Carbon::now(),
+            ])->save();
+            return $fresh;
+        } catch (ShortenerException $e) {
+            Log::warning('shortlink rotation failed — serving stale target_url', [
+                'shortlink' => $link->id,
+                'provider' => $link->provider_name,
+                'err' => $e->getMessage(),
+            ]);
+            return (string) $link->target_url;
+        }
+    }
+
+    /**
+     * Append a short random query param so a shortener that de-dupes
+     * server-side (btcut.io / cuty.io / exe.io / shrtfly.com all do)
+     * issues a distinct slug per rotation. The destination server treats
+     * unknown query params as noise — no behavioural impact on the actual
+     * landing experience.
+     */
+    private static function appendCacheBuster(string $url): string
+    {
+        $separator = parse_url($url, PHP_URL_QUERY) === null ? '?' : '&';
+        return $url.$separator.'_r='.Str::lower(Str::random(8));
     }
 
     public function complete(Request $request, int $clickId): JsonResponse

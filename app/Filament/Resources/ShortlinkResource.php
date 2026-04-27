@@ -31,7 +31,24 @@ class ShortlinkResource extends Resource
         return $form->schema([
             Forms\Components\Section::make('Shortlink')->schema([
                 Forms\Components\TextInput::make('title')->required()->maxLength(200),
-                Forms\Components\TextInput::make('target_url')->label('Target URL')->url()->required()->maxLength(500),
+                Forms\Components\TextInput::make('target_url')
+                    ->label('Target URL')
+                    ->url()
+                    ->required()
+                    ->maxLength(500)
+                    ->helperText('What viewers are forwarded to right now. Auto-rotated on every click when "Rotation provider" is set.'),
+                Forms\Components\TextInput::make('source_url')
+                    ->label('Source URL (canonical destination)')
+                    ->url()
+                    ->maxLength(500)
+                    ->helperText('The un-shortened URL passed to the rotator. Leave blank to disable rotation.'),
+                Forms\Components\Select::make('provider_name')
+                    ->label('Rotation provider')
+                    ->options(fn () => collect(app(ShortlinkProviderRegistry::class)->configuredNames())
+                        ->mapWithKeys(fn ($n) => [$n => (string) (config("satpeek.shortlink_providers.{$n}.label") ?? $n)])
+                        ->all())
+                    ->placeholder('— static, no rotation —')
+                    ->helperText('When set, /api/shortlinks/{id}/start re-shortens source_url on every click so viewers never see the same URL twice.'),
             ]),
             Forms\Components\Section::make('Reward & timing')->schema([
                 Forms\Components\TextInput::make('reward_sat')->numeric()->required()->default(3)->minValue(1),
@@ -65,6 +82,17 @@ class ShortlinkResource extends Resource
                 ]),
                 Tables\Columns\TextColumn::make('title')->searchable()->wrap(),
                 Tables\Columns\TextColumn::make('reward_sat')->suffix(' sat')->sortable(),
+                Tables\Columns\TextColumn::make('provider_name')
+                    ->label('Rotation')
+                    ->badge()
+                    ->placeholder('static')
+                    ->color(fn ($state) => $state ? 'warning' : 'gray')
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('target_url_rotated_at')
+                    ->label('Last rotated')
+                    ->since()
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('hold_seconds')->suffix(' s'),
                 Tables\Columns\TextColumn::make('daily_limit_per_user')->label('Daily/user'),
                 Tables\Columns\TextColumn::make('verified_clicks')
@@ -125,11 +153,22 @@ class ShortlinkResource extends Resource
                     ->action(function (Shortlink $record, array $data) {
                         try {
                             $client = app(ShortlinkProviderRegistry::class)->get((string) $data['provider']);
-                            $short = $client->shorten($record->target_url, $data['alias'] ?? null);
-                            $record->update(['target_url' => $short, 'source' => $client->name()]);
+                            // Preserve the canonical destination as source_url
+                            // — this is the URL we'll re-shorten on every
+                            // future click so viewers never see the same
+                            // shortened link twice.
+                            $source = $record->source_url ?: $record->target_url;
+                            $short = $client->shorten($source, $data['alias'] ?? null);
+                            $record->update([
+                                'source_url' => $source,
+                                'provider_name' => $client->name(),
+                                'target_url' => $short,
+                                'target_url_rotated_at' => now(),
+                                'source' => $client->name(),
+                            ]);
                             Notification::make()
                                 ->title('Shortened')
-                                ->body("Target URL replaced with {$short}")
+                                ->body("Rotation enabled via `{$client->name()}`. Each click will issue a fresh URL.")
                                 ->success()
                                 ->send();
                         } catch (ShortenerException $e) {

@@ -11,6 +11,9 @@ class Shortlink extends Model
         'external_id',
         'title',
         'target_url',
+        'source_url',
+        'provider_name',
+        'target_url_rotated_at',
         'reward_sat',
         'hold_seconds',
         'daily_limit_per_user',
@@ -19,5 +22,12 @@ class Shortlink extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'target_url_rotated_at' => 'datetime',
     ];
+
+    /** Whether `start` should re-shorten via the configured provider on click. */
+    public function rotates(): bool
+    {
+        return ! empty($this->provider_name) && ! empty($this->source_url);
+    }
 }
