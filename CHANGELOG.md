@@ -6,6 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- End-to-end PolicyEnforcer integration tests in
+  `tests/Feature/BotDetection/PolicyEnforcerIntegrationTest.php`.
+  Confirms the `bot_scores.tier` → action chain holds at the HTTP
+  layer, not just inside PolicyEnforcer's unit tests:
+  - `trust` tier → PTC start works, withdrawal goes straight to
+    `queued` (no review).
+  - `suspect` tier → PTC start works, withdrawal flips to `hold`
+    with `requires_review = true`.
+  - `likely_bot` tier → PTC start returns 403 `tier_blocked`,
+    same shared-ban-list applies to shortlink start.
+  - `banned` tier → BotScoreGate middleware short-circuits every
+    `/api/*` call with 403 `tier_banned` before any controller runs.
+  - `is_banned` flag → BotScoreGate's first branch returns 403
+    `banned` independently of tier, so a manual operator ban with
+    no `bot_scores` row still blocks correctly.
+  - 8 new tests pin the chain so a future change that drops the
+    `bot.gate` middleware from a route group, or forgets to inject
+    PolicyEnforcer into a new controller, fails CI immediately
+    instead of surfacing in production.
+
 ## [0.4.0] — 2026-04-27
 
 Theme: bot scoring goes live + Laravel 12 EOL fix. The signal-and-engine
