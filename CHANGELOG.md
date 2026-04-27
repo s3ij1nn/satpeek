@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `/up` health probe now reports a `faucetpay` block:
+  - `unconfigured` (degraded, 200) — `FAUCETPAY_API_KEY` blank.
+    Withdrawals would all permanent-fail; ops needs this surfaced
+    before a user files a support ticket.
+  - `backlogged` (degraded, 200) — > 0 `queued` withdrawals older than
+    1 h. Either the queue worker is dead or FaucetPay has been
+    unreachable past the 35-min retry budget. The `backlog` field
+    carries the count so dashboards can graph the trend.
+  - `ok` — configured + queue draining within the 1-h grace.
+  - Structural only — no live FaucetPay HTTP probe, because that
+    would add cost and flakiness to a /up that load balancers hit
+    every few seconds. 3 new feature tests cover the three states;
+    the existing all-OK fixture grew the FAUCETPAY_API_KEY config
+    so overall stays `ok`.
 - Two operator-facing widgets on the Filament `/admin` dashboard:
   - **In-flight withdrawals** — count + total `amount_sat` of
     `queued`/`processing` rows, plus separate cards for the manual-

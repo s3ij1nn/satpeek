@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Withdrawal;
 use App\Offerwall\AdapterRegistry;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
@@ -32,6 +33,7 @@ class HealthController extends Controller
             'shortlink_providers' => $this->checkShortlinkProviders(),
             'ip_reputation_providers' => $this->checkIpReputation(),
             'offerwall_providers' => $this->checkOfferwallProviders(),
+            'faucetpay' => $this->checkFaucetPay(),
         ];
 
         $hasCriticalDown = false;
@@ -190,6 +192,54 @@ class HealthController extends Controller
             ])),
             default => [],
         };
+    }
+
+    /**
+     * Reports the FaucetPay payout integration's wire-up state plus a cheap
+     * queue-backlog probe. Structural only — no live HTTP probe to FaucetPay,
+     * because that would add cost and flakiness to a health endpoint a load
+     * balancer hits every few seconds.
+     *
+     *   - `unconfigured` (degraded, 200) — `FAUCETPAY_API_KEY` blank.
+     *     Withdrawals would all permanent-fail; ops needs this surfaced
+     *     before a user files a support ticket.
+     *   - `backlogged` (degraded, 200) — > 0 `queued` withdrawals older
+     *     than 1 h. The queue worker is dead OR FaucetPay has been
+     *     unreachable longer than the 35-min retry budget. The backlog
+     *     count goes in `detail` so dashboards can graph it.
+     *   - `ok` — configured + queue draining.
+     *
+     * Threshold is 1 h because the retry backoff caps at 30 min — anything
+     * older than 1 h is past the dead-letter callback's window and stuck
+     * for an external reason.
+     *
+     * @return array{status: string, critical: bool, detail?: string, backlog?: int}
+     */
+    private function checkFaucetPay(): array
+    {
+        $apiKey = (string) config('satpeek.faucetpay.api_key', '');
+        if ($apiKey === '') {
+            return ['status' => 'degraded', 'critical' => false, 'detail' => 'unconfigured'];
+        }
+
+        try {
+            $backlog = (int) Withdrawal::where('status', 'queued')
+                ->where('created_at', '<', now()->subHour())
+                ->count();
+        } catch (Throwable) {
+            return ['status' => 'down', 'critical' => false, 'detail' => 'backlog_probe_failed'];
+        }
+
+        if ($backlog > 0) {
+            return [
+                'status' => 'degraded',
+                'critical' => false,
+                'detail' => 'backlogged',
+                'backlog' => $backlog,
+            ];
+        }
+
+        return ['status' => 'ok', 'critical' => false];
     }
 
     /** @return array{status: string, critical: bool, detail?: string, sources?: array<int, string>} */

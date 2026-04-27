@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Health;
 
+use App\Models\User;
+use App\Models\Withdrawal;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
@@ -36,6 +38,7 @@ class HealthEndpointTest extends TestCase
                 'shortlink_providers' => ['status', 'critical'],
                 'ip_reputation_providers' => ['status', 'critical'],
                 'offerwall_providers' => ['status', 'critical'],
+                'faucetpay' => ['status', 'critical'],
             ],
         ]);
         $this->assertContains($response->json('status'), ['ok', 'degraded', 'down']);
@@ -53,6 +56,7 @@ class HealthEndpointTest extends TestCase
         config()->set('satpeek.bitcotask.api_key', 'KEY');
         config()->set('satpeek.bitcotask.bearer_token', 'BEARER');
         config()->set('satpeek.bitcotask.s2s_secret', 'SECRET');
+        config()->set('satpeek.faucetpay.api_key', 'FP-KEY');
         $this->app->forgetInstance(ShortlinkProviderRegistry::class);
 
         $response = $this->getJson('/up');
@@ -63,6 +67,7 @@ class HealthEndpointTest extends TestCase
         $this->assertSame('ok', $response->json('checks.redis.status'));
         $this->assertSame('ok', $response->json('checks.maxmind_asn.status'));
         $this->assertSame('ok', $response->json('checks.offerwall_providers.status'));
+        $this->assertSame('ok', $response->json('checks.faucetpay.status'));
     }
 
     public function test_unconfigured_maxmind_yields_degraded_overall_with_200(): void
@@ -171,6 +176,76 @@ class HealthEndpointTest extends TestCase
 
         $this->assertSame('ok', $response->json('checks.offerwall_providers.status'));
         $this->assertSame(['bitcotask'], $response->json('checks.offerwall_providers.enabled'));
+    }
+
+    public function test_faucetpay_unconfigured_reports_degraded_not_down(): void
+    {
+        // FAUCETPAY_API_KEY blank — withdrawals would all permanent-fail,
+        // but the platform itself stays up. Surface as degraded so dashboards
+        // light up without paging on-call.
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        config()->set('satpeek.faucetpay.api_key', '');
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('degraded', $response->json('checks.faucetpay.status'));
+        $this->assertSame('unconfigured', $response->json('checks.faucetpay.detail'));
+        $this->assertFalse($response->json('checks.faucetpay.critical'));
+    }
+
+    public function test_faucetpay_backlog_older_than_one_hour_reports_degraded_with_count(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        config()->set('satpeek.faucetpay.api_key', 'FP-KEY');
+
+        $u = User::factory()->create();
+        // Three queued + one that's already moved on. Backdate two of the
+        // queued rows past the 1-h threshold; the third is fresh and must
+        // not count.
+        foreach (range(1, 3) as $_) {
+            Withdrawal::create([
+                'user_id' => $u->id, 'amount_sat' => 1000,
+                'faucetpay_email' => 'a@x', 'currency' => 'BTC',
+                'status' => 'queued',
+            ]);
+        }
+        // Backdate the first two so they pre-date the 1-h cutoff.
+        Withdrawal::query()
+            ->where('user_id', $u->id)
+            ->where('status', 'queued')
+            ->orderBy('id')
+            ->limit(2)
+            ->update(['created_at' => now()->subHours(2)]);
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('degraded', $response->json('checks.faucetpay.status'));
+        $this->assertSame('backlogged', $response->json('checks.faucetpay.detail'));
+        $this->assertSame(2, $response->json('checks.faucetpay.backlog'));
+    }
+
+    public function test_faucetpay_fresh_queue_reports_ok(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        config()->set('satpeek.faucetpay.api_key', 'FP-KEY');
+
+        $u = User::factory()->create();
+        // Recently-queued row — within the 1-h grace, queue worker has
+        // a chance to drain it.
+        Withdrawal::create([
+            'user_id' => $u->id, 'amount_sat' => 1000,
+            'faucetpay_email' => 'a@x', 'currency' => 'BTC',
+            'status' => 'queued',
+        ]);
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('ok', $response->json('checks.faucetpay.status'));
     }
 
     public function test_offerwall_enabled_but_missing_bearer_token_reports_degraded_with_field_list(): void
