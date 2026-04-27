@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AdblockGate;
 use App\Http\Middleware\BotScoreGate;
 use App\Http\Middleware\CloudflareClientIp;
 use App\Http\Middleware\FingerprintRequired;
@@ -57,6 +58,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
+            'adblock.gate' => AdblockGate::class,
             'bot.gate' => BotScoreGate::class,
             'fingerprint' => FingerprintRequired::class,
             'ip.gate' => IpReputationGate::class,

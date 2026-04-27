@@ -90,6 +90,21 @@
         </div>
     </header>
 
+    {{-- Anti-adblock banner — orthogonal to tier so it ALWAYS shows
+         when detected, even for trust-tier users. Earning APIs are
+         already gated server-side by AdblockGate; this banner is the
+         user-facing explanation of why the buttons aren't working. --}}
+    @if (($u->adblock_status ?? null) === 'detected')
+        <div class="alert--err" style="padding: .875rem 1.125rem; border-radius: var(--radius-md); background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.45); color: var(--rose); font-size: var(--text-sm);">
+            <strong>Adblock or Brave shields detected.</strong> SatPeek's economics depend on ad impressions — earning surfaces (PTC / shortlinks / withdrawals) are paused for your account until ads are allowed.
+            <ul style="margin: .5rem 0 0; padding-left: 1.25rem;">
+                <li>uBlock / AdBlock Plus: click the extension icon → "Don't run on this site".</li>
+                <li>Brave: click the lion icon in the address bar → set <strong>Shields</strong> to Down for this site.</li>
+            </ul>
+            Reload the page after disabling — the check re-runs automatically.
+        </div>
+    @endif
+
     {{-- Tier-driven status banner. Hidden on the trust path so the
          dashboard stays clean for the ~95 % of users who never see one
          of these. The text explains the *current* posture in plain

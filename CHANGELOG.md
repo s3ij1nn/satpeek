@@ -6,6 +6,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Anti-adblock detection + earning gate. SatPeek's economics depend
+  on ad impressions; users running adblockers (or Brave with shields
+  on) now have earning surfaces (PTC start / shortlink start /
+  withdrawal) refused at 403 until they disable.
+  - **Frontend probe** (auto-injected into the authenticated layout):
+    three signals combined per request — bait-element CSS hide check,
+    network probe against an `/ads/` path, and `navigator.brave.isBrave()`
+    for Brave detection. Posts the verdict to `/api/adblock/report`.
+  - **Server-side gate** (`App\Http\Middleware\AdblockGate`,
+    aliased `adblock.gate`): refuses earning routes with 403
+    `adblock_detected` when the user's last report flagged either
+    adblock or Brave; refuses with 403 `adblock_check_required`
+    when no report has landed OR the last report is older than
+    `ADBLOCK_CHECK_TTL_SECONDS` (default 300 s). The stale-equals-
+    blocked rule is the anti-bypass measure — a bot that simply never
+    POSTs the report can't claim "clean" by default.
+  - The `/api/adblock/report` endpoint is itself exempt from the
+    gate (otherwise the freshly-checking client would lock itself
+    out of the very endpoint it needs to call).
+  - **User-facing banner** on `/dashboard` explains the gate state
+    in plain language with disable-instructions for uBlock /
+    AdBlockPlus / Brave shields. Orthogonal to the tier banner —
+    shows even for trust-tier users.
+  - `users` table grew `adblock_status` (clean | detected | null) +
+    `adblock_checked_at` columns. `UserFactory::definition()`
+    defaults to a freshly-checked clean state so existing feature
+    tests for earning routes aren't blocked; explicit
+    `withAdblockDetected()` / `withStaleAdblockCheck()` factory
+    states cover the gate-active paths.
+  - 7 new feature tests in
+    `tests/Feature/Adblock/AdblockGateTest.php` cover clean-passes /
+    detected-blocks / never-reported-blocks / stale-blocks /
+    report-endpoint-not-gated / Brave-marks-detected / withdrawal-
+    also-gated.
+
 ## [0.4.3] — 2026-04-27
 
 Patch release: surface previously-hidden state to both operators and end

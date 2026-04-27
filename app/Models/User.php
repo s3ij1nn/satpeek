@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -31,6 +32,8 @@ use Laravel\Sanctum\HasApiTokens;
  * @property bool $is_admin
  * @property bool $is_banned
  * @property string|null $ban_reason
+ * @property string|null $adblock_status `clean` | `detected` | null=unchecked
+ * @property Carbon|null $adblock_checked_at
  * @property-read BotScore|null $botScore
  */
 class User extends Authenticatable implements FilamentUser, HasName, MustVerifyEmail
@@ -76,6 +79,7 @@ class User extends Authenticatable implements FilamentUser, HasName, MustVerifyE
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'is_banned' => 'boolean',
+            'adblock_checked_at' => 'datetime',
         ];
     }
 

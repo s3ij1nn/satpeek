@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdblockController;
 use App\Http\Controllers\Api\BeaconController;
 use App\Http\Controllers\Api\CaptchaController;
 use App\Http\Controllers\Api\PtcController;
@@ -20,8 +21,13 @@ Route::middleware(['fingerprint'])->group(function () {
 // frontend is the same-origin Blade app. The bot.gate middleware blocks any
 // account whose tier escalated to `banned`.
 Route::middleware(['auth', 'bot.gate'])->group(function () {
+    // Anti-adblock report endpoint — needs to land BEFORE adblock.gate
+    // applies, otherwise a freshly-checking client gets locked out of
+    // the very endpoint they need to call to clear the lock.
+    Route::post('/adblock/report', [AdblockController::class, 'report'])->name('api.adblock.report');
+
     Route::get('/ptc', [PtcController::class, 'index']);
-    Route::post('/ptc/{adId}/start', [PtcController::class, 'start'])->whereNumber('adId');
+    Route::post('/ptc/{adId}/start', [PtcController::class, 'start'])->middleware('adblock.gate')->whereNumber('adId');
     // Token-keyed endpoints pair with the /ptc/auth/{token} viewer URL —
     // declared BEFORE the legacy {viewId} routes so /auth/<token>/… isn't
     // shadowed by the numeric {viewId} pattern.
@@ -35,7 +41,7 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     Route::post('/ptc/{viewId}/complete', [PtcController::class, 'complete'])->whereNumber('viewId');
 
     Route::get('/shortlinks', [ShortlinkController::class, 'index']);
-    Route::post('/shortlinks/{id}/start', [ShortlinkController::class, 'start'])->whereNumber('id');
+    Route::post('/shortlinks/{id}/start', [ShortlinkController::class, 'start'])->middleware('adblock.gate')->whereNumber('id');
     // Token-keyed completion pairs with the /shortlinks/auth/{token} landing —
     // same 28-char random as the URL slug, no numeric ID exposure. Declared
     // BEFORE the legacy clickId route so /auth/<token>/complete doesn't get
@@ -45,5 +51,5 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     // Legacy: complete-by-numeric-clickId. Kept for tests / external callers.
     Route::post('/shortlinks/{clickId}/complete', [ShortlinkController::class, 'complete'])->whereNumber('clickId');
 
-    Route::post('/withdraw', [WithdrawController::class, 'store']);
+    Route::post('/withdraw', [WithdrawController::class, 'store'])->middleware('adblock.gate');
 });

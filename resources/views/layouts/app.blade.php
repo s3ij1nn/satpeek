@@ -253,5 +253,90 @@
 </footer>
 
 @stack('body')
+
+@auth
+{{-- Anti-adblock + Brave detection. Multiple signals combined so a
+     single bypass (CSS class allowlist, `navigator.brave` shim) doesn't
+     defeat the check. The result POSTs to /api/adblock/report so the
+     server-side AdblockGate middleware can decide whether to gate
+     earning routes for this user. Runs on every authenticated page
+     load (idempotent — server stamps adblock_checked_at = now). --}}
+<div id="sp-adblock-bait" class="ads adsbox doubleclick ad-placement carbon-ads pub_300x250 banner-ad" style="position:absolute;left:-9999px;top:-9999px;height:1px;width:1px;background:transparent" aria-hidden="true">&nbsp;</div>
+<script>
+(() => {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (!csrf) return;
+
+    async function detect() {
+        const signals = [];
+
+        // 1) Bait element. Adblockers hide elements matching common ad
+        //    class names — if our bait is hidden / zero-height, adblock
+        //    is active. Cookie-clearing also doesn't escape this since
+        //    the rule is CSS-injected per-page.
+        const bait = document.getElementById('sp-adblock-bait');
+        const baitHidden = !bait
+            || bait.offsetHeight === 0
+            || bait.offsetParent === null
+            || getComputedStyle(bait).display === 'none'
+            || getComputedStyle(bait).visibility === 'hidden';
+        if (baitHidden) signals.push('bait_hidden');
+
+        // 2) Brave detection. The Brave team exposes navigator.brave.isBrave()
+        //    as a stable detection API. Brave's built-in shields block ads
+        //    by default — per platform policy we count it as adblock.
+        let brave = false;
+        try {
+            if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+                brave = await navigator.brave.isBrave();
+                if (brave) signals.push('brave');
+            }
+        } catch {}
+
+        // 3) Network probe. Try fetching a path adblockers commonly block.
+        //    If the request errors out (NetworkError) without a CORS
+        //    response, that's a strong adblock signal. Wrap in try/catch
+        //    so the page never breaks just because the probe failed.
+        let probeBlocked = false;
+        try {
+            await fetch('/ads/banner.js?_=' + Date.now(), {method: 'HEAD', cache: 'no-store'});
+        } catch {
+            probeBlocked = true;
+            signals.push('probe_blocked');
+        }
+
+        const adblockDetected = baitHidden || probeBlocked;
+
+        try {
+            await fetch('/api/adblock/report', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    adblock_detected: adblockDetected,
+                    brave_detected: brave,
+                    signals,
+                }),
+            });
+        } catch {
+            // Best-effort. AdblockGate will treat us as stale → blocked
+            // until the next successful report.
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', detect, {once: true});
+    } else {
+        detect();
+    }
+})();
+</script>
+@endauth
+
 </body>
 </html>

@@ -99,6 +99,17 @@ return [
         )
     ),
 
+    // Anti-adblock detection. Browser-side probe POSTs to
+    // /api/adblock/report on every authenticated page load. AdblockGate
+    // then refuses earning routes when the user's last report is either
+    // `detected` OR stale (older than check_ttl_seconds). Generous enough
+    // that a slow page-load + user-action sequence stays inside; tight
+    // enough that a bot can't open one tab and grind for hours without
+    // re-checking.
+    'adblock' => [
+        'check_ttl_seconds' => (int) env('ADBLOCK_CHECK_TTL_SECONDS', 300),
+    ],
+
     // Cloudflare orange-cloud trust flag. When true, CloudflareClientIp
     // middleware promotes `CF-Connecting-IP` to REMOTE_ADDR so every
     // downstream IP-consuming code path (bot detection / captcha /
