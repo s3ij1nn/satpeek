@@ -6,11 +6,14 @@ namespace Tests\Feature\Admin;
 
 use App\Filament\Widgets\BotTierDistributionWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
+use App\Filament\Widgets\SharedIpDetectionsWidget;
 use App\Models\BotScore;
 use App\Models\User;
+use App\Models\UserIpObservation;
 use App\Models\Withdrawal;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -125,6 +128,44 @@ class DashboardWidgetTest extends TestCase
         $this->assertSame('1', $banned->getValue());
     }
 
+    public function test_shared_ip_widget_zero_state(): void
+    {
+        $stats = $this->extractStats(new SharedIpDetectionsWidget);
+
+        $this->assertCount(3, $stats);
+        foreach ($stats as $stat) {
+            $this->assertSame('0', $stat->getValue());
+        }
+        $labels = array_map(fn (Stat $s) => $s->getLabel(), $stats);
+        $this->assertSame(['Shared-IP hits (24 h)', 'Distinct shared IPs', 'Distinct users on those IPs'], $labels);
+    }
+
+    public function test_shared_ip_widget_counts_only_recently_seen_observations_on_shared_ips(): void
+    {
+        // Two users on the same IP, both observed within the last 24 h.
+        $sharedIp = '203.0.113.42';
+        $u1 = User::factory()->create();
+        $u2 = User::factory()->create();
+        $this->observe($u1, $sharedIp, hoursAgo: 1);
+        $this->observe($u2, $sharedIp, hoursAgo: 6);
+        // Same IP, but the third observation is BEYOND the 24 h window
+        // and must not contribute to the recent flagged count (though
+        // it does keep the IP in the "shared" subquery).
+        $u3 = User::factory()->create();
+        $this->observe($u3, $sharedIp, hoursAgo: 48);
+        // A different IP with only ONE user — must not contribute at all.
+        $this->observe(User::factory()->create(), '198.51.100.99', hoursAgo: 2);
+
+        [$flagged, $distinctIps, $distinctUsers] = $this->extractStats(new SharedIpDetectionsWidget);
+
+        // 2 recent observations on the shared IP.
+        $this->assertSame('2', $flagged->getValue());
+        // 1 distinct shared IP in the last 24 h.
+        $this->assertSame('1', $distinctIps->getValue());
+        // 2 distinct users in the last 24 h on shared IPs.
+        $this->assertSame('2', $distinctUsers->getValue());
+    }
+
     public function test_widgets_are_admin_only_via_panel_guard(): void
     {
         // Panel-level guard is User::canAccessPanel() — non-admin users can't
@@ -163,5 +204,18 @@ class DashboardWidgetTest extends TestCase
         $m->setAccessible(true);
 
         return $m->invoke($widget);
+    }
+
+    private function observe(User $user, string $ip, int $hoursAgo = 1): void
+    {
+        $when = Carbon::now()->subHours($hoursAgo);
+        UserIpObservation::create([
+            'user_id' => $user->id,
+            'ip' => $ip,
+            'first_seen_at' => $when,
+            'last_seen_at' => $when,
+            'hit_count' => 1,
+            'source' => 'login',
+        ]);
     }
 }

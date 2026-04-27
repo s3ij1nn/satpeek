@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Widgets\BotTierDistributionWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
+use App\Filament\Widgets\SharedIpDetectionsWidget;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -38,6 +39,7 @@ class AdminPanelProvider extends PanelProvider
                 Widgets\AccountWidget::class,
                 InFlightWithdrawalsWidget::class,
                 BotTierDistributionWidget::class,
+                SharedIpDetectionsWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,

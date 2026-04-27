@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `SharedIpDetectionsWidget` on the `/admin` dashboard — three cards
+  for "is the platform under sock-puppet attack right now?":
+  - **Shared-IP hits (24 h)** — count of recent observations on
+    IPs that have 2+ distinct users
+  - **Distinct shared IPs** — how many IPs are bleeding
+  - **Distinct users on those IPs** — sock-puppet pool size
+  - All cards tap-through to `/admin/user-ip-observations` with the
+    "Shared IPs only" ternary filter pre-applied. Color shifts
+    (gray → warning → danger) so a quiet day looks neutral and a
+    sudden burst draws the eye.
 - Inline "Recent IP history" section on the user edit page. Last 10
   auth observations rendered as a server-side table with hit_count,
   source, last-seen, and per-row sibling count (distinct OTHER
