@@ -6,6 +6,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- PHPStan baseline reduced from 26 errors → 13 → 0 across two
+  maintenance passes (7fc8869, e8ce13c). The
+  `phpstan-baseline.neon` file is gone and CI now fails on the first
+  new type error — no more "shrinks over time" grace period.
+- `@property` / `@property-read` PHPDoc added to PtcView,
+  ShortlinkClick, Shortlink, PtcAd, Withdrawal, BotScore,
+  CaptchaChallenge, and User (botScore relation). Larastan now
+  resolves Eloquent magic accessors through the typed properties
+  instead of falling back to `Model::$xxx → undefined`.
+- ChallengeVerifier / ResponseTimeSignal / Api PtcController +
+  ShortlinkController + ShortlinkAuthController: dropped redundant
+  `?->` and `??` guards on schema-non-nullable columns
+  (`expires_at`, `issued_at`, `started_at`). Carbon 3 signed-float
+  diffs are now bounded with `(int) abs($x->diffInSeconds(now()))`.
+- `BitcoTaskAdapter::callbackResult` casts the X-BT-Signature header
+  to string up-front instead of running a redundant `is_string()`
+  narrowing.
+- `AppServiceProvider::register` drops the `if (true) { ... }`
+  placeholder around the unconditional ProxyCheck registration; the
+  inline comment explaining the unconditional registration stays.
+
+### Notes
+
+- The remaining `@phpstan-ignore-next-line nullsafe.neverNull` on
+  `PolicyEnforcer::tier` documents a Larastan limitation (it narrows
+  `HasOne::botScore` to non-null even with `@property-read
+  BotScore|null` on User). The runtime nullability is real, so the
+  `?->` + `??` guards stay; the suppressed scope is one expression
+  so any future false-positive elsewhere still surfaces.
+
 ## [0.1.0] — 2026-04-27
 
 First public release. Cuts the line between the initial baseline import and
