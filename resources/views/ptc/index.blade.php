@@ -3,6 +3,7 @@
 @php
     use App\Http\Controllers\Api\PtcController;
     use App\Models\PtcView;
+    use App\Offerwall\OfferwallMerge;
     use Illuminate\Support\Carbon;
 
     $u = auth()->user();
@@ -21,6 +22,12 @@
         ->selectRaw('ptc_ad_id, count(*) as used')
         ->groupBy('ptc_ad_id')
         ->pluck('used', 'ptc_ad_id');
+
+    // External per-user offers (BitcoTasks today). Merge returns [] when no
+    // per-user adapter is enabled OR when the adapter's API key isn't set,
+    // so /ptc keeps working with the in-platform inventory alone — important
+    // because BitcoTasks gates publisher-API access on a manual review.
+    $externalAds = app(OfferwallMerge::class)->fetchPtcFor($u, request()->ip() ?? '');
 @endphp
 
 @push('head')
@@ -92,6 +99,34 @@
                                  The viewer broadcasts a completion event back to this tab when the reward is claimed. --}}
                             <a href="{{ route('ptc.view', ['id' => $ad->id]) }}" target="_blank" rel="noopener" class="ad__cta">Watch <span aria-hidden="true">→</span></a>
                         @endif
+                    </div>
+                </article>
+            @endforeach
+        </div>
+    @endif
+
+    @if (! empty($externalAds))
+        <header class="ptc__head" style="margin-top: 1rem;">
+            <span class="meta">/ partner network</span>
+            <h1 style="font-size: 2rem;">More <em>tasks</em>.</h1>
+            <p style="color: var(--text-secondary); margin: 0;">External offers from connected publishers. Completion is verified by the publisher and credited via server callback — you never leave their site for SatPeek to track.</p>
+        </header>
+        <div class="ad-list">
+            @foreach ($externalAds as $offer)
+                <article class="ad">
+                    <div>
+                        <h3 class="ad__title">{{ $offer->title }}</h3>
+                        @if ($offer->description)
+                            <p class="ad__desc">{{ $offer->description }}</p>
+                        @endif
+                        <p class="ad__source">{{ $offer->source }} · {{ $offer->durationSec }}s · {{ $offer->dailyLimitPerUser }}/day</p>
+                    </div>
+                    <div class="ad__meta">
+                        <div class="ad__reward">{{ number_format($offer->rewardSat) }}<small>sat</small></div>
+                        <div>via {{ $offer->source }}</div>
+                    </div>
+                    <div>
+                        <a href="{{ $offer->targetUrl }}" target="_blank" rel="noopener noreferrer" class="ad__cta">Open <span aria-hidden="true">↗</span></a>
                     </div>
                 </article>
             @endforeach

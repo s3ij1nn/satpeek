@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Offerwall merge surface — `/ptc`, `/shortlinks`, and a new
+  `/read-articles` page now render external publisher offers
+  alongside (or, for read-articles, instead of) internal inventory.
+  - `App\Offerwall\OfferwallMerge` service iterates
+    `AdapterRegistry::enabled()`, calls the per-user fetcher on each
+    adapter that implements `OfferwallPerUserAdapter`, and merges
+    results. Per-adapter exceptions are caught + logged so one bad
+    partner can't 500 the page.
+  - **BitcoTasks-optional by design.** Default `OFFERWALLS_ENABLED=`
+    (empty) makes every merge return `[]`, so the platform keeps
+    rendering internal inventory while the operator waits for the
+    BitcoTasks publisher review to ship API credentials. The
+    `/read-articles` page degrades to a friendly "no partners
+    connected" state in the same condition; the nav link is hidden
+    entirely until at least one per-user adapter is enabled.
+  - 12 new tests across `tests/Feature/Offerwall/OfferwallMergeTest.php`
+    and `tests/Feature/ReadArticles/ReadArticlesPageTest.php` lock
+    the empty-by-default contract, exception isolation, and the
+    three render states (no partner / no offers / offers present).
 - BitcoTasks REST publisher integration. The published spec
   (https://bitcotasks.com/documentations, re-fetched 2026-04-27)
   exposes three per-(user, IP) endpoints — PTC at `/api/`, Shortlink

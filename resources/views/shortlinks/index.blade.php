@@ -3,6 +3,7 @@
 @php
     use App\Models\Shortlink;
     use App\Models\ShortlinkClick;
+    use App\Offerwall\OfferwallMerge;
     use Illuminate\Support\Carbon;
     $u = auth()->user();
     $today = Carbon::now()->startOfDay();
@@ -13,6 +14,12 @@
         ->selectRaw('shortlink_id, count(*) as used')
         ->groupBy('shortlink_id')
         ->pluck('used', 'shortlink_id');
+
+    // External per-user offers (BitcoTasks today). Empty when no per-user
+    // adapter is enabled or its API key is unset, so /shortlinks keeps
+    // working on internal inventory alone — important because BitcoTasks
+    // gates publisher-API access on a manual review.
+    $externalLinks = app(OfferwallMerge::class)->fetchShortlinkFor($u, request()->ip() ?? '');
 @endphp
 
 @push('head')
@@ -81,6 +88,28 @@
                         @else
                             <button type="button" class="row__cta sl-go">Open &amp; hold →</button>
                         @endif
+                    </div>
+                </article>
+            @endforeach
+        </div>
+    @endif
+
+    @if (! empty($externalLinks))
+        <header class="sl__head" style="margin-top: 1rem;">
+            <span class="meta">/ partner network</span>
+            <h1 style="font-size: 2rem;">More <em>links</em>.</h1>
+            <p style="color: var(--text-secondary); margin: 0;">External shortlinks from connected publishers. Reward is credited via the publisher's server callback once you complete the interstitial on their side.</p>
+        </header>
+        <div class="row-list">
+            @foreach ($externalLinks as $offer)
+                <article class="row">
+                    <div>
+                        <h3 class="row__title">{{ $offer->title }}</h3>
+                        <div class="row__meta">{{ $offer->source }} · {{ $offer->durationSec }}s hold · {{ $offer->dailyLimitPerUser }}/day</div>
+                    </div>
+                    <div class="row__reward">{{ number_format($offer->rewardSat) }}<small>sat</small></div>
+                    <div>
+                        <a href="{{ $offer->targetUrl }}" target="_blank" rel="noopener noreferrer" class="row__cta">Open ↗</a>
                     </div>
                 </article>
             @endforeach

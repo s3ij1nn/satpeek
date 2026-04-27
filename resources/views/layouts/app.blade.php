@@ -203,6 +203,9 @@
                 <a href="{{ route('dashboard') }}">Dashboard</a>
                 <a href="{{ route('ptc.index') }}">PTC</a>
                 <a href="{{ route('shortlinks.index') }}">Shortlinks</a>
+                @if (\App\Http\Controllers\ReadArticlesController::hasPerUserAdapter(app(\App\Offerwall\AdapterRegistry::class)))
+                    <a href="{{ route('read_articles.index') }}">Read</a>
+                @endif
                 <a href="{{ route('advertise.index') }}">Advertise</a>
                 <a href="{{ route('withdraw.index') }}">Withdraw</a>
                 <a href="{{ route('referral.index') }}">Referral</a>
