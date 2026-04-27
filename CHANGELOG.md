@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-04-27
+
+Theme: bot scoring goes live + Laravel 12 EOL fix. The signal-and-engine
+infrastructure shipped in v0.3.0 was dormant — `ScoreEngine` was registered
+in the container but never invoked outside unit tests, so SharedIpSignal
+and the rest of the captcha-driven signals only fed test fixtures, not
+real user scoring. This release wires the engine into the auth and
+captcha-verify paths, surfaces the verdict on the operator's user-detail
+page, and bumps off the security-EOL'd Laravel 11.
+
 ### Added
 
 - Bot detection panel on the `/admin/users/{id}/edit` page.
@@ -549,7 +559,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/s3ij1nn/satpeek/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/s3ij1nn/satpeek/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/s3ij1nn/satpeek/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/s3ij1nn/satpeek/releases/tag/v0.1.0
