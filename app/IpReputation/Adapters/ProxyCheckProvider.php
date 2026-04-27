@@ -4,6 +4,7 @@ namespace App\IpReputation\Adapters;
 
 use App\IpReputation\Contracts\IpReputationProvider;
 use App\IpReputation\Contracts\IpVerdict;
+use App\IpReputation\ProviderRateLimit;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
@@ -48,6 +49,13 @@ class ProxyCheckProvider implements IpReputationProvider
         if (! filter_var($ip, FILTER_VALIDATE_IP)) {
             return null;
         }
+        // Skip the API call entirely if we recently saw a `denied` response
+        // — the CompositeProvider then falls through to IPHub on the next
+        // step, exactly the behaviour the operator asked for. Re-tries
+        // automatically once the cooldown window expires.
+        if (ProviderRateLimit::isLimited($this->name())) {
+            return null;
+        }
 
         $query = http_build_query(array_filter([
             'key' => $this->apiKey ?: null,
@@ -73,8 +81,18 @@ class ProxyCheckProvider implements IpReputationProvider
         if (! is_array($data)) {
             return null;
         }
-        if (($data['status'] ?? '') === 'error' || ($data['status'] ?? '') === 'denied') {
-            Log::debug('proxycheck error', ['ip' => $ip, 'status' => $data['status'], 'message' => $data['message'] ?? null]);
+        $status = (string) ($data['status'] ?? '');
+        if ($status === 'error' || $status === 'denied') {
+            Log::debug('proxycheck error', ['ip' => $ip, 'status' => $status, 'message' => $data['message'] ?? null]);
+
+            // `denied` is ProxyCheck's quota-exhausted signal. Mark the
+            // provider rate-limited so the next ~hour of lookups skip
+            // ProxyCheck and fall through to IPHub instead of burning
+            // round-trips that we know will all fail with the same
+            // response.
+            if ($status === 'denied') {
+                ProviderRateLimit::markLimited($this->name());
+            }
 
             return null;
         }

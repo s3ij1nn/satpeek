@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\WelcomeEmail;
 use App\Models\Referral;
 use App\Models\User;
+use App\Services\UserIpObserver;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,7 +20,10 @@ use Illuminate\Validation\Rule;
 
 class RegisterController extends Controller
 {
-    public function __construct(private readonly ChallengeVerifier $verifier) {}
+    public function __construct(
+        private readonly ChallengeVerifier $verifier,
+        private readonly UserIpObserver $ipObserver,
+    ) {}
 
     public function show(Request $request)
     {
@@ -73,6 +77,12 @@ class RegisterController extends Controller
         if ($referrer) {
             Referral::firstOrCreate(['referrer_id' => $referrer->id, 'referred_id' => $user->id]);
         }
+
+        // First IP observation for this user. Returns the count of OTHER
+        // users that registered / signed in from the same IP — surfaces
+        // sock-puppet account creation that cookie-based dedup misses
+        // (incognito window, freshly-cleared cookies).
+        $this->ipObserver->record($user, $request->ip(), source: 'register');
 
         event(new Registered($user));
 

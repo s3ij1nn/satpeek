@@ -4,7 +4,9 @@ namespace App\IpReputation\Adapters;
 
 use App\IpReputation\Contracts\IpReputationProvider;
 use App\IpReputation\Contracts\IpVerdict;
+use App\IpReputation\ProviderRateLimit;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\BadResponseException;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
 
@@ -43,6 +45,13 @@ class IpHubProvider implements IpReputationProvider
         if ($this->apiKey === '' || ! filter_var($ip, FILTER_VALIDATE_IP)) {
             return null;
         }
+        // Skip the API call entirely if a recent response signalled quota
+        // exhaustion — the CompositeProvider then has no fallback (IPHub
+        // is the last in the chain), but burning round-trips that we
+        // already know will fail wouldn't help either.
+        if (ProviderRateLimit::isLimited($this->name())) {
+            return null;
+        }
 
         try {
             $response = $this->http->request('GET', rtrim($this->apiBase, '/').'/ip/'.$ip, [
@@ -53,6 +62,16 @@ class IpHubProvider implements IpReputationProvider
                 'timeout' => $this->timeoutSec,
                 'connect_timeout' => 2,
             ]);
+        } catch (BadResponseException $e) {
+            // 429 = quota exhausted, 403 = key disabled / invalid. Both
+            // mean "stop hitting us for a while".
+            $status = $e->getResponse()->getStatusCode();
+            if ($status === 429 || $status === 403) {
+                ProviderRateLimit::markLimited($this->name());
+            }
+            Log::debug('iphub http error', ['ip' => $ip, 'status' => $status, 'err' => $e->getMessage()]);
+
+            return null;
         } catch (GuzzleException $e) {
             Log::debug('iphub lookup failed', ['ip' => $ip, 'err' => $e->getMessage()]);
 

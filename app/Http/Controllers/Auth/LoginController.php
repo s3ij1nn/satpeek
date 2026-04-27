@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Captcha\ChallengeVerifier;
 use App\Http\Controllers\Controller;
+use App\Services\UserIpObserver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,10 @@ use Illuminate\Support\Str;
 
 class LoginController extends Controller
 {
-    public function __construct(private readonly ChallengeVerifier $verifier) {}
+    public function __construct(
+        private readonly ChallengeVerifier $verifier,
+        private readonly UserIpObserver $ipObserver,
+    ) {}
 
     public function show()
     {
@@ -58,6 +62,15 @@ class LoginController extends Controller
 
         RateLimiter::clear($throttleKey);
         $request->session()->regenerate();
+
+        // Record the IP this user just authenticated from. Returns the
+        // count of OTHER users that have signed in from the same IP — a
+        // strong duplicate-account signal that the SharedIpSignal feeds
+        // into the bot score and the operator can review in admin logs.
+        $user = $request->user();
+        if ($user) {
+            $this->ipObserver->record($user, $request->ip(), source: 'login');
+        }
 
         $redirect = $request->session()->pull('url.intended', route('dashboard'));
         if ($isAjax) {

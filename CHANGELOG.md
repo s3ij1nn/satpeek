@@ -8,6 +8,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Multi-account-by-IP detection. New `user_ip_observations` table +
+  `App\Services\UserIpObserver` records the IP each user authenticates
+  from at login submit / register submit (the moments where SatPeek
+  can confidently say "this human-controlled action came from this
+  IP"). When the same IP appears under a different `user_id`, the
+  observer logs a `shared_ip_multi_account` warning the operator
+  dashboard can consume.
+  - **Cookie-only multi-account dedup misses the operator who clears
+    cookies / opens incognito; IP-only dedup misses the operator who
+    hops to mobile data.** Together they catch the common cases.
+  - The recorder is upsert-style: composite UNIQUE on `(user_id, ip)`,
+    so a noisy mobile-NAT user produces one row with an incrementing
+    `hit_count`, not a row per request.
+  - Indexed by `ip` to make the cross-user lookup
+    (`WHERE ip = ? AND user_id != ?`) cheap.
+
+### Changed
+
+- IP reputation provider precedence reordered: ProxyCheck before IPHub.
+  ProxyCheck has stronger detection coverage (catches ISP / residential
+  proxies and datacenter fronting that IPHub misses) and supports
+  anonymous queries on a lower quota when no key is configured. IPHub
+  stays as fallback for IPs ProxyCheck returns no verdict on.
+- New `App\IpReputation\ProviderRateLimit` cache marker lets a provider
+  signal "I'm out of quota" so the next ~hour of lookups skip the API
+  call entirely. ProxyCheck sets the marker on the documented
+  `status: denied` body; IPHub sets it on HTTP 429 / 403. Combined with
+  CompositeProvider's first-non-null-wins fallback, this means IPHub
+  takes over for ProxyCheck the moment ProxyCheck hits its daily limit
+  — without burning IPHub's quota on lookups ProxyCheck would have
+  served if it had room. 7 new feature tests in
+  `tests/Unit/IpReputation/RateLimitFallbackTest.php` lock the
+  marker / skip / fallback contract.
+
+### Notes
+
+- IP-reputation lookups (ProxyCheck / IPHub) are NOT triggered by
+  public landing-page or login-form GET requests. They fire only at:
+  `POST /register` (gated by `ip.gate:70` middleware) and any
+  captcha-verify path (login submit, register submit, PTC complete,
+  shortlink complete) via the `IpReputationSignal` consumed by the
+  bot scoring engine. `CachedProvider` then serves repeat lookups
+  from a 24-h cache. With this shape, an 8000 PV/day landing page
+  generates zero API calls.
+
 - `App\Http\Middleware\CloudflareClientIp` — when the deployment sits
   behind Cloudflare orange-cloud proxy mode, promotes the
   `CF-Connecting-IP` header to `REMOTE_ADDR` so every IP-consuming

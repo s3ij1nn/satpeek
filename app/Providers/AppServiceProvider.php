@@ -116,6 +116,17 @@ class AppServiceProvider extends ServiceProvider
                 $providers[] = $maxmind;
             }
 
+            // ProxyCheck before IPHub: ProxyCheck has stronger detection
+            // coverage (catches ISP/residential proxies, datacenter fronting,
+            // VPN exit nodes that IPHub misses) and supports anonymous
+            // queries on a lower quota when no key is configured. IPHub
+            // stays as a fallback for IPs ProxyCheck returns no verdict on.
+            $providers[] = new ProxyCheckProvider(
+                $http,
+                (string) ($cfg['proxycheck']['api_key'] ?? ''),
+                (string) ($cfg['proxycheck']['api_base'] ?? 'https://proxycheck.io/v2'),
+            );
+
             if (! empty($cfg['iphub']['api_key'])) {
                 $providers[] = new IpHubProvider(
                     $http,
@@ -123,14 +134,6 @@ class AppServiceProvider extends ServiceProvider
                     (string) ($cfg['iphub']['api_base'] ?? 'https://v2.api.iphub.info'),
                 );
             }
-            // ProxyCheck supports anonymous queries (lower quota) — register
-            // unconditionally even when no key is set. The provider sends an
-            // empty key in that mode.
-            $providers[] = new ProxyCheckProvider(
-                $http,
-                (string) ($cfg['proxycheck']['api_key'] ?? ''),
-                (string) ($cfg['proxycheck']['api_base'] ?? 'https://proxycheck.io/v2'),
-            );
 
             $composite = new CompositeProvider($providers);
 
