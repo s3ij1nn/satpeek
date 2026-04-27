@@ -52,6 +52,11 @@ Route::middleware(['auth'])->group(function () {
     })->whereNumber('id')->name('ptc.view');
 
     Route::view('/shortlinks', 'shortlinks.index')->name('shortlinks.index');
+    // Per-click rotating landing URL (security: each click → fresh 28-char
+    // token → unguessable, single-use). See ShortlinkAuthController.
+    Route::get('/shortlinks/auth/{token}', [\App\Http\Controllers\ShortlinkAuthController::class, 'show'])
+        ->where('token', '[A-Za-z0-9_]+')
+        ->name('shortlinks.auth');
 
     // Withdrawals require email verification — the page renders a warning otherwise.
     Route::view('/withdraw', 'withdraw.index')->name('withdraw.index');

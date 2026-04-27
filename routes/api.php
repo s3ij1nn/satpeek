@@ -26,8 +26,15 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     Route::post('/ptc/{viewId}/complete', [PtcController::class, 'complete']);
 
     Route::get('/shortlinks', [ShortlinkController::class, 'index']);
-    Route::post('/shortlinks/{id}/start', [ShortlinkController::class, 'start']);
-    Route::post('/shortlinks/{clickId}/complete', [ShortlinkController::class, 'complete']);
+    Route::post('/shortlinks/{id}/start', [ShortlinkController::class, 'start'])->whereNumber('id');
+    // Token-keyed completion pairs with the /shortlinks/auth/{token} landing —
+    // same 28-char random as the URL slug, no numeric ID exposure. Declared
+    // BEFORE the legacy clickId route so /auth/<token>/complete doesn't get
+    // shadowed by the {clickId} pattern matching.
+    Route::post('/shortlinks/auth/{token}/complete', [ShortlinkController::class, 'completeByToken'])
+        ->where('token', '[A-Za-z0-9_]+');
+    // Legacy: complete-by-numeric-clickId. Kept for tests / external callers.
+    Route::post('/shortlinks/{clickId}/complete', [ShortlinkController::class, 'complete'])->whereNumber('clickId');
 
     Route::post('/withdraw', [WithdrawController::class, 'store']);
 });

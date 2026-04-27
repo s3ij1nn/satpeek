@@ -129,8 +129,31 @@ class ShortlinkController extends Controller
 
     public function complete(Request $request, int $clickId): JsonResponse
     {
+        $click = ShortlinkClick::where('user_id', $request->user()->id)->findOrFail($clickId);
+        return $this->finishClick($request, $click);
+    }
+
+    /**
+     * Token-keyed completion — pairs with the /shortlinks/auth/{token}
+     * landing flow. Resolving by epoch_token (28-char random) instead of
+     * the predictable numeric click_id removes URL probing as an attack
+     * vector and lets the same string drive both the page URL and its
+     * AJAX completion call.
+     */
+    public function completeByToken(Request $request, string $token): JsonResponse
+    {
+        $click = ShortlinkClick::where('user_id', $request->user()->id)
+            ->where('epoch_token', $token)
+            ->first();
+        if (! $click) {
+            return response()->json(['error' => 'click_not_found'], 404);
+        }
+        return $this->finishClick($request, $click);
+    }
+
+    private function finishClick(Request $request, ShortlinkClick $click): JsonResponse
+    {
         $user = $request->user();
-        $click = ShortlinkClick::where('user_id', $user->id)->findOrFail($clickId);
         if ($click->status !== 'pending') {
             return response()->json(['error' => 'click_not_pending'], 422);
         }
