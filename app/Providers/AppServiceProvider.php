@@ -24,6 +24,7 @@ use App\IpReputation\Contracts\IpReputationProvider;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
+use App\Models\ShortlinkProviderCredential;
 use App\Shortlinks\Providers\GenericShortenerClient;
 use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\Providers\ShortenerClient;
@@ -49,16 +50,33 @@ class AppServiceProvider extends ServiceProvider
             return $registry;
         });
 
-        $this->app->singleton(ShortlinkProviderRegistry::class, function ($app) {
+        // Per-request scope (not singleton) so admin updates to credentials in
+        // the Filament UI take effect immediately without an app restart. The
+        // resolver merges config defaults (transport, base URL, label) with
+        // the operator's DB credential row (api_token, optional overrides).
+        // Schema-missing environments (early-boot console, fresh test DB)
+        // fall back to the env/config token alone — no migration ordering trap.
+        $this->app->scoped(ShortlinkProviderRegistry::class, function ($app) {
             $http = $app->make(HttpFactory::class);
             $clients = [];
+
+            $dbRows = self::loadCredentialRows();
+
             foreach ((array) config('satpeek.shortlink_providers', []) as $name => $cfg) {
-                $clients[(string) $name] = self::buildShortenerClient(
-                    $http,
-                    (string) $name,
-                    (array) $cfg,
-                );
+                $name = (string) $name;
+                $cfg = (array) $cfg;
+                $row = $dbRows[$name] ?? null;
+                if ($row !== null) {
+                    if (! ((bool) $row->is_active)) {
+                        continue; // operator explicitly disabled this provider
+                    }
+                    $cfg['transport'] = $row->transport ?: ($cfg['transport'] ?? 'query');
+                    $cfg['api_base'] = $row->api_base ?: ($cfg['api_base'] ?? '');
+                    $cfg['api_token'] = $row->api_token ?: ($cfg['api_token'] ?? '');
+                }
+                $clients[$name] = self::buildShortenerClient($http, $name, $cfg);
             }
+
             return new ShortlinkProviderRegistry($clients);
         });
 
@@ -129,5 +147,20 @@ class AppServiceProvider extends ServiceProvider
             'path' => new OuoShortenerClient($http, $name, $apiBase, $apiToken),
             default => new GenericShortenerClient($http, $name, $apiBase, $apiToken),
         };
+    }
+
+    /**
+     * @return array<string, ShortlinkProviderCredential>
+     */
+    private static function loadCredentialRows(): array
+    {
+        try {
+            return ShortlinkProviderCredential::all()->keyBy('name')->all();
+        } catch (\Throwable $e) {
+            // Boot path before the migration has run (artisan migrate, fresh
+            // test DB before a feature test setup, etc.) — silently degrade
+            // to the env/config defaults so the rest of the app still boots.
+            return [];
+        }
     }
 }
