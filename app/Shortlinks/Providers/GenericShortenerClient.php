@@ -2,6 +2,7 @@
 
 namespace App\Shortlinks\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Log;
 
@@ -58,7 +59,19 @@ class GenericShortenerClient implements ShortenerClient
         // 10 s upstream cap is generous — the providers we wrap respond in
         // sub-second under normal load. Anything slower is almost certainly
         // a transient infra issue and the operator should retry.
-        $response = $this->http->timeout(10)->get($this->apiBase, $params);
+        // ConnectionException (TCP refused / DNS / read timeout) is
+        // converted to ShortenerException so callers see one typed
+        // failure instead of the underlying Guzzle exception bubbling
+        // up as a 500.
+        try {
+            $response = $this->http->timeout(10)->get($this->apiBase, $params);
+        } catch (ConnectionException $e) {
+            Log::warning('shortener network error', [
+                'provider' => $this->name,
+                'err' => $e->getMessage(),
+            ]);
+            throw new ShortenerException("Network error reaching `{$this->name}`: ".$e->getMessage(), previous: $e);
+        }
 
         if (! $response->successful()) {
             Log::warning('shortener http error', [

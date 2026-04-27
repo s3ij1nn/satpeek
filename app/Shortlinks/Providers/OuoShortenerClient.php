@@ -2,6 +2,7 @@
 
 namespace App\Shortlinks\Providers;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Log;
 
@@ -51,10 +52,18 @@ class OuoShortenerClient implements ShortenerClient
         // param. ouo.io's `s` is the destination URL; aliases are not part of
         // the documented public API, so they're ignored even when provided.
         $endpoint = rtrim($this->apiBase, '/').'/'.rawurlencode($this->apiToken);
-        $response = $this->http
-            ->timeout(10)
-            ->withHeaders(['Accept' => 'text/plain'])
-            ->get($endpoint, ['s' => $url]);
+        try {
+            $response = $this->http
+                ->timeout(10)
+                ->withHeaders(['Accept' => 'text/plain'])
+                ->get($endpoint, ['s' => $url]);
+        } catch (ConnectionException $e) {
+            Log::warning('shortener network error', [
+                'provider' => $this->name,
+                'err' => $e->getMessage(),
+            ]);
+            throw new ShortenerException("Network error reaching `{$this->name}`: ".$e->getMessage(), previous: $e);
+        }
 
         if (! $response->successful()) {
             Log::warning('shortener http error', [

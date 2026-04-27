@@ -4,6 +4,7 @@ namespace Tests\Unit\Shortlinks;
 
 use App\Shortlinks\Providers\GenericShortenerClient;
 use App\Shortlinks\Providers\ShortenerException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Tests\TestCase;
 
@@ -96,6 +97,25 @@ class GenericShortenerClientTest extends TestCase
 
         $this->expectException(ShortenerException::class);
         $this->expectExceptionMessage('HTTP 503');
+        $client->shorten('https://example.com/x');
+    }
+
+    public function test_connection_exception_is_wrapped_in_shortener_exception(): void
+    {
+        // A cURL timeout / DNS failure / TCP refused throws
+        // Illuminate\Http\Client\ConnectionException at the HTTP layer.
+        // We must convert it to the typed ShortenerException so admin
+        // surfaces (the Filament Test action) can catch one type
+        // instead of bubbling up Guzzle internals as a 500.
+        $http = new HttpFactory;
+        $http->fake(function (): void {
+            throw new ConnectionException('cURL error 28: Connection timed out');
+        });
+
+        $client = new GenericShortenerClient($http, 'btcut', 'https://btcut.io/api', 'TOKEN_xyz');
+
+        $this->expectException(ShortenerException::class);
+        $this->expectExceptionMessage('Network error reaching `btcut`');
         $client->shorten('https://example.com/x');
     }
 

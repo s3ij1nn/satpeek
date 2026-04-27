@@ -133,6 +133,16 @@ class ShortlinkProviderCredentialResource extends Resource
                                 ->body($e->getMessage())
                                 ->danger()
                                 ->send();
+                        } catch (\Throwable $e) {
+                            // Belt-and-suspenders — anything ShortenerException
+                            // doesn't cover (DB blip, future refactor that
+                            // throws a different exception type) still
+                            // surfaces as a friendly toast instead of a 500.
+                            Notification::make()
+                                ->title("`{$r->name}` test failed unexpectedly")
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
                         }
                     }),
                 Actions\EditAction::make(),
