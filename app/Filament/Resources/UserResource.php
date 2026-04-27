@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\BotDetection\ScoreEngine;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
+use App\Models\UserIpObservation;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -90,6 +91,63 @@ class UserResource extends Resource
                         );
                     }),
             ])->columns(3),
+
+            // Inline auth IP history — saves the operator a navigation
+            // hop to /admin/user-ip-observations during triage. Shows the
+            // 10 most recent observations with hit_count + sibling count
+            // (distinct OTHER user_ids on the same IP). Allowlist-aware
+            // is intentionally NOT applied here: the operator wants to
+            // see the raw evidence, not a sanitised view.
+            Forms\Components\Section::make('Recent IP history')->schema([
+                Forms\Components\Placeholder::make('recent_ips')
+                    ->hiddenLabel()
+                    ->columnSpanFull()
+                    ->content(function (?User $record): HtmlString {
+                        if ($record === null) {
+                            return new HtmlString('<em style="color:#888">—</em>');
+                        }
+                        $rows = UserIpObservation::query()
+                            ->where('user_id', $record->id)
+                            ->orderByDesc('last_seen_at')
+                            ->limit(10)
+                            ->get();
+                        if ($rows->isEmpty()) {
+                            return new HtmlString('<em style="color:#888">No auth observations yet.</em>');
+                        }
+                        $html = '<table style="border-collapse:collapse;font-size:0.875rem;width:100%">'.
+                            '<thead><tr>'.
+                            '<th style="text-align:left;padding-right:1rem">IP</th>'.
+                            '<th style="text-align:left;padding-right:1rem">Source</th>'.
+                            '<th style="text-align:left;padding-right:1rem">Hits</th>'.
+                            '<th style="text-align:left;padding-right:1rem">Siblings</th>'.
+                            '<th style="text-align:left">Last seen</th>'.
+                            '</tr></thead><tbody>';
+                        foreach ($rows as $row) {
+                            $siblings = (int) UserIpObservation::query()
+                                ->where('ip', $row->ip)
+                                ->where('user_id', '!=', $record->id)
+                                ->distinct()
+                                ->count('user_id');
+                            $color = $siblings === 0 ? '#22c55e' : ($siblings >= 3 ? '#ef4444' : '#eab308');
+                            $html .= sprintf(
+                                '<tr><td style="font-family:monospace;padding-right:1rem">%s</td><td style="padding-right:1rem">%s</td><td style="padding-right:1rem">%d</td><td style="color:%s;padding-right:1rem">%d</td><td>%s</td></tr>',
+                                e((string) $row->ip),
+                                e((string) $row->source),
+                                (int) $row->hit_count,
+                                $color,
+                                $siblings,
+                                e($row->last_seen_at->diffForHumans()),
+                            );
+                        }
+                        $html .= '</tbody></table>';
+                        $html .= sprintf(
+                            '<p style="margin-top:.5rem;font-size:0.8rem"><a href="%s" style="color:#3b82f6">Open full IP observations list →</a></p>',
+                            e(url('/admin/user-ip-observations?tableSearch='.urlencode((string) $record->username))),
+                        );
+
+                        return new HtmlString($html);
+                    }),
+            ])->collapsed(false),
         ]);
     }
 

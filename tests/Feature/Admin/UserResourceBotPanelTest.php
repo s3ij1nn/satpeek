@@ -6,6 +6,7 @@ namespace Tests\Feature\Admin;
 
 use App\Models\BotScore;
 use App\Models\User;
+use App\Models\UserIpObservation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -65,5 +66,58 @@ class UserResourceBotPanelTest extends TestCase
         $response = $this->actingAs($user)->get('/admin/users/'.$user->id.'/edit');
 
         $this->assertContains($response->getStatusCode(), [302, 403, 404]);
+    }
+
+    public function test_recent_ip_history_renders_inline_with_sibling_count(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true, 'email_verified_at' => now()]);
+        $target = User::factory()->create(['username' => 'carol_targeted']);
+
+        // Target has been on two IPs, one shared with another user.
+        UserIpObservation::create([
+            'user_id' => $target->id,
+            'ip' => '203.0.113.10',
+            'first_seen_at' => Carbon::now(),
+            'last_seen_at' => Carbon::now(),
+            'hit_count' => 5,
+            'source' => 'login',
+        ]);
+        UserIpObservation::create([
+            'user_id' => $target->id,
+            'ip' => '198.51.100.20',
+            'first_seen_at' => Carbon::now(),
+            'last_seen_at' => Carbon::now(),
+            'hit_count' => 1,
+            'source' => 'register',
+        ]);
+        // Sibling on 203.0.113.10 — siblings count for that row should = 1.
+        UserIpObservation::create([
+            'user_id' => User::factory()->create()->id,
+            'ip' => '203.0.113.10',
+            'first_seen_at' => Carbon::now(),
+            'last_seen_at' => Carbon::now(),
+            'hit_count' => 1,
+            'source' => 'login',
+        ]);
+
+        $response = $this->actingAs($admin)->get('/admin/users/'.$target->id.'/edit');
+
+        $response->assertOk();
+        // Both IPs and the sources are surfaced.
+        $response->assertSeeText('203.0.113.10');
+        $response->assertSeeText('198.51.100.20');
+        // Tap-through link to the full observations list.
+        $response->assertSee('/admin/user-ip-observations?tableSearch=carol_targeted', false);
+    }
+
+    public function test_user_with_no_ip_history_renders_neutral_placeholder(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true, 'email_verified_at' => now()]);
+        $target = User::factory()->create();
+
+        $response = $this->actingAs($admin)->get('/admin/users/'.$target->id.'/edit');
+
+        $response->assertOk();
+        $response->assertSeeText('No auth observations yet.');
     }
 }

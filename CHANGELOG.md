@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Inline "Recent IP history" section on the user edit page. Last 10
+  auth observations rendered as a server-side table with hit_count,
+  source, last-seen, and per-row sibling count (distinct OTHER
+  user_ids on the same IP, color-coded green/yellow/red). Saves an
+  operator triaging a suspect user one navigation hop. Tap-through
+  link to `/admin/user-ip-observations` filtered by username for the
+  full history.
 - Read-only Filament Operations resource at
   `/admin/balance-ledgers` for the most common operator workflow:
   "user X says they didn't get paid for view Y" → search by user,
