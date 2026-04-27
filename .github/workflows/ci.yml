@@ -48,6 +48,9 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
+      - name: Bootstrap .env (composer install fires package:discover which reads view.compiled)
+        run: cp .env.example .env
+
       - name: Install composer dependencies
         run: composer install --prefer-dist --no-progress --no-interaction --ignore-platform-req=ext-redis
 
@@ -101,6 +104,15 @@ jobs:
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
+      - name: Bootstrap .env (composer install fires package:discover which reads view.compiled)
+        # Must run BEFORE composer install: post-autoload-dump triggers
+        # `php artisan package:discover`, which constructs the View
+        # compiler with config('view.compiled') — null without .env, so
+        # the runner blows up with "Please provide a valid cache path."
+        # phpunit.xml's force-overrides only kick in once the test runner
+        # starts, well after package:discover has already failed.
+        run: cp .env.example .env
+
       - name: Install composer dependencies
         # --ignore-platform-req=ext-redis: production needs phpredis but the
         # test suite only uses Predis (composer-installed) — this lets us
@@ -108,13 +120,6 @@ jobs:
         # \Redis directly the suite will fail loudly and we'll wire the
         # extension in then.
         run: composer install --prefer-dist --no-progress --no-interaction --ignore-platform-req=ext-redis
-
-      - name: Bootstrap .env for the artisan runner
-        # phpunit.xml force-overrides every env var the suite needs, but
-        # `php artisan test` boots the framework first and that boot reads
-        # .env. Without a file present, Laravel falls back to a hardcoded
-        # APP_KEY warning that fails the run before phpunit ever starts.
-        run: cp .env.example .env
 
       - name: Run test suite
         # REDIS_CLIENT=predis forces the composer-installed pure-PHP client
