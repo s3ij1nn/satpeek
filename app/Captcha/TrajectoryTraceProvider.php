@@ -39,19 +39,31 @@ class TrajectoryTraceProvider implements CaptchaProvider
         return 'trajectory_trace';
     }
 
-    public function issue(string $sessionId, ?int $userId, array $viewport): array
+    public function issue(string $sessionId, ?int $userId, array $viewport, int $difficulty = 1): array
     {
         $seed = bin2hex(random_bytes(16));
         $rng = self::seededRng($seed);
+
+        // Scale amplitude / frequency / duration with difficulty so a user
+        // already flagged as suspect or likely_bot faces a curve that's
+        // harder for a bezier-replay or relay-script bot to follow:
+        //   1 (trust)      → defaults
+        //   2 (suspect)    → 1.5× amplitude, +1 frequency
+        //   3 (likely_bot) → 2.0× amplitude, +2 frequency, +1 s duration
+        // The score engine's likely_bot tier blocks PTC entirely, so
+        // difficulty=3 mainly hardens login + register captchas for a
+        // user whose tier moved between captcha issue and re-attempt.
+        $difficulty = max(1, min(3, $difficulty));
+        $scale = 1.0 + 0.5 * ($difficulty - 1);
 
         $curve = self::CURVES[$rng() % count(self::CURVES)];
         $startX = 30 + ($rng() % 60);
         $startY = 60 + ($rng() % 120);
         $endX = self::CANVAS_W - 30 - ($rng() % 60);
         $endY = 60 + ($rng() % 120);
-        $amplitude = 30 + ($rng() % 60);
-        $frequency = 1 + ($rng() % 3);
-        $durationMs = 6000 + ($rng() % 4000);
+        $amplitude = (int) round((30 + ($rng() % 60)) * $scale);
+        $frequency = (1 + ($rng() % 3)) + ($difficulty - 1);
+        $durationMs = (6000 + ($rng() % 4000)) + ($difficulty - 1) * 1000;
 
         $expectedShape = self::sampleCurve(
             $curve,

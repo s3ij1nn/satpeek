@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\BotDetection\PolicyEnforcer;
 use App\BotDetection\ScoreEngine;
 use App\BotDetection\Signals\AsnStaticListSignal;
 use App\BotDetection\Signals\FailureRateSignal;
@@ -44,7 +45,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(Client::class, fn () => new Client);
 
         $this->app->singleton(CaptchaProvider::class, TrajectoryTraceProvider::class);
-        $this->app->bind(ChallengeBuilder::class, fn ($app) => new ChallengeBuilder($app->make(CaptchaProvider::class)));
+        $this->app->bind(ChallengeBuilder::class, fn ($app) => new ChallengeBuilder(
+            $app->make(CaptchaProvider::class),
+            $app->make(PolicyEnforcer::class),
+        ));
         $this->app->bind(ChallengeVerifier::class, fn ($app) => new ChallengeVerifier($app->make(CaptchaProvider::class)));
 
         // Per-request scope (not singleton) so admin toggles in the Filament

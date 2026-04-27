@@ -2,14 +2,19 @@
 
 namespace App\Captcha;
 
+use App\BotDetection\PolicyEnforcer;
 use App\Captcha\Contracts\CaptchaProvider;
 use App\Models\CaptchaChallenge;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 class ChallengeBuilder
 {
-    public function __construct(private readonly CaptchaProvider $provider) {}
+    public function __construct(
+        private readonly CaptchaProvider $provider,
+        private readonly PolicyEnforcer $policy,
+    ) {}
 
     /**
      * @return array<string, mixed> Public payload safe to send to the client (no expectedShape).
@@ -20,7 +25,8 @@ class ChallengeBuilder
         if ($sessionId === '') {
             $sessionId = bin2hex(random_bytes(16));
         }
-        $userId = $request->user()?->id;
+        $user = $request->user();
+        $userId = $user?->id;
         $viewport = [
             'w' => (int) $request->input('vw', 320),
             'h' => (int) $request->input('vh', 240),
@@ -28,7 +34,13 @@ class ChallengeBuilder
         $fingerprint = (string) $request->header('X-SP-Fingerprint', '');
         $ja4 = (string) $request->header('X-SP-JA4', '');
 
-        $issued = $this->provider->issue($sessionId, $userId, $viewport);
+        // Look up tier-driven captcha difficulty for authenticated users —
+        // a suspect / likely_bot user gets a harder curve than a trust user.
+        // Anonymous (login / register form) defaults to 1 since there's no
+        // user to score yet.
+        $difficulty = $user instanceof User ? $this->policy->captchaDifficulty($user) : 1;
+
+        $issued = $this->provider->issue($sessionId, $userId, $viewport, $difficulty);
 
         CaptchaChallenge::create([
             'challenge_id' => $issued['challengeId'],

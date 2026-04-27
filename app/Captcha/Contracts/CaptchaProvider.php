@@ -2,12 +2,22 @@
 
 namespace App\Captcha\Contracts;
 
+use App\BotDetection\PolicyEnforcer;
+
 interface CaptchaProvider
 {
     public function name(): string;
 
     /**
-     * Build a fresh challenge. Pure function of (seed, viewport).
+     * Build a fresh challenge. Pure function of (seed, viewport, difficulty).
+     *
+     * `$difficulty` is sourced by ChallengeBuilder from
+     * {@see PolicyEnforcer::captchaDifficulty()} —
+     * 1 = trust (default), 2 = suspect, 3 = likely_bot. Anonymous
+     * pre-auth challenges (login / register form) stay at 1 because
+     * there's no user to score yet. Providers may interpret the level
+     * however suits their challenge model; the trajectory provider
+     * scales amplitude / frequency / shape tolerance.
      *
      * @return array{
      *     challengeId: string,
@@ -17,7 +27,7 @@ interface CaptchaProvider
      *     ttlMs: int
      * }
      */
-    public function issue(string $sessionId, ?int $userId, array $viewport): array;
+    public function issue(string $sessionId, ?int $userId, array $viewport, int $difficulty = 1): array;
 
     /**
      * Verify a submitted trajectory.

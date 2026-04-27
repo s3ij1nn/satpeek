@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `PolicyEnforcer::captchaDifficulty` is no longer dead code. The 1/2/3
+  level (driven by user tier — trust / suspect / likely_bot) now
+  shapes the issued trajectory captcha:
+  - **suspect (2)**: 1.5× amplitude, +1 frequency
+  - **likely_bot (3)**: 2.0× amplitude, +2 frequency, +1 s duration
+  - **trust (1) / anonymous**: defaults unchanged (login + register
+    forms keep difficulty 1 since there's no user to score yet)
+  - `ChallengeBuilder` now injects `PolicyEnforcer` and looks up the
+    user's difficulty before calling `provider->issue()`. Out-of-range
+    values are clamped to [1, 3] inside the provider so a typo
+    can't mint a 50× amplitude curve no human could trace.
+  - 4 new unit tests in `tests/Unit/Captcha/CaptchaDifficultyTest.php`
+    pin amplitude monotonicity, frequency floor lift, range clamp,
+    and default-equals-trust behaviour.
+  - `CaptchaProvider::issue()` interface gained an `int $difficulty = 1`
+    parameter (backward-compatible default).
+
 ### Added
 
 - `App\BotDetection\IpAllowlist` — CIDR-aware match for an
