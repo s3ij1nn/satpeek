@@ -62,6 +62,12 @@ jobs:
         # before it lands on main.
         run: vendor/bin/pint --test
 
+      - name: PHPStan (Larastan level 5)
+        # Existing errors are captured in phpstan-baseline.neon so CI doesn't
+        # gate on them. New errors fail the build — that's the contract:
+        # the baseline shrinks over time, never grows.
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=512M
+
   test:
     name: PHPUnit
     runs-on: ubuntu-latest

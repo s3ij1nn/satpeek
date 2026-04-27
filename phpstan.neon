@@ -1,0 +1,24 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    # Level 5 — covers most of the type-safety wins (incompatible argument
+    # types, undefined methods on resolved classes, return-type mismatches)
+    # without flagging every Eloquent magic-method call that Larastan can't
+    # statically resolve. Tighten to 6+ once the baseline is empty.
+    level: 5
+
+    paths:
+        - app
+
+    excludePaths:
+        # Compiled blade caches and Filament stub files churn frequently
+        # and aren't worth analysing.
+        - storage/framework/views
+        - bootstrap/cache
+
+    # Don't fail when an ignoreErrors pattern doesn't match — patterns are
+    # additive over time and we'd rather a stale rule sit dormant than block
+    # CI on a "you ignored an error that no longer exists" message.
+    reportUnmatchedIgnoredErrors: false
