@@ -51,7 +51,7 @@
     <header class="ref__head">
         <span class="meta">/ referral</span>
         <h1>Bring <em>friends</em>.</h1>
-        <p style="color: var(--text-secondary); margin: 0;">Share your link. You earn <strong style="color: var(--amber-soft);">{{ $pct }}%</strong> on every sat your invitees claim — for life.</p>
+        <p style="color: var(--text-secondary); margin: 0;">Share your link. You earn <strong style="color: var(--amber-soft);">{{ $pct }}%</strong> on every sat your invitees claim — for life. Affiliate rewards are paid from the platform's commission, never deducted from your friend's reward.</p>
     </header>
 
     <div class="stats">

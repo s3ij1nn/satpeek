@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Affiliate program now applies to every earnings surface, not just
+  PTC. New `App\Services\ReferralPayout` is the single source of truth
+  for referral commission settlement, wired into:
+  - `Api\PtcController` (was inline; extracted)
+  - `Api\ShortlinkController` (newly covered)
+  - `Webhook\BitcoTaskCallbackController` (newly covered — postback
+    credits)
+  - The funding rule is now explicit AND enforced: commission is
+    `min(referral_pct, ads.commission_pct)` of the referee's reward,
+    so the affiliate program NEVER reduces what the referee earns
+    AND never exceeds the platform's collected commission. A
+    misconfigured `referral_pct > ads.commission_pct` is silently
+    capped instead of bleeding the operator dry.
+  - `/referral` page now states the funding rule on the share card so
+    invitees and referrers both understand referrals don't reduce
+    friends' earnings.
+  - 6 new feature tests in `tests/Feature/Referral/ReferralPayoutTest.php`
+    cover happy path / cap / no referrer / zero reward / pct rounds-
+    to-zero / lifetime accumulation.
 - Multi-account-by-IP detection. New `user_ip_observations` table +
   `App\Services\UserIpObserver` records the IP each user authenticates
   from at login submit / register submit (the moments where SatPeek

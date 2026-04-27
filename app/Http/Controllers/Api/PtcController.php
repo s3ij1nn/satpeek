@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
 use App\Models\PtcView;
-use App\Models\Referral;
+use App\Services\ReferralPayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -16,7 +16,10 @@ use Illuminate\Support\Str;
 
 class PtcController extends Controller
 {
-    public function __construct(private readonly PolicyEnforcer $policy) {}
+    public function __construct(
+        private readonly PolicyEnforcer $policy,
+        private readonly ReferralPayout $referralPayout,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -189,7 +192,7 @@ class PtcController extends Controller
             $user->increment('balance_sat', $reward);
             $user->increment('total_earned_sat', $reward);
 
-            $this->payReferralCommission($user, $reward, PtcView::class, $view->id);
+            $this->referralPayout->settle($user, $reward, PtcView::class, $view->id);
 
             $view->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
 
@@ -231,33 +234,5 @@ class PtcController extends Controller
                     $q2->whereNull('user_id')->orWhere('user_id', '!=', $excludeUserId);
                 });
             });
-    }
-
-    private function payReferralCommission($user, int $reward, string $refType, int $refId): void
-    {
-        if (! $user->referrer_id) {
-            return;
-        }
-        $pct = (int) config('satpeek.referral.commission_pct', 10);
-        if ($pct <= 0) {
-            return;
-        }
-        $commission = (int) floor($reward * $pct / 100);
-        if ($commission <= 0) {
-            return;
-        }
-        BalanceLedger::create([
-            'user_id' => $user->referrer_id,
-            'delta_sat' => $commission,
-            'reason' => 'referral_commission',
-            'reference_type' => $refType,
-            'reference_id' => $refId,
-        ]);
-        DB::table('users')->where('id', $user->referrer_id)->increment('balance_sat', $commission);
-        DB::table('users')->where('id', $user->referrer_id)->increment('total_earned_sat', $commission);
-        Referral::query()
-            ->where('referrer_id', $user->referrer_id)
-            ->where('referred_id', $user->id)
-            ->increment('lifetime_commission_sat', $commission);
     }
 }

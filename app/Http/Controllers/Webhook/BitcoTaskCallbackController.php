@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\User;
 use App\Offerwall\AdapterRegistry;
+use App\Services\ReferralPayout;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -35,7 +36,10 @@ use Illuminate\Support\Facades\Log;
  */
 class BitcoTaskCallbackController extends Controller
 {
-    public function __construct(private readonly AdapterRegistry $registry) {}
+    public function __construct(
+        private readonly AdapterRegistry $registry,
+        private readonly ReferralPayout $referralPayout,
+    ) {}
 
     public function __invoke(Request $request): Response
     {
@@ -110,6 +114,19 @@ class BitcoTaskCallbackController extends Controller
                 if ($delta > 0) {
                     $user->increment('balance_sat', $delta);
                     $user->increment('total_earned_sat', $delta);
+                    // Affiliate share — funded from the platform's
+                    // commission pool, never deducted from the viewer's
+                    // reward. transId is the idempotency key so the
+                    // duplicate-postback short-circuit above also covers
+                    // the affiliate side. ReferralPayout records its own
+                    // ledger row keyed by reference_id = ledger row id.
+                    $ledgerId = (int) BalanceLedger::query()
+                        ->where('reason', 'bitcotask_postback')
+                        ->where('external_ref', $result->externalId)
+                        ->value('id');
+                    if ($ledgerId > 0) {
+                        $this->referralPayout->settle($user, $delta, BalanceLedger::class, $ledgerId);
+                    }
                 } else {
                     // Chargeback can drive balance negative if the user
                     // already withdrew; that's the operator's policy

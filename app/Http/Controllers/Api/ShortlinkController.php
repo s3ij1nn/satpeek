@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
+use App\Services\ReferralPayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,7 @@ class ShortlinkController extends Controller
 {
     public function __construct(
         private readonly PolicyEnforcer $policy,
+        private readonly ReferralPayout $referralPayout,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -129,6 +131,10 @@ class ShortlinkController extends Controller
             ]);
             $user->increment('balance_sat', $reward);
             $user->increment('total_earned_sat', $reward);
+            // Affiliate share — funded from the platform's commission pool,
+            // never deducted from the viewer's reward. See ReferralPayout
+            // for the funding invariant.
+            $this->referralPayout->settle($user, $reward, ShortlinkClick::class, $click->id);
             $click->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
         });
 
