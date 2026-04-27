@@ -1,0 +1,79 @@
+name: CI
+
+# Runs the PHPUnit suite on every push + PR to main. The suite is configured
+# (phpunit.xml) to use sqlite :memory: + array cache + array session + sync
+# queue — no Postgres or Redis service container required, so the workflow
+# stays fast and self-contained.
+#
+# The BotSimulation suite is the security regression — keep it green.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs for the same ref when a new commit lands. Saves
+# Actions minutes on rapid pushes; only the latest result matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: PHPUnit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          # bcmath: required by composer.json. sqlite3/pdo_sqlite: phpunit.xml
+          # forces DB_CONNECTION=sqlite + :memory:. The redis extension is
+          # listed as required for production, but tests use array cache /
+          # array session and never touch a live Redis, so we install
+          # `predis` via composer and skip the binary extension here to
+          # avoid a brittle pecl install on CI.
+          extensions: bcmath, sqlite3, pdo_sqlite, mbstring, intl
+          coverage: none
+          tools: composer:v2
+
+      - name: Get composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install composer dependencies
+        # --ignore-platform-req=ext-redis: production needs phpredis but the
+        # test suite only uses Predis (composer-installed) — this lets us
+        # skip the system-level pecl install. If a test ever instantiates
+        # \Redis directly the suite will fail loudly and we'll wire the
+        # extension in then.
+        run: composer install --prefer-dist --no-progress --no-interaction --ignore-platform-req=ext-redis
+
+      - name: Bootstrap .env for the artisan runner
+        # phpunit.xml force-overrides every env var the suite needs, but
+        # `php artisan test` boots the framework first and that boot reads
+        # .env. Without a file present, Laravel falls back to a hardcoded
+        # APP_KEY warning that fails the run before phpunit ever starts.
+        run: cp .env.example .env
+
+      - name: Run test suite
+        # REDIS_CLIENT=predis forces the composer-installed pure-PHP client
+        # (config/database.php defaults to phpredis, which we deliberately
+        # didn't install above). The test suite uses array session / array
+        # cache / sync queue, so Redis is never actually contacted, but the
+        # service provider still resolves the client class at boot.
+        env:
+          REDIS_CLIENT: predis
+        run: php artisan test --colors=always
