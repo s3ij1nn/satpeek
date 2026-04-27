@@ -123,6 +123,48 @@ class AdvertiseController extends Controller
         return view('advertise.show', ['ad' => $ad]);
     }
 
+    public function edit(Request $request, int $id): View
+    {
+        $ad = PtcAd::where('user_id', $request->user()->id)->findOrFail($id);
+        return view('advertise.edit', ['ad' => $ad]);
+    }
+
+    /**
+     * Self-serve update for the advertiser's own campaign.
+     *
+     * Editable: title, description, display_mode, daily_limit_per_user, is_active.
+     * Locked:   target_url (would change what users click without re-review),
+     *           reward_sat / total_views_purchased / cost_per_view_sat
+     *           (budget already paid in upfront), status / approved_at
+     *           (admin-controlled review state). Pausing is expressed via
+     *           is_active=false and intentionally does NOT mutate `status` —
+     *           an approved-but-paused ad stays approved when the user resumes.
+     */
+    public function update(Request $request, int $id): RedirectResponse
+    {
+        $ad = PtcAd::where('user_id', $request->user()->id)->findOrFail($id);
+
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:200'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'display_mode' => ['required', 'in:'.implode(',', PtcAd::DISPLAY_MODES)],
+            'daily_limit_per_user' => ['required', 'integer', 'min:1', 'max:10'],
+            'is_active' => ['nullable'],
+        ]);
+
+        $ad->update([
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'display_mode' => $validated['display_mode'],
+            'daily_limit_per_user' => (int) $validated['daily_limit_per_user'],
+            'is_active' => filter_var($validated['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ]);
+
+        return redirect()
+            ->route('advertise.show', ['id' => $ad->id])
+            ->with('status', 'Campaign updated.');
+    }
+
     public static function computeCost(int $rewardSat): int
     {
         $pct = (int) config('satpeek.ads.commission_pct', 25);

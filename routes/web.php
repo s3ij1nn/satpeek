@@ -63,4 +63,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/advertise/create', [\App\Http\Controllers\AdvertiseController::class, 'create'])->name('advertise.create');
     Route::post('/advertise', [\App\Http\Controllers\AdvertiseController::class, 'store'])->name('advertise.store');
     Route::get('/advertise/{id}', [\App\Http\Controllers\AdvertiseController::class, 'show'])->whereNumber('id')->name('advertise.show');
+    Route::get('/advertise/{id}/edit', [\App\Http\Controllers\AdvertiseController::class, 'edit'])->whereNumber('id')->name('advertise.edit');
+    Route::patch('/advertise/{id}', [\App\Http\Controllers\AdvertiseController::class, 'update'])->whereNumber('id')->name('advertise.update');
 });

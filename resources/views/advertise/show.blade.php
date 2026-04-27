@@ -59,6 +59,14 @@
         @if ($ad->status === 'rejected' && $ad->rejection_reason)
             <p style="color: var(--rose); margin: .5rem 0 0; font-size: var(--text-sm);">Rejected: {{ $ad->rejection_reason }} (full refund issued).</p>
         @endif
+        @if (! in_array($ad->status, ['rejected', 'completed'], true))
+            <p style="margin: .75rem 0 0;">
+                <a href="{{ route('advertise.edit', ['id' => $ad->id]) }}"
+                   style="display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .9rem; border-radius: var(--radius-md); background: var(--bg-elev); border: 1px solid var(--border-strong); color: var(--text-primary); text-decoration: none; font-size: var(--text-sm);">
+                    Edit campaign <span aria-hidden="true">→</span>
+                </a>
+            </p>
+        @endif
     </header>
 
     <div class="stats">
