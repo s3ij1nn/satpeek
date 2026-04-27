@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-27
+
+Theme: anti-adblock + framework refresh. Two operator-requested
+features land together — browser-side adblock/Brave detection that
+gates earning surfaces, and the Laravel 12 → 13 + Filament 3 → 4
+upgrade so the platform stays on the actively-developed release line.
+
 ### Changed
 
 - **Laravel 12 → 13 + Filament 3 → 4 upgrade.** All 10 Filament
@@ -760,7 +767,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/s3ij1nn/satpeek/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/s3ij1nn/satpeek/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/s3ij1nn/satpeek/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/s3ij1nn/satpeek/compare/v0.4.0...v0.4.1
