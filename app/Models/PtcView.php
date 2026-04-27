@@ -4,7 +4,23 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int $ptc_ad_id
+ * @property string $epoch_token
+ * @property string $status
+ * @property string|null $rejection_reason
+ * @property int $heartbeats_received
+ * @property int $heartbeats_expected
+ * @property Carbon $started_at
+ * @property Carbon|null $completed_at
+ * @property array<string, mixed>|null $meta
+ * @property-read User|null $user
+ * @property-read PtcAd $ad
+ */
 class PtcView extends Model
 {
     protected $fillable = [

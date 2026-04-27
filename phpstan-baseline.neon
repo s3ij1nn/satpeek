@@ -31,64 +31,16 @@ parameters:
 			path: app/Captcha/ChallengeVerifier.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Filament/Resources/PtcAdResource.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Filament/Resources/WithdrawalResource.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$duration_sec\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/Api/PtcController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$reward_sat\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/Api/PtcController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$user_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/Api/PtcController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$views_remaining\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/Api/PtcController.php
-
-		-
 			message: '#^Expression on left side of \?\? is not nullable\.$#'
 			identifier: nullCoalesce.expr
 			count: 1
 			path: app/Http/Controllers/Api/PtcController.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Carbon\\Carbon\. Use \-\> instead\.$#'
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Http/Controllers/Api/PtcController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$hold_seconds\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/Api/ShortlinkController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$reward_sat\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/Api/ShortlinkController.php
 
 		-
 			message: '#^Expression on left side of \?\? is not nullable\.$#'
@@ -97,16 +49,10 @@ parameters:
 			path: app/Http/Controllers/Api/ShortlinkController.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Carbon\\Carbon\. Use \-\> instead\.$#'
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Http/Controllers/Api/ShortlinkController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$hold_seconds\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/ShortlinkAuthController.php
 
 		-
 			message: '#^Expression on left side of \?\? is not nullable\.$#'
@@ -115,7 +61,7 @@ parameters:
 			path: app/Http/Controllers/ShortlinkAuthController.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Carbon\\Carbon\. Use \-\> instead\.$#'
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Http/Controllers/ShortlinkAuthController.php
@@ -125,12 +71,6 @@ parameters:
 			identifier: function.alreadyNarrowedType
 			count: 1
 			path: app/Offerwall/BitcoTaskAdapter.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Payout/ProcessWithdrawalJob.php
 
 		-
 			message: '#^If condition is always true\.$#'

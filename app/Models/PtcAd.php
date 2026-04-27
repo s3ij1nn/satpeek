@@ -4,7 +4,35 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property int|null $user_id
+ * @property string $source
+ * @property string $external_id
+ * @property string $title
+ * @property string|null $description
+ * @property string $target_url
+ * @property string $display_mode
+ * @property int $reward_sat
+ * @property int $cost_per_view_sat
+ * @property int $total_views_purchased
+ * @property int $views_remaining
+ * @property int $total_cost_sat
+ * @property int $duration_sec
+ * @property int $daily_limit_per_user
+ * @property bool $is_active
+ * @property Carbon|null $expires_at
+ * @property array<string, mixed>|null $meta
+ * @property string $status
+ * @property string|null $submission_notes
+ * @property string|null $rejection_reason
+ * @property Carbon|null $approved_at
+ * @property int|null $reviewed_by
+ * @property-read User|null $advertiser
+ * @property-read User|null $reviewer
+ */
 class PtcAd extends Model
 {
     public const STATUSES = ['draft', 'pending_review', 'approved', 'paused', 'completed', 'rejected'];

@@ -3,7 +3,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property string $source
+ * @property string $external_id
+ * @property string $title
+ * @property string $target_url
+ * @property string|null $source_url
+ * @property string|null $provider_name
+ * @property Carbon|null $target_url_rotated_at
+ * @property int $reward_sat
+ * @property int $hold_seconds
+ * @property int $daily_limit_per_user
+ * @property bool $is_active
+ */
 class Shortlink extends Model
 {
     protected $fillable = [
