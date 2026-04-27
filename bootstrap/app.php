@@ -18,6 +18,12 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Normalise upstream JA4 TLS fingerprint headers (cf-ja4 / x-tls-ja4
+        // / x-ja4 / x-sp-ja4) into the canonical X-SP-JA4 before any app code
+        // reads it. Runs globally so admin / api / web requests all benefit
+        // when the deployment sits behind a TLS-fingerprinting proxy.
+        $middleware->prepend(\App\Http\Middleware\Ja4Capture::class);
+
         // The Blade frontend is same-origin and uses session cookies, so the
         // /api routes need session start + CSRF + cookies. Stack the web
         // middleware group on top of the default api group.
