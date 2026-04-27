@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Read-only Filament Operations resource at
+  `/admin/user-ip-observations` for the multi-account-by-IP audit
+  trail. Each row is "user X authenticated from IP Y", appended by
+  `UserIpObserver` at login / register submit. Operator can:
+  - search by user / IP
+  - filter by source (login / register) and "shared IPs only" (uses
+    the indexed `ip` column for cheap WHERE EXISTS lookups)
+  - sort by hit count / first-seen / last-seen
+  - tap through to the User row to take action (warn, hold
+    withdrawals, ban)
+  - see a per-row "siblings" badge counting distinct OTHER user_ids
+    on the same IP — green at 0, warning at 1-2, danger at 3+
+  - Resource is read-only by design (canCreate / canEdit / canDelete
+    return false). The audit trail is append-only signal that
+    `SharedIpSignal` reads; an accidental admin delete would silently
+    remove evidence the bot scoring engine depends on.
+
 ## [0.3.0] — 2026-04-27
 
 Theme: identity capture + operator visibility. Every change in this release
