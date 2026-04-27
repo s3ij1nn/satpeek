@@ -125,6 +125,26 @@ User-submitted ads: `/advertise/create` charges the user's balance upfront, queu
 
 `OfferwallAdapter` interface; concrete adapters for `MockAdapter` (development) and `BitcoTaskAdapter` (production). Add new networks (AdGate, Adscend, CPALead) by implementing the interface and registering in `AppServiceProvider`. Sync via `php artisan satpeek:sync-offerwalls` (cron every 15 min).
 
+### BitcoTasks integration — iframe + S2S postback
+
+Per the published spec (https://bitcotasks.com/documentations) BitcoTasks does NOT expose a REST list-offers endpoint. Publisher integration is offerwall-iframe-only:
+
+```html
+<iframe src="https://bitcotasks.com/offerwall/[BITCOTASK_API_KEY]/[USER_ID]"></iframe>
+```
+
+The user completes offers inside the iframe; BitcoTasks credits via a server-to-server postback to the URL the operator configures in the BitcoTasks dashboard. SatPeek's receiver lives at `POST /webhooks/bitcotask` (no URL token — security comes from the signature + IP allow-list).
+
+Postback contract (form-encoded, lowercase fields):
+- `subId` — publisher's user ID (we pass it in the iframe URL, BitcoTasks echoes it back)
+- `transId` — BitcoTasks transaction ID (idempotency key, stored in `balance_ledgers.external_ref`)
+- `reward` / `reward_value` / `payout` — decimal strings; `payout` is USD, converted to satoshis via `BITCOTASK_USD_TO_SAT`
+- `status` — `1` = credit, `2` = chargeback (negative ledger row)
+- `debug` — `1` = test postback (acked, no balance change)
+- `signature` — `md5(subId.transId.reward.s2s_secret)`
+
+Receiver enforces, in order: `s2s_secret` configured → IP in `BITCOTASK_IP_ALLOWLIST` (default `45.14.135.48`) → MD5 signature match → unique `(reason, external_ref)` insert. Returns the literal lowercase string `ok` on success (not JSON — BitcoTasks treats anything else as failure and retries).
+
 ## Payout — `app/Payout/FaucetPayClient.php`
 
 Calls `POST {FAUCETPAY_API_BASE}/send`. Withdrawals enter `withdrawals` table → `ProcessWithdrawalJob` runs from the queue, with `requires_review` for `suspect+` tiers held for admin approval in Filament.
@@ -157,4 +177,4 @@ CI must keep `tests/BotSimulation/` green — that is how captcha strength is me
 
 ## Open follow-ups
 
-- Confirm BitcoTask publisher API endpoint shape and S2S signature scheme.
+(none — JA4 capture, ASN datacenter lookup, and BitcoTasks publisher API all shipped; see CHANGELOG.md for the closing commits.)

@@ -48,7 +48,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AdapterRegistry::class, function ($app) {
             $registry = new AdapterRegistry;
             $registry->register(new MockAdapter);
-            $registry->register(new BitcoTaskAdapter($app->make(Client::class)));
+            $registry->register(new BitcoTaskAdapter);
 
             return $registry;
         });

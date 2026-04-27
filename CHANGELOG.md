@@ -8,6 +8,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- BitcoTasks integration rewritten against the published spec
+  (https://bitcotasks.com/documentations, fetched 2026-04-27).
+  Closes the last item under "Open follow-ups" in CLAUDE.md.
+  - `BitcoTaskAdapter::verifyCallback`: now reads form-encoded
+    fields (`subId` / `transId` / `reward` / `payout` / `status` /
+    `signature` / `debug`), validates the documented MD5 signature
+    `md5(subId.transId.reward.s2s_secret)` (the previous HMAC-SHA256
+    over JSON body never matched a real BitcoTasks postback), and
+    enforces a config-driven IP allow-list defaulting to BitcoTasks's
+    published `45.14.135.48`.
+  - `BitcoTaskCallbackController` returns the literal string `ok`
+    (no JSON, no whitespace) — BitcoTasks treats anything else as
+    failure and retries up to its 60 s timeout.
+  - status=1 credits, status=2 chargebacks (negative ledger row +
+    decrement). Unknown status codes are logged + acked but not
+    credited so a future BitcoTasks status doesn't silently
+    double-credit.
+  - `debug=1` test postbacks are acked without crediting.
+  - Idempotency via a new `balance_ledgers.external_ref` column with
+    a unique index on `(reason, external_ref)` — duplicate `transId`
+    arrivals short-circuit with `ok` and zero balance change.
+  - USD-to-satoshi conversion via the operator-supplied
+    `BITCOTASK_USD_TO_SAT` env var — BitcoTasks reports `payout` in
+    decimal USD; the adapter multiplies by the configured rate.
+  - `fetchPtcOffers` / `fetchShortlinkOffers` now correctly return
+    empty arrays — BitcoTasks doesn't expose a REST list-offers
+    endpoint, only the offerwall iframe.
+  - `startView` throws `LogicException` instead of pretending to call
+    a nonexistent endpoint.
+  - Webhook route changed from `/webhooks/bitcotask/{token}` to
+    `/webhooks/bitcotask` — security comes from the form-field
+    signature + IP allow-list, the legacy `{token}` URL segment was
+    pre-spec defence-in-depth that the documented signature scheme
+    makes redundant.
 - PHPStan baseline reduced from 26 errors → 13 → 0 across two
   maintenance passes (7fc8869, e8ce13c). The
   `phpstan-baseline.neon` file is gone and CI now fails on the first

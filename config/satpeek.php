@@ -69,11 +69,24 @@ return [
         'min_withdraw_sat' => (int) env('FAUCETPAY_MIN_WITHDRAW_SAT', 1000),
     ],
 
+    // BitcoTasks publisher integration. Per the docs (fetched 2026-04-27)
+    // there is NO REST API for listing offers — publisher integration is
+    // offerwall-iframe-only. The api_key / publisher_id are interpolated
+    // into the iframe URL <iframe src="https://bitcotasks.com/offerwall/
+    // <api_key>/<user_id>">; the s2s_secret signs the postback (MD5 of
+    // subId+transId+reward+secret). usd_to_sat converts the postback's
+    // decimal `payout` (USD) into satoshis for the balance ledger.
+    // ip_allowlist defaults to BitcoTasks's published postback IP.
     'bitcotask' => [
         'publisher_id' => env('BITCOTASK_PUBLISHER_ID'),
         'api_key' => env('BITCOTASK_API_KEY'),
-        'api_base' => env('BITCOTASK_API_BASE', 'https://bitcotasks.com/api/publisher'),
+        'api_base' => env('BITCOTASK_API_BASE', 'https://bitcotasks.com'),
         's2s_secret' => env('BITCOTASK_S2S_SECRET'),
+        'usd_to_sat' => (float) env('BITCOTASK_USD_TO_SAT', 0),
+        'ip_allowlist' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('BITCOTASK_IP_ALLOWLIST', '45.14.135.48'))
+        ))),
     ],
 
     'referral' => [
