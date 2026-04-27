@@ -55,6 +55,38 @@ class WithdrawalResource extends Resource
                 ])->required(),
                 Forms\Components\Textarea::make('failure_reason')->rows(2),
             ])->columns(2),
+
+            // FaucetPay retry telemetry — populated by ProcessWithdrawalJob
+            // (auto-retry on FaucetPayUnreachableException, $tries=3 with
+            // [60, 300, 1800] backoff). Surfaced here so the operator can
+            // tell at a glance whether a `processing` row is actively
+            // retrying or stuck for an external reason.
+            Forms\Components\Section::make('Job retry telemetry')->schema([
+                Forms\Components\Placeholder::make('attempts')
+                    ->label('Attempts')
+                    ->content(fn (?Withdrawal $r): string => (string) (int) (((array) $r?->meta)['attempts'] ?? 0)),
+                Forms\Components\Placeholder::make('last_attempted')
+                    ->label('Last attempt')
+                    ->content(function (?Withdrawal $r): string {
+                        $stamp = ((array) $r?->meta)['last_attempted_at'] ?? null;
+                        if (! is_string($stamp) || $stamp === '') {
+                            return '—';
+                        }
+
+                        return Carbon::parse($stamp)->diffForHumans();
+                    }),
+                Forms\Components\Placeholder::make('payout_response')
+                    ->label('FaucetPay response')
+                    ->columnSpanFull()
+                    ->content(function (?Withdrawal $r): string {
+                        $resp = ((array) $r?->meta)['response'] ?? null;
+                        if (! is_array($resp) || $resp === []) {
+                            return '—';
+                        }
+
+                        return json_encode($resp, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '—';
+                    }),
+            ])->columns(2)->collapsible()->collapsed(),
         ]);
     }
 
@@ -76,6 +108,12 @@ class WithdrawalResource extends Resource
                 ])->sortable(),
                 Tables\Columns\IconColumn::make('requires_review')->boolean(),
                 Tables\Columns\TextColumn::make('faucetpay_payout_id')->label('Payout id')->placeholder('—')->copyable(),
+                Tables\Columns\TextColumn::make('attempts')
+                    ->label('Tries')
+                    ->getStateUsing(fn (Withdrawal $r): int => (int) (((array) $r->meta)['attempts'] ?? 0))
+                    ->badge()
+                    ->color(fn ($state) => $state >= 3 ? 'danger' : ($state >= 1 ? 'warning' : 'gray'))
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('processed_at')->dateTime()->placeholder('—')->sortable(),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->since()->sortable(),
             ])

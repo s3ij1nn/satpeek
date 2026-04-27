@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- WithdrawalResource (admin) now surfaces FaucetPay job retry
+  telemetry that ProcessWithdrawalJob has been writing since v0.2.0
+  but had no admin surface:
+  - **Tries** column in the table (badge — gray 0, warning 1-2,
+    danger 3+) so the operator can spot a row that's been retrying
+    for a while at a glance.
+  - **Job retry telemetry** collapsible section on the edit page
+    showing attempt count, last-attempted relative timestamp, and
+    the raw FaucetPay response JSON for the failure case. Lets the
+    operator distinguish "still retrying through backoff" from
+    "stuck for an external reason that needs intervention".
+
 ## [0.4.2] — 2026-04-27
 
 Patch release: three operator-visibility additions in `/admin`. All
