@@ -1,0 +1,77 @@
+# CODEOWNERS — auto-requested reviewers per path.
+#
+# GitHub uses LAST-MATCH-WINS. Specific paths below override the catch-all
+# default at the top. The catch-all also covers any new file someone adds
+# in a directory we haven't called out yet.
+#
+# Branch protection (set in repo Settings → Rules) is what actually
+# *blocks* merge until the listed owner approves. This file just makes the
+# review request happen automatically; without branch protection it's
+# advisory.
+
+# Default — every PR pings the maintainer.
+*                                               @s3ij1nn
+
+# ---------------------------------------------------------------------------
+# Security-critical code paths (enumerated in .github/SECURITY.md).
+# Changes here mean a captcha / bot-detection / auth-token guarantee can
+# move; require maintainer review even on otherwise-trivial diffs.
+# ---------------------------------------------------------------------------
+
+# Captcha algorithm + verifier — the core anti-2captcha defence.
+/app/Captcha/                                   @s3ij1nn
+
+# Bot-detection score engine, signals, policy enforcer.
+/app/BotDetection/                              @s3ij1nn
+
+# IP reputation providers + composite + cache. ASN-based blocklists feed
+# off these.
+/app/IpReputation/                              @s3ij1nn
+
+# Auth landing controllers — owner-scoping + single-use semantics live
+# here. A regression silently re-enables URL replay.
+/app/Http/Controllers/PtcAuthController.php             @s3ij1nn
+/app/Http/Controllers/ShortlinkAuthController.php       @s3ij1nn
+/app/Http/Controllers/ShortlinkRedirectController.php   @s3ij1nn
+/app/Http/Controllers/Auth/                             @s3ij1nn
+/app/Http/Controllers/HealthController.php              @s3ij1nn
+
+# Middleware that enforces fingerprinting / bot tier / IP gate / JA4
+# capture. Order changes in bootstrap/app.php affect security posture.
+/app/Http/Middleware/                           @s3ij1nn
+/bootstrap/app.php                              @s3ij1nn
+
+# Shortener clients + registry. The /sl/{token} redirector reaches into
+# these every click, so a transport bug leaks destinations or burns
+# provider quota at scale.
+/app/Shortlinks/                                @s3ij1nn
+
+# Sensitive models — admin credential token (encrypted), user balance,
+# bot score, captcha challenge state.
+/app/Models/User.php                            @s3ij1nn
+/app/Models/BotScore.php                        @s3ij1nn
+/app/Models/CaptchaChallenge.php                @s3ij1nn
+/app/Models/ShortlinkProviderCredential.php     @s3ij1nn
+
+# Captcha + bot-score + IP reputation + shortener provider config knobs.
+/config/satpeek.php                             @s3ij1nn
+
+# Schema changes — migrations are append-only and shape every defence
+# above. Easy to merge a forgotten `nullable()` that breaks a guarantee.
+/database/migrations/                           @s3ij1nn
+
+# ---------------------------------------------------------------------------
+# Repo health + security-policy meta. Changes here alter how reports
+# arrive, what CI enforces, and who gets pinged for review.
+# ---------------------------------------------------------------------------
+
+/.github/                                       @s3ij1nn
+/.github/SECURITY.md                            @s3ij1nn
+/.github/workflows/                             @s3ij1nn
+/.github/dependabot.yml                         @s3ij1nn
+/CONTRIBUTING.md                                @s3ij1nn
+/CHANGELOG.md                                   @s3ij1nn
+/CLAUDE.md                                      @s3ij1nn
+/composer.json                                  @s3ij1nn
+/composer.lock                                  @s3ij1nn
+/phpstan.neon                                   @s3ij1nn
