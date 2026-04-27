@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Laravel 11 → 12 upgrade** to close the security-EOL window
+  (Laravel 11 reached EOL on 2026-04-12). Composer-only change —
+  219 tests / 634 assertions stay green, Pint clean, PHPStan zero,
+  no production code touched. Installed `v12.58.0`. Transitive
+  bumps to livewire, carbon, collision, termwind, sanctum,
+  blade-capture-directive, eloquent-power-joins, filament/*
+  (still 3.3.x — supports Laravel 12).
+  - **Laravel 13 deferred deliberately.** Filament 3.3 does not
+    support Laravel 13, only Filament 4 does. Filament 4 is a
+    major API rewrite (Schema-based forms / tables, type-signature
+    widening across navigation*, Action / Notification namespace
+    moves). Doing both jumps in one shot would land a risky,
+    unreviewed diff. Laravel 12 buys a ~9-month security runway
+    (support through 2027-02-04) to plan the Filament 4 migration
+    properly as a dedicated PR.
+
 ### Added
 
 - Read-only Filament Operations resource at
