@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Filament admin can now flip offerwall publisher integrations on /
+  off without a redeploy. New `offerwall_provider_settings` table
+  + `OfferwallProviderSetting` model + Filament resource at
+  `/admin/offerwall-provider-settings` (Inventory group, admin-only).
+  - `AppServiceProvider::applyOfferwallDbOverrides()` merges DB rows
+    over `OFFERWALLS_ENABLED` at request time before the
+    `AdapterRegistry` reads it. `is_enabled = true` includes the
+    adapter even when env omits it; `is_enabled = false` excludes it
+    even when env lists it (an emergency disable lever).
+  - Registry binding switched from `singleton` to `scoped` so per-
+    request DB reads pick up Filament edits without a queue worker
+    restart — same lifecycle as `ShortlinkProviderRegistry`.
+  - Schema-missing environments (early-boot console, fresh test DB)
+    silently fall back to env-only resolution, so artisan boot before
+    migrations stays safe.
+  - Credentials (BITCOTASK_API_KEY / BITCOTASK_BEARER_TOKEN /
+    BITCOTASK_S2S_SECRET) intentionally stay in env. Putting them in
+    DB would widen the secret-leak surface (DB dumps, replicas) for a
+    convenience win that doesn't apply to the operator's only
+    deploy-time setup step.
+  - 6 new feature tests in `tests/Feature/Offerwall/OfferwallProviderSettingTest.php`
+    cover the four override permutations + Filament admin gating.
 - FaucetPay payout job grew an automatic-retry + dead-letter path so a
   transient outage no longer strands withdrawals at `processing`
   forever waiting for an operator.

@@ -23,6 +23,7 @@ use App\IpReputation\Adapters\MaxMindAsnProvider;
 use App\IpReputation\Adapters\NullProvider;
 use App\IpReputation\Adapters\ProxyCheckProvider;
 use App\IpReputation\Contracts\IpReputationProvider;
+use App\Models\OfferwallProviderSetting;
 use App\Models\ShortlinkProviderCredential;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
@@ -45,7 +46,15 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ChallengeBuilder::class, fn ($app) => new ChallengeBuilder($app->make(CaptchaProvider::class)));
         $this->app->bind(ChallengeVerifier::class, fn ($app) => new ChallengeVerifier($app->make(CaptchaProvider::class)));
 
-        $this->app->singleton(AdapterRegistry::class, function ($app) {
+        // Per-request scope (not singleton) so admin toggles in the Filament
+        // OfferwallProviderSetting resource take effect immediately without a
+        // queue restart. The merge step pushes any DB-managed enable flags
+        // into config('satpeek.offerwalls.enabled') BEFORE the registry's
+        // enabled() method reads from there, so AdapterRegistry stays a
+        // pure consumer of config.
+        $this->app->scoped(AdapterRegistry::class, function ($app) {
+            self::applyOfferwallDbOverrides();
+
             $registry = new AdapterRegistry;
             $registry->register(new MockAdapter);
             $registry->register(new BitcoTaskAdapter($app->make(HttpFactory::class)));
@@ -206,5 +215,42 @@ class AppServiceProvider extends ServiceProvider
             // to the env/config defaults so the rest of the app still boots.
             return [];
         }
+    }
+
+    /**
+     * Merge `OfferwallProviderSetting` DB rows over the env-driven enabled
+     * list and write the result back to runtime config so the rest of the
+     * app keeps reading a single source. DB precedence:
+     *
+     *   - `is_enabled = true`  → adapter is included even if env list omits it
+     *   - `is_enabled = false` → adapter is excluded even if env list contains it
+     *
+     * Schema-missing environments (early-boot console, fresh test DB before
+     * migrations) silently degrade to the env list alone, mirroring the
+     * shortlink-credential resolver above.
+     */
+    private static function applyOfferwallDbOverrides(): void
+    {
+        try {
+            $rows = OfferwallProviderSetting::all();
+        } catch (\Throwable) {
+            return;
+        }
+
+        $enabled = (array) config('satpeek.offerwalls.enabled', []);
+        $enabled = array_values(array_filter(array_map('strval', $enabled), fn (string $n): bool => $n !== ''));
+
+        foreach ($rows as $row) {
+            $name = (string) $row->name;
+            if ((bool) $row->is_enabled) {
+                if (! in_array($name, $enabled, true)) {
+                    $enabled[] = $name;
+                }
+            } else {
+                $enabled = array_values(array_diff($enabled, [$name]));
+            }
+        }
+
+        config()->set('satpeek.offerwalls.enabled', $enabled);
     }
 }
