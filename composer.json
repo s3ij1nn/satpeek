@@ -40,7 +40,24 @@
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi"
+        ],
+        "test": "@php artisan test",
+        "lint": "vendor/bin/pint --test",
+        "format": "vendor/bin/pint",
+        "analyse": "vendor/bin/phpstan analyse --no-progress --memory-limit=512M",
+        "ci": [
+            "@composer validate --strict --no-check-publish",
+            "@lint",
+            "@analyse",
+            "@test"
         ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit suite (sqlite :memory: + array cache).",
+        "lint": "Pint check-only — exits non-zero on any unformatted file.",
+        "format": "Pint autofix — reformats every PHP file in place.",
+        "analyse": "PHPStan / Larastan level 5 over app/.",
+        "ci": "Mirror of the GitHub Actions pipeline (validate + lint + analyse + test)."
     },
     "extra": {
         "laravel": {

@@ -57,12 +57,24 @@ API:
 - **Payout** — `app/Payout/FaucetPayClient.php` — `POST /api/v1/send`, `requires_review` gate for `suspect+` tiers.
 - **Health** — `app/Http/Controllers/HealthController.php` — `/up` returns 503 on critical down (DB / Redis), 200 + `status: degraded` on optional component issues, with stable detail codes for dashboards.
 
-## Testing
+## Testing & Quality Gates
+
+The same checks GitHub Actions runs on every PR are exposed as composer
+script aliases — run the whole pipeline locally with one command:
 
 ```bash
-docker compose exec app php artisan test
-# 124 tests / 367 assertions
+docker compose exec app composer ci       # validate + lint + analyse + test
+docker compose exec app composer test     # PHPUnit only (130 tests / 393 assertions)
+docker compose exec app composer lint     # Pint check-only
+docker compose exec app composer format   # Pint autofix
+docker compose exec app composer analyse  # PHPStan / Larastan level 5
+```
+
+Targeted runs:
+
+```bash
 docker compose exec app php artisan test --testsuite=BotSimulation
+docker compose exec app php artisan test --filter=AuthLandingTest
 ```
 
 `tests/BotSimulation/` is the security regression suite — it must stay green. Coverage spans:
