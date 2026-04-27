@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-04-27
+
+Patch release: three operator-visibility additions in `/admin`. All
+additive — no behavioural breaks. Same release theme as v0.4.0/v0.4.1
+("close the operator-tooling loop on the bot scoring pipeline").
+
 ### Added
 
 - `SharedIpDetectionsWidget` on the `/admin` dashboard — three cards
@@ -659,7 +665,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/s3ij1nn/satpeek/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/s3ij1nn/satpeek/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/s3ij1nn/satpeek/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/s3ij1nn/satpeek/compare/v0.2.0...v0.3.0
