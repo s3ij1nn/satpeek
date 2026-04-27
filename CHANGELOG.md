@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `App\BotDetection\IpAllowlist` — CIDR-aware match for an
+  operator-supplied list of "this IP is a known shared NAT, don't
+  flag cross-account use of it" prefixes. `SharedIpSignal` now skips
+  any of the user's IPs that match `BOTSCORE_SHARED_IP_ALLOWLIST`
+  (comma-separated CIDR / single-IP list), so legit users on
+  campus wifi / mobile carriers / household routers / corporate
+  proxies don't false-positive into suspect/likely_bot.
+  - IPv4 and IPv6 supported. CIDR matching at byte- AND bit-
+    boundary is exercised in 10 new unit tests
+    (`tests/Unit/BotDetection/IpAllowlistTest.php`).
+  - Allowlist is "skip from cross-account count" — a clean home IP
+    can't redeem a sock-puppet IP. SharedIpSignal still uses the
+    worst-IP-wins rule for the remaining (non-allowlisted) IPs,
+    so an attacker who happens to also touch a campus IP still
+    gets caught on their throwaway IP.
+  - 2 new SharedIpSignal tests cover the
+    "allowlisted IP doesn't score" and "allowlist doesn't mask a
+    non-allowlisted shared IP" paths.
 - End-to-end PolicyEnforcer integration tests in
   `tests/Feature/BotDetection/PolicyEnforcerIntegrationTest.php`.
   Confirms the `bot_scores.tier` → action chain holds at the HTTP

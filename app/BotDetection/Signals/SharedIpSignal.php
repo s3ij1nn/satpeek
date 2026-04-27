@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\BotDetection\Signals;
 
+use App\BotDetection\IpAllowlist;
 use App\Models\User;
 use App\Models\UserIpObservation;
 use App\Services\UserIpObserver;
@@ -39,6 +40,7 @@ class SharedIpSignal implements Signal
         $minOthers = (int) ($cfg['min_others_for_signal'] ?? 1);
         $scorePerOther = (float) ($cfg['score_per_other'] ?? 0.3);
         $maxScore = (float) ($cfg['max_score'] ?? 1.0);
+        $allowlist = self::loadAllowlist($cfg['allowlist'] ?? []);
 
         // Find every IP this user has been on, and for each, how many OTHER
         // distinct users have also been on it. The signal score is driven
@@ -55,15 +57,25 @@ class SharedIpSignal implements Signal
 
         $maxOthers = 0;
         $worstIp = null;
+        $allowlistedSkipped = 0;
         foreach ($ips as $ip) {
+            $ipStr = (string) $ip;
+            // Skip IPs the operator has marked as known shared NATs
+            // (campus / mobile / corporate). Without this, every legit
+            // user on a shared IP would score sock-puppet here.
+            if ($allowlist !== [] && IpAllowlist::matches($ipStr, $allowlist)) {
+                $allowlistedSkipped++;
+
+                continue;
+            }
             $others = (int) UserIpObservation::query()
-                ->where('ip', $ip)
+                ->where('ip', $ipStr)
                 ->where('user_id', '!=', $user->id)
                 ->distinct()
                 ->count('user_id');
             if ($others > $maxOthers) {
                 $maxOthers = $others;
-                $worstIp = (string) $ip;
+                $worstIp = $ipStr;
             }
         }
 
@@ -74,6 +86,7 @@ class SharedIpSignal implements Signal
                     'reason' => 'no_shared_ip',
                     'ip_count' => count($ips),
                     'max_others' => $maxOthers,
+                    'allowlisted_skipped' => $allowlistedSkipped,
                 ],
             ];
         }
@@ -86,7 +99,31 @@ class SharedIpSignal implements Signal
                 'reason' => 'shared_ip',
                 'worst_ip_others' => $maxOthers,
                 'worst_ip' => $worstIp,
+                'allowlisted_skipped' => $allowlistedSkipped,
             ],
         ];
+    }
+
+    /**
+     * Normalises the allowlist config — accepts an array (from PHP config)
+     * or a comma-separated string (from env). Returns a clean array of
+     * trimmed non-empty entries.
+     *
+     * @param  mixed  $raw
+     * @return array<int, string>
+     */
+    private static function loadAllowlist($raw): array
+    {
+        if (is_string($raw)) {
+            $raw = explode(',', $raw);
+        }
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            fn ($e): string => trim((string) $e),
+            $raw,
+        ), fn (string $e): bool => $e !== ''));
     }
 }

@@ -127,6 +127,45 @@ class SharedIpSignalTest extends TestCase
         $this->assertSame('no_shared_ip', $result['detail']['reason']);
     }
 
+    public function test_allowlisted_shared_ip_does_not_score(): void
+    {
+        // Three sibling accounts on a known shared NAT (campus wifi).
+        // Without the allowlist this would land squarely in suspect / likely_bot.
+        config()->set('satpeek.bot_score.shared_ip.allowlist', ['203.0.113.0/24']);
+
+        $user = User::factory()->create();
+        $this->observe($user, '203.0.113.10');
+        $this->observe(User::factory()->create(), '203.0.113.10');
+        $this->observe(User::factory()->create(), '203.0.113.10');
+        $this->observe(User::factory()->create(), '203.0.113.10');
+
+        $result = (new SharedIpSignal)->evaluate($user);
+
+        $this->assertSame(0.0, $result['score']);
+        $this->assertSame('no_shared_ip', $result['detail']['reason']);
+        $this->assertSame(1, $result['detail']['allowlisted_skipped']);
+    }
+
+    public function test_allowlist_does_not_mask_a_non_allowlisted_shared_ip(): void
+    {
+        // User has TWO shared IPs: one allowlisted (campus) and one
+        // genuinely sock-puppet. Score must still fire on the bad IP.
+        config()->set('satpeek.bot_score.shared_ip.allowlist', ['203.0.113.0/24']);
+
+        $user = User::factory()->create();
+        $this->observe($user, '203.0.113.10');           // allowlisted
+        $this->observe(User::factory()->create(), '203.0.113.10');
+        $this->observe($user, '198.51.100.20');          // suspicious
+        $this->observe(User::factory()->create(), '198.51.100.20');
+        $this->observe(User::factory()->create(), '198.51.100.20');
+
+        $result = (new SharedIpSignal)->evaluate($user);
+
+        $this->assertEqualsWithDelta(0.6, $result['score'], 0.001);
+        $this->assertSame('198.51.100.20', $result['detail']['worst_ip']);
+        $this->assertSame(1, $result['detail']['allowlisted_skipped']);
+    }
+
     public function test_distinct_user_count_not_row_count(): void
     {
         // Sibling logged in 5 times from the same IP. Should still

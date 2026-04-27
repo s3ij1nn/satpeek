@@ -74,10 +74,21 @@ return [
         // strongly bot-like — which combined with the 0.15 weight
         // pushes a 3-sibling user past the suspect threshold (0.30)
         // even when every other signal is clean.
+        //
+        // `allowlist` is the operator escape hatch for known shared NATs
+        // (campus wifi, mobile carrier ranges, household routers,
+        // corporate proxies). Comma-separated CIDR or single-IP entries
+        // — exact matches and CIDR prefixes both honoured. Allowlisted
+        // IPs are excluded from the cross-account count entirely so
+        // legit users on those networks don't false-positive.
         'shared_ip' => [
             'min_others_for_signal' => (int) env('BOTSCORE_SHARED_IP_MIN_OTHERS', 1),
             'score_per_other' => (float) env('BOTSCORE_SHARED_IP_SCORE_PER_OTHER', 0.3),
             'max_score' => (float) env('BOTSCORE_SHARED_IP_MAX_SCORE', 1.0),
+            'allowlist' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('BOTSCORE_SHARED_IP_ALLOWLIST', '')),
+            ))),
         ],
     ],
 
