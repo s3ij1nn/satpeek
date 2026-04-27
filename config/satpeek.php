@@ -46,6 +46,13 @@ return [
             'tls_fingerprint' => 0.10,
             'heartbeat_gap' => 0.10,
             'asn_datacenter' => 0.10,
+            // Defence-in-depth ASN check against the operator-maintained
+            // DATACENTER_ASNS list. Lower weight than the live reputation
+            // signal because the static list lags real-world datacenter
+            // emergence — it's a precise positive (high confidence when
+            // it fires), not a coverage signal. ScoreEngine renormalises
+            // by total weight so adding it doesn't mute the others.
+            'asn_static_list' => 0.05,
         ],
     ],
 

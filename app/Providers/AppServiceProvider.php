@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\BotDetection\ScoreEngine;
+use App\BotDetection\Signals\AsnStaticListSignal;
 use App\BotDetection\Signals\FailureRateSignal;
 use App\BotDetection\Signals\FingerprintConsistencySignal;
 use App\BotDetection\Signals\HeartbeatGapSignal;
@@ -121,6 +122,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(ScoreEngine::class, function ($app) {
+            $reputation = $app->make(IpReputationProvider::class);
             return new ScoreEngine([
                 $app->make(ResponseTimeSignal::class),
                 $app->make(TrajectoryEntropySignal::class),
@@ -128,7 +130,8 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(FingerprintConsistencySignal::class),
                 $app->make(TlsFingerprintSignal::class),
                 $app->make(HeartbeatGapSignal::class),
-                new IpReputationSignal($app->make(IpReputationProvider::class)),
+                new IpReputationSignal($reputation),
+                new AsnStaticListSignal($reputation),
             ]);
         });
 
