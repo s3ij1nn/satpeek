@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-04-27
+
+Theme: identity capture + operator visibility. Every change in this release
+either sharpens who SatPeek thinks the visitor is (Cloudflare-aware client
+IP, multi-account-by-IP detection, ProxyCheck primary detection with IPHub
+fallback) or hands the operator new controls / observability for the
+defences that already exist (Filament offerwall toggle, dashboard widgets,
+`/up` blocks for FaucetPay backlog and offerwall credentials, affiliate
+program on every earnings surface).
+
 ### Added
 
 - `App\BotDetection\Signals\SharedIpSignal` — the multi-account-by-IP
@@ -451,6 +461,7 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/s3ij1nn/satpeek/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/s3ij1nn/satpeek/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/s3ij1nn/satpeek/releases/tag/v0.1.0
