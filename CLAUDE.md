@@ -1,6 +1,6 @@
 # SatPeek
 
-PTC site (paid-to-click) with intentionally adversarial captcha + bot detection. FaucetPay payouts. No faucet feature (would bleed to bots).
+PTC site (paid-to-click) + URL-shortener interstitial earnings, with intentionally adversarial captcha + bot detection. FaucetPay payouts. No faucet feature (would bleed to bots).
 
 ## Stack
 
@@ -30,19 +30,47 @@ The entrypoint serialises composer downloads (`COMPOSER_MAX_PARALLEL_HTTP=1`) to
 The "trajectory trace" challenge:
 - Server issues a parametric curve (linear/sine/lissajous) bound to a per-issue seed.
 - Client renders a moving target on `<canvas>`; user drags a token along the live target into a goal marker.
-- Submit = an array of `{x, y, t, pressure}` samples (50–600 points).
-- Server validates: shape (Frechet distance), Δt jitter, jerk-entropy, completion dwell, fingerprint match, response-time window `[800ms, 25000ms]`.
+- Submit = an array of `{x, y, t, pressure}` samples (20–2000 points).
+- Server validates: shape (Frechet distance), Δt jitter, jerk-entropy, completion dwell, fingerprint match, response-time window `[800 ms, 60 s]`.
+
+The 60 s solve window is wide enough that an honest user can type credentials, drag the captcha (6–10 s), and submit without false-rejecting as `too_slow_relay`; it still rules out human-relay services (round-trip 30–90 s). The 2000-point cap accommodates high-DPI mice on long curves; the bot ceiling is enforced via `dt_jitter` / `jerk_entropy`, not raw sample count.
 
 Why 2captcha cannot solve it:
 1. No single PNG to relay — the target moves over time.
 2. The answer is a continuous trajectory, not a coordinate.
-3. The 25 s upper bound rules out any human relay.
+3. The 60 s upper bound rules out any human relay round-trip.
 4. Bezier-curve replay fails the jerk-entropy lower bound.
 5. Florence-2 / VLM fine-tuning fails because every challenge has a fresh seed.
 
+## Per-click rotating auth URLs — `/ptc/auth/{token}` + `/shortlinks/auth/{token}`
+
+Both the PTC viewer and the shortlink hold/claim screen live behind a 28-character random URL slug minted at the moment the user clicks "Watch" / "Open & hold". Each click → fresh slug → unique URL.
+
+Properties:
+- Slug entropy: `pv_` / `sc_` + 28 chars lowercase alphanumeric ≈ 145 bits — bulk URL probing infeasible.
+- **Owner-scoped** — landing page returns 404 for any user that doesn't own the click/view.
+- **Single-use** — once `status` flips out of `pending`, the page returns 410 (no replay).
+- Token-keyed API endpoints (`/api/ptc/auth/{token}/heartbeat|complete`, `/api/shortlinks/auth/{token}/complete`) wrap the same `runHeartbeat()` / `finishView()` helpers as the legacy by-numeric-id endpoints; both stay live for backward compat. The frontend flips to the token-keyed paths the moment a token is available so the predictable numeric ID never leaks onto the wire.
+- Legacy `/ptc/{id}` entry → on Open-ad click, JS does `history.replaceState` to `/ptc/auth/{token}` so the predictable URL only flashes briefly.
+
+Triage: the read-only `PtcView` + `ShortlinkClick` Filament resources (Operations group) expose a copyable token + an "Auth URL" row action that opens the user-facing page in a new tab. Both resources are read-only — `canCreate/canEdit/canDelete` return false because mutating a row would side-step the captcha + heartbeat + duration guards.
+
 ## Bot detection — `app/BotDetection/`
 
-7 weighted signals → unit-interval risk score → tier policy:
+9 weighted signals → unit-interval risk score → tier policy:
+
+| Signal | Source | Weight |
+|---|---|---|
+| `response_time` | challenge issue → submit interval | 0.20 |
+| `trajectory_entropy` | jerk entropy across recent traces | 0.20 |
+| `failure_rate` | rolling captcha rejects | 0.15 |
+| `fingerprint_consistency` | browser fingerprint stability | 0.15 |
+| `tls_fingerprint` | JA4 family vs claimed UA | 0.10 |
+| `heartbeat_gap` | PTC heartbeat cadence outliers | 0.10 |
+| `asn_datacenter` | live IpReputation composite (datacenter / vpn / proxy) | 0.10 |
+| `asn_static_list` | operator-curated `DATACENTER_ASNS` env list | 0.05 |
+
+ScoreEngine renormalises by total weight, so adding signals doesn't mute the others.
 
 | Tier | Range | Effect |
 |------|-------|--------|
@@ -50,6 +78,48 @@ Why 2captcha cannot solve it:
 | `suspect` | 0.30–0.60 | harder captcha, withdrawals reviewed |
 | `likely_bot` | 0.60–0.85 | PTC blocked, withdrawals held |
 | `banned` | ≥ 0.85 | account/IP/fingerprint blacklisted |
+
+### JA4 capture — `app/Http/Middleware/Ja4Capture.php`
+
+Global middleware normalises upstream JA4 headers in priority order (`cf-ja4` > `x-tls-ja4` > `x-ja4` > `x-sp-ja4`) into a canonical `X-SP-JA4` and validates the shape (`^[a-z0-9]{6,20}_[a-f0-9]{12}_[a-f0-9]{12}$`). Garbage from spoofing clients is dropped silently. `ChallengeBuilder` reads only the canonical header so app-layer code is transport-agnostic. See `docker/nginx/satpeek.conf` for the two production paths (Cloudflare orange-cloud auto, or `nginx-ja4` module for direct termination).
+
+### IP reputation — `app/IpReputation/`
+
+`IpReputationProvider` interface, three concrete implementations:
+- **MaxMindAsnProvider** — local GeoLite2-ASN `.mmdb` lookup. Lazy-loaded, memoised, file-missing degrades to null. Operator supplies the `.mmdb` file (MaxMind license forbids redistribution); set `MAXMIND_ASN_DB` to the path.
+- **IpHubProvider** — paid API, full proxy/vpn classification.
+- **ProxyCheckProvider** — paid API, supports anonymous queries on a smaller quota.
+
+Composed via `CompositeProvider` (first non-null verdict wins, MaxMind registered first because it's local + sub-millisecond) wrapped in `CachedProvider`. Local/testing env binds a MaxMind-only composite when the file is present, else `NullProvider`.
+
+`AsnStaticListSignal` piggybacks on the same provider cache to compare returned ASNs against `DATACENTER_ASNS` — defence-in-depth against operator-known abusive ranges.
+
+## Shortlinks — ouo.io-family monetisation
+
+The operator wraps destination URLs through external publisher shorteners (btcut.io / cuty.io / exe.io / shrtfly.com / ouo.io). Viewers click the wrapped URL on `/shortlinks` → land on the shortener's interstitial → forwarded to the destination. The operator earns the publisher revenue; SatPeek pays a portion to the viewer.
+
+### Provider clients — `app/Shortlinks/Providers/`
+
+Two transport shapes covered:
+- **`GenericShortenerClient`** (query-token, btcut family): `GET <api_base>?api=<token>&url=<long>&alias=<custom>&format=json` → `{status, message, shortenedUrl}`.
+- **`OuoShortenerClient`** (path-token, ouo family): `GET <api_base>/<token>?s=<long>` → plain-text body containing the URL.
+
+Both implement `App\Shortlinks\Providers\ShortenerClient`. `ShortlinkProviderRegistry` (per-request scoped) builds the client set from `config('satpeek.shortlink_providers')` — adding a new query-family provider is a one-config-entry change.
+
+### Per-click rotation — `App\Http\Controllers\Api\ShortlinkController::resolveRedirectUrl()`
+
+Repeating the same shortened URL trains viewers to recognise + skip past it, and lets domain-level blocklists target one stable string. When a shortlink has `provider_name` + `source_url` set, every `/start` re-runs `source_url` through the configured shortener. A short random `?_r=<8 chars>` cache-buster is appended before the shorten call so providers that de-dup server-side (btcut/cuty/exe/shrtfly all do) mint a distinct slug per rotation. Shortener failure logs a warning and falls back to the cached `target_url` rather than 500ing the click.
+
+### Admin-managed credentials — `App\Models\ShortlinkProviderCredential`
+
+Filament resource at `/admin/shortlink-provider-credentials` lets the operator paste API tokens without touching `.env`. The `api_token` column is encrypted at rest via Eloquent cast. The runtime registry merges DB rows over config defaults (DB token wins, transport overrides, `is_active=false` removes the provider from the picker). A "Test" row action probes the live API with a throwaway URL.
+
+## Self-serve advertising — `/advertise/*`
+
+User-submitted ads: `/advertise/create` charges the user's balance upfront, queues the ad as `pending_review`, mails the operator. After approval the ad is served alongside admin-created inventory.
+
+- `display_mode` field on `ptc_ads` (`window` default, `iframe` opt-in) — viewers see "Open in new tab" CTA vs inline iframe based on this. Surfaced in both the user-facing form and the Filament admin form.
+- `/advertise/{id}/edit` lets the advertiser change `title` / `description` / `display_mode` / `daily_limit_per_user` / `is_active` after launch. `target_url` / `reward_sat` / `total_views_purchased` / `status` stay locked (budget already debited / admin review). Pausing flips `is_active=false` only; `status='approved'` stays so the ad resumes when toggled back on.
 
 ## Offerwall adapters — `app/Offerwall/`
 
@@ -59,10 +129,28 @@ Why 2captcha cannot solve it:
 
 Calls `POST {FAUCETPAY_API_BASE}/send`. Withdrawals enter `withdrawals` table → `ProcessWithdrawalJob` runs from the queue, with `requires_review` for `suspect+` tiers held for admin approval in Filament.
 
+## Operations
+
+- **`/up`** — structured JSON health check (DB / Redis / MaxMind / shortlink_providers / ip_reputation_providers). Returns 503 on critical down (DB / Redis), 200 with `status: degraded` on non-critical degradation. Stable detail codes (`unconfigured`, `file_missing`, `no_token_set`, …) for dashboards. See `App\Http\Controllers\HealthController`.
+- **Admin debug resources** (Operations group):
+  - `/admin/ptc-views` — read-only PtcView listing with status filter + Auth URL action.
+  - `/admin/shortlink-clicks` — symmetric for ShortlinkClick.
+  - Both forbid create/edit/delete to prevent admins from bypassing reward guards.
+
 ## Tests
 
 - `tests/Unit/Captcha/TrajectoryVerifierTest.php` — locks down the captcha algorithm against bezier replay, fast-script attempts, and 2captcha-style relays.
-- `tests/Unit/BotDetection/ScoreEngineTest.php` — weighted scoring + tier promotion to banned.
+- `tests/Unit/BotDetection/` — score engine + signals (incl. `AsnStaticListSignalTest`).
+- `tests/Unit/IpReputation/` — composite + cached + MaxMind provider.
+- `tests/Unit/Shortlinks/` — generic + ouo shortener clients + registry.
+- `tests/Unit/Http/Middleware/Ja4CaptureTest.php` — JA4 normalisation contract.
+- `tests/Feature/Auth/RegisterFlowTest.php` — registration + welcome email path.
+- `tests/Feature/Captcha/Ja4PersistenceTest.php` — JA4 lands on issued challenges.
+- `tests/Feature/Ptc/` — viewer flow + auth landing.
+- `tests/Feature/Shortlinks/` — click flow + auth landing + rotation + credential override + provider registry boot.
+- `tests/Feature/Advertise/` — display_mode + edit flow.
+- `tests/Feature/Admin/DebugResourceAccessTest.php` — Filament debug resources scoping.
+- `tests/Feature/Health/HealthEndpointTest.php` — `/up` payload + status-code contract.
 - `tests/BotSimulation/PlaywrightHeadlessTest.php` — synthetic uniform-Δt CDP-style attacks must be rejected.
 
 CI must keep `tests/BotSimulation/` green — that is how captcha strength is measured over time.
@@ -70,5 +158,3 @@ CI must keep `tests/BotSimulation/` green — that is how captcha strength is me
 ## Open follow-ups
 
 - Confirm BitcoTask publisher API endpoint shape and S2S signature scheme.
-- Wire JA4 fingerprint capture (Nginx or upstream Cloudflare).
-- Connect ASN datacenter lookup to maxmind / ipinfo.
