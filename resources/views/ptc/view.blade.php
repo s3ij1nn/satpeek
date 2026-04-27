@@ -131,6 +131,14 @@
     const fp = window.SPCaptcha?.fingerprint || '';
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
 
+    // Auth-mode hand-off: when the page is rendered at /ptc/auth/{token},
+    // the controller binds a pre-existing PtcView so we skip /start and
+    // resume the session from started_at. authToken !== null implies
+    // viewId is also set; legacy /ptc/{id} renders both as null.
+    const authToken = @json($view?->epoch_token);
+    const presetViewId = @json($view?->id);
+    const presetStartedAtMs = @json($view?->started_at?->getTimestamp() ? $view->started_at->getTimestamp() * 1000 : null);
+
     const secEl = document.getElementById('ptcSec');
     const barEl = document.getElementById('ptcBar');
     const hbEl  = document.getElementById('ptcHb');
@@ -141,8 +149,15 @@
     const claim = document.getElementById('claimBtn');
     const result = document.getElementById('ptcResult');
 
-    let viewId = null, epochToken = null, remaining = duration, hbCount = 0;
-    let started = false, viewerDone = false, adWindow = null;
+    let viewId = presetViewId, epochToken = authToken;
+    // Resume countdown from started_at when we're in auth mode and the
+    // user already burned some time before refreshing / reopening the tab.
+    let remaining = duration, hbCount = 0;
+    if (presetStartedAtMs) {
+        const elapsedSec = Math.max(0, Math.floor((Date.now() - presetStartedAtMs) / 1000));
+        remaining = Math.max(0, duration - elapsedSec);
+    }
+    let started = !!viewId, viewerDone = false, adWindow = null;
 
     // Tab title state. We restore this on completion / cleanup so the original
     // page title comes back when the user has multiple PTC tabs open.
@@ -235,7 +250,19 @@
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
     modal.querySelector('.modal__card').addEventListener('click', (e) => e.stopPropagation());
 
+    // Endpoints flip to token-keyed paths once we have an epochToken — that
+    // keeps the predictable numeric viewId off the wire and matches the
+    // /ptc/auth/{token} URL pattern.
+    const heartbeatUrl = () => epochToken
+        ? `/api/ptc/auth/${encodeURIComponent(epochToken)}/heartbeat`
+        : `/api/ptc/${viewId}/heartbeat`;
+    const completeUrl = () => epochToken
+        ? `/api/ptc/auth/${encodeURIComponent(epochToken)}/complete`
+        : `/api/ptc/${viewId}/complete`;
+
     async function startSession() {
+        // Already started in auth mode (controller bound a PtcView).
+        if (viewId && epochToken) return true;
         try {
             const r = await fetch(`/api/ptc/${adId}/start`, {
                 method: 'POST',
@@ -253,6 +280,14 @@
             }
             viewId = data.view_id;
             epochToken = data.epoch_token;
+            // Hop to the rotating /ptc/auth/{token} URL as soon as we have a
+            // token. Same tab, same session — just hides the predictable
+            // /ptc/{ad_id} from the address bar / history past this point.
+            try {
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState({}, '', `/ptc/auth/${encodeURIComponent(epochToken)}`);
+                }
+            } catch {}
             return true;
         } catch (e) {
             openStatus.textContent = 'network error';
@@ -293,7 +328,7 @@
         const wait = 1500 + Math.floor(Math.random() * 1000);
         setTimeout(async () => {
             try {
-                await fetch(`/api/ptc/${viewId}/heartbeat`, {
+                await fetch(heartbeatUrl(), {
                     method: 'POST',
                     headers: {
                         'X-CSRF-TOKEN': csrf, 'Accept': 'application/json',
@@ -387,7 +422,7 @@
                 return;
             }
 
-            const c = await fetch(`/api/ptc/${viewId}/complete`, {
+            const c = await fetch(completeUrl(), {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': csrf, 'Accept': 'application/json',

@@ -88,8 +88,46 @@ class PtcController extends Controller
 
     public function heartbeat(Request $request, int $viewId): JsonResponse
     {
-        $user = $request->user();
-        $view = PtcView::where('user_id', $user->id)->findOrFail($viewId);
+        $view = PtcView::where('user_id', $request->user()->id)->findOrFail($viewId);
+        return $this->runHeartbeat($request, $view);
+    }
+
+    /**
+     * Token-keyed heartbeat — pairs with the /ptc/auth/{token} viewer URL.
+     * Resolving by epoch_token (28-char random) instead of the predictable
+     * numeric view_id removes ID enumeration as an attack surface.
+     */
+    public function heartbeatByToken(Request $request, string $token): JsonResponse
+    {
+        $view = PtcView::where('user_id', $request->user()->id)
+            ->where('epoch_token', $token)
+            ->first();
+        if (! $view) {
+            return response()->json(['error' => 'view_not_found'], 404);
+        }
+        return $this->runHeartbeat($request, $view);
+    }
+
+    public function complete(Request $request, int $viewId): JsonResponse
+    {
+        $view = PtcView::where('user_id', $request->user()->id)->findOrFail($viewId);
+        return $this->finishView($request, $view);
+    }
+
+    /** Token-keyed completion — pairs with /ptc/auth/{token}. */
+    public function completeByToken(Request $request, string $token): JsonResponse
+    {
+        $view = PtcView::where('user_id', $request->user()->id)
+            ->where('epoch_token', $token)
+            ->first();
+        if (! $view) {
+            return response()->json(['error' => 'view_not_found'], 404);
+        }
+        return $this->finishView($request, $view);
+    }
+
+    private function runHeartbeat(Request $request, PtcView $view): JsonResponse
+    {
         if ($view->status !== 'pending') {
             return response()->json(['error' => 'view_not_pending'], 422);
         }
@@ -104,10 +142,9 @@ class PtcController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    public function complete(Request $request, int $viewId): JsonResponse
+    private function finishView(Request $request, PtcView $view): JsonResponse
     {
         $user = $request->user();
-        $view = PtcView::where('user_id', $user->id)->findOrFail($viewId);
         if ($view->status !== 'pending') {
             return response()->json(['error' => 'view_not_pending'], 422);
         }

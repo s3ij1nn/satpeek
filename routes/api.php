@@ -21,9 +21,18 @@ Route::middleware(['fingerprint'])->group(function () {
 // account whose tier escalated to `banned`.
 Route::middleware(['auth', 'bot.gate'])->group(function () {
     Route::get('/ptc', [PtcController::class, 'index']);
-    Route::post('/ptc/{adId}/start', [PtcController::class, 'start']);
-    Route::post('/ptc/{viewId}/heartbeat', [PtcController::class, 'heartbeat']);
-    Route::post('/ptc/{viewId}/complete', [PtcController::class, 'complete']);
+    Route::post('/ptc/{adId}/start', [PtcController::class, 'start'])->whereNumber('adId');
+    // Token-keyed endpoints pair with the /ptc/auth/{token} viewer URL —
+    // declared BEFORE the legacy {viewId} routes so /auth/<token>/… isn't
+    // shadowed by the numeric {viewId} pattern.
+    Route::post('/ptc/auth/{token}/heartbeat', [PtcController::class, 'heartbeatByToken'])
+        ->where('token', '[A-Za-z0-9_]+');
+    Route::post('/ptc/auth/{token}/complete', [PtcController::class, 'completeByToken'])
+        ->where('token', '[A-Za-z0-9_]+');
+    // Legacy: heartbeat / complete by numeric view ID. Kept for backward
+    // compatibility with existing tests + any external callers.
+    Route::post('/ptc/{viewId}/heartbeat', [PtcController::class, 'heartbeat'])->whereNumber('viewId');
+    Route::post('/ptc/{viewId}/complete', [PtcController::class, 'complete'])->whereNumber('viewId');
 
     Route::get('/shortlinks', [ShortlinkController::class, 'index']);
     Route::post('/shortlinks/{id}/start', [ShortlinkController::class, 'start'])->whereNumber('id');

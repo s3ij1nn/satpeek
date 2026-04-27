@@ -47,8 +47,14 @@ Route::middleware(['auth'])->group(function () {
     Route::view('/dashboard', 'dashboard')->name('dashboard');
 
     Route::view('/ptc', 'ptc.index')->name('ptc.index');
+    // Per-watch rotating landing URL (security: each watch → fresh 28-char
+    // token → unguessable, single-use). Declared BEFORE /ptc/{id} so the
+    // numeric pattern doesn't shadow /auth/<token>.
+    Route::get('/ptc/auth/{token}', [\App\Http\Controllers\PtcAuthController::class, 'show'])
+        ->where('token', '[A-Za-z0-9_]+')
+        ->name('ptc.auth');
     Route::get('/ptc/{id}', function (int $id) {
-        return view('ptc.view', ['id' => $id]);
+        return view('ptc.view', ['id' => $id, 'view' => null]);
     })->whereNumber('id')->name('ptc.view');
 
     Route::view('/shortlinks', 'shortlinks.index')->name('shortlinks.index');
