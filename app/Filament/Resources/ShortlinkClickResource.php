@@ -4,9 +4,12 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ShortlinkClickResource\Pages;
 use App\Models\ShortlinkClick;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use UnitEnum;
 
 /**
  * Operator debug surface for in-flight + recent shortlink clicks.
@@ -20,9 +23,9 @@ class ShortlinkClickResource extends Resource
 {
     protected static ?string $model = ShortlinkClick::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-cursor-arrow-rays';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cursor-arrow-rays';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?string $navigationLabel = 'Shortlink clicks';
 
@@ -74,7 +77,7 @@ class ShortlinkClickResource extends Resource
                     ]),
             ])
             ->actions([
-                Tables\Actions\Action::make('open_auth_url')
+                Actions\Action::make('open_auth_url')
                     ->label('Auth URL')
                     ->icon('heroicon-o-arrow-top-right-on-square')
                     ->color('info')

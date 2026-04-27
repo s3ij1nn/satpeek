@@ -6,12 +6,17 @@ use App\Filament\Resources\ShortlinkProviderCredentialResource\Pages;
 use App\Models\ShortlinkProviderCredential;
 use App\Shortlinks\Providers\ShortenerException;
 use App\Shortlinks\ShortlinkProviderRegistry;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas;
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use UnitEnum;
 
 /**
  * Operator UI for managing shortener API credentials.
@@ -25,20 +30,20 @@ class ShortlinkProviderCredentialResource extends Resource
 {
     protected static ?string $model = ShortlinkProviderCredential::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-key';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-key';
 
-    protected static ?string $navigationGroup = 'Inventory';
+    protected static string|UnitEnum|null $navigationGroup = 'Inventory';
 
     protected static ?string $navigationLabel = 'Shortener APIs';
 
     protected static ?int $navigationSort = 30;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
         $configured = (array) config('satpeek.shortlink_providers', []);
 
-        return $form->schema([
-            Forms\Components\Section::make('Provider')->schema([
+        return $schema->components([
+            Schemas\Components\Section::make('Provider')->schema([
                 Forms\Components\Select::make('name')
                     ->label('Provider')
                     ->options(collect($configured)
@@ -48,7 +53,7 @@ class ShortlinkProviderCredentialResource extends Resource
                     ->required()
                     ->live()
                     ->disabled(fn ($context) => $context === 'edit')
-                    ->afterStateUpdated(function ($state, Forms\Set $set) use ($configured) {
+                    ->afterStateUpdated(function ($state, Set $set) use ($configured) {
                         $cfg = $configured[$state] ?? null;
                         if (! $cfg) {
                             return;
@@ -105,7 +110,7 @@ class ShortlinkProviderCredentialResource extends Resource
                 // Probe the live API with a throwaway URL to confirm the token
                 // works without leaving the admin panel. Result lands in a
                 // toast — the response URL is shown for sanity-check only.
-                Tables\Actions\Action::make('test')
+                Actions\Action::make('test')
                     ->label('Test')
                     ->icon('heroicon-o-bolt')
                     ->color('warning')
@@ -130,12 +135,12 @@ class ShortlinkProviderCredentialResource extends Resource
                                 ->send();
                         }
                     }),
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Actions\EditAction::make(),
+                Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                Actions\BulkActionGroup::make([
+                    Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('name');

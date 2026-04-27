@@ -8,32 +8,36 @@ use App\Mail\AdRejectedEmail;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
 use App\Models\PtcView;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use UnitEnum;
 
 class PtcAdResource extends Resource
 {
     protected static ?string $model = PtcAd::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';
 
-    protected static ?string $navigationGroup = 'Inventory';
+    protected static string|UnitEnum|null $navigationGroup = 'Inventory';
 
     protected static ?string $navigationLabel = 'PTC ads';
 
     protected static ?int $navigationSort = 10;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form->schema([
-            Forms\Components\Section::make('Ad')->schema([
+        return $schema->components([
+            Schemas\Components\Section::make('Ad')->schema([
                 Forms\Components\TextInput::make('title')
                     ->required()
                     ->maxLength(200),
@@ -56,7 +60,7 @@ class PtcAdResource extends Resource
                     ->helperText('Pick "iframe" only when you control the destination and have verified it sets no X-Frame-Options/CSP frame-ancestors restriction.'),
             ])->columns(1),
 
-            Forms\Components\Section::make('Reward & timing')->schema([
+            Schemas\Components\Section::make('Reward & timing')->schema([
                 Forms\Components\TextInput::make('reward_sat')
                     ->label('Reward (sat)')
                     ->numeric()
@@ -78,7 +82,7 @@ class PtcAdResource extends Resource
                     ->default(3),
             ])->columns(3),
 
-            Forms\Components\Section::make('Source & status')->schema([
+            Schemas\Components\Section::make('Source & status')->schema([
                 Forms\Components\Select::make('source')
                     ->options([
                         'internal' => 'Internal (own inventory)',
@@ -185,7 +189,7 @@ class PtcAdResource extends Resource
             ])
             ->actions([
                 // Approve a pending submission — flips status + activates serving.
-                Tables\Actions\Action::make('approve')
+                Actions\Action::make('approve')
                     ->label('Approve')
                     ->icon('heroicon-o-check')
                     ->color('success')
@@ -206,13 +210,13 @@ class PtcAdResource extends Resource
                         }
                     }),
                 // Reject a pending submission — refunds the full reserved budget.
-                Tables\Actions\Action::make('reject')
+                Actions\Action::make('reject')
                     ->label('Reject & refund')
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->visible(fn (PtcAd $r) => in_array($r->status, ['pending_review', 'approved'], true) && $r->user_id !== null)
-                    ->form([
+                    ->schema([
                         Forms\Components\Textarea::make('rejection_reason')
                             ->label('Reason (visible to advertiser)')
                             ->required(),
@@ -244,13 +248,13 @@ class PtcAdResource extends Resource
                         } catch (\Throwable $e) {
                         }
                     }),
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make()
+                Actions\EditAction::make(),
+                Actions\DeleteAction::make()
                     ->visible(fn (PtcAd $r) => $r->user_id === null),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                Actions\BulkActionGroup::make([
+                    Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('created_at', 'desc');

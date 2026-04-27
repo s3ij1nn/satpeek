@@ -6,22 +6,26 @@ use App\Filament\Resources\WithdrawalResource\Pages;
 use App\Mail\WithdrawalRejectedEmail;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use UnitEnum;
 
 class WithdrawalResource extends Resource
 {
     protected static ?string $model = Withdrawal::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-banknotes';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-banknotes';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 5;
 
@@ -37,10 +41,10 @@ class WithdrawalResource extends Resource
         return Withdrawal::where('status', 'hold')->exists() ? 'warning' : 'gray';
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form->schema([
-            Forms\Components\Section::make('Withdrawal')->schema([
+        return $schema->components([
+            Schemas\Components\Section::make('Withdrawal')->schema([
                 Forms\Components\TextInput::make('user.email')->disabled()->label('User'),
                 Forms\Components\TextInput::make('amount_sat')->suffix('sat')->disabled(),
                 Forms\Components\TextInput::make('faucetpay_email')->disabled(),
@@ -61,7 +65,7 @@ class WithdrawalResource extends Resource
             // [60, 300, 1800] backoff). Surfaced here so the operator can
             // tell at a glance whether a `processing` row is actively
             // retrying or stuck for an external reason.
-            Forms\Components\Section::make('Job retry telemetry')->schema([
+            Schemas\Components\Section::make('Job retry telemetry')->schema([
                 Forms\Components\Placeholder::make('attempts')
                     ->label('Attempts')
                     ->content(fn (?Withdrawal $r): string => (string) (int) (((array) $r?->meta)['attempts'] ?? 0)),
@@ -129,7 +133,7 @@ class WithdrawalResource extends Resource
                 Tables\Filters\TernaryFilter::make('requires_review'),
             ])
             ->actions([
-                Tables\Actions\Action::make('approve')
+                Actions\Action::make('approve')
                     ->label('Approve')
                     ->icon('heroicon-o-check')
                     ->color('success')
@@ -142,13 +146,13 @@ class WithdrawalResource extends Resource
                             'reviewed_by' => auth()->id(),
                         ]);
                     }),
-                Tables\Actions\Action::make('reject')
+                Actions\Action::make('reject')
                     ->label('Reject & refund')
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
                     ->visible(fn (Withdrawal $r) => in_array($r->status, ['hold', 'queued'], true))
-                    ->form([
+                    ->schema([
                         Forms\Components\Textarea::make('failure_reason')
                             ->label('Reason (visible to user)')
                             ->required(),
@@ -177,7 +181,7 @@ class WithdrawalResource extends Resource
                             // best-effort, status changes already persisted
                         }
                     }),
-                Tables\Actions\EditAction::make(),
+                Actions\EditAction::make(),
             ])
             ->defaultSort('created_at', 'desc');
     }

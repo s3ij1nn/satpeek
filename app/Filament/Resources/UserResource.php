@@ -6,39 +6,43 @@ use App\BotDetection\ScoreEngine;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use App\Models\UserIpObservation;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
+use UnitEnum;
 
 class UserResource extends Resource
 {
     protected static ?string $model = User::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-users';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-users';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 1;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form->schema([
-            Forms\Components\Section::make('Account')->schema([
+        return $schema->components([
+            Schemas\Components\Section::make('Account')->schema([
                 Forms\Components\TextInput::make('username')->disabled(),
                 Forms\Components\TextInput::make('email')->disabled(),
                 Forms\Components\TextInput::make('faucetpay_email'),
                 Forms\Components\TextInput::make('referral_code')->disabled(),
             ])->columns(2),
-            Forms\Components\Section::make('Balance')->schema([
+            Schemas\Components\Section::make('Balance')->schema([
                 Forms\Components\TextInput::make('balance_sat')->numeric()->suffix('sat'),
                 Forms\Components\TextInput::make('total_earned_sat')->numeric()->suffix('sat')->disabled(),
                 Forms\Components\TextInput::make('total_withdrawn_sat')->numeric()->suffix('sat')->disabled(),
             ])->columns(3),
-            Forms\Components\Section::make('Status')->schema([
+            Schemas\Components\Section::make('Status')->schema([
                 Forms\Components\Toggle::make('is_admin'),
                 Forms\Components\Toggle::make('is_banned'),
                 Forms\Components\Textarea::make('ban_reason')->rows(2),
@@ -50,7 +54,7 @@ class UserResource extends Resource
             // when the user has never been evaluated (brand new account
             // pre-auth). Re-score action recomputes signals on demand
             // for triage.
-            Forms\Components\Section::make('Bot detection')->schema([
+            Schemas\Components\Section::make('Bot detection')->schema([
                 Forms\Components\Placeholder::make('bot_tier')
                     ->label('Tier')
                     // @phpstan-ignore-next-line nullsafe.neverNull
@@ -98,7 +102,7 @@ class UserResource extends Resource
             // (distinct OTHER user_ids on the same IP). Allowlist-aware
             // is intentionally NOT applied here: the operator wants to
             // see the raw evidence, not a sanitised view.
-            Forms\Components\Section::make('Recent IP history')->schema([
+            Schemas\Components\Section::make('Recent IP history')->schema([
                 Forms\Components\Placeholder::make('recent_ips')
                     ->hiddenLabel()
                     ->columnSpanFull()
@@ -179,7 +183,7 @@ class UserResource extends Resource
                 Tables\Filters\TernaryFilter::make('is_admin'),
             ])
             ->actions([
-                Tables\Actions\Action::make('rescore')
+                Actions\Action::make('rescore')
                     ->label('Re-score')
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
@@ -193,7 +197,7 @@ class UserResource extends Resource
                             ->success()
                             ->send();
                     }),
-                Tables\Actions\EditAction::make(),
+                Actions\EditAction::make(),
             ])
             ->defaultSort('created_at', 'desc');
     }

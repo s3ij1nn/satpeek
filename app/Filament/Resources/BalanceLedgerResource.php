@@ -6,10 +6,12 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\BalanceLedgerResource\Pages;
 use App\Models\BalanceLedger;
+use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use UnitEnum;
 
 /**
  * Operator transaction audit. Most common support workflow:
@@ -29,9 +31,9 @@ class BalanceLedgerResource extends Resource
 {
     protected static ?string $model = BalanceLedger::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-banknotes';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-banknotes';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?string $navigationLabel = 'Balance ledger';
 

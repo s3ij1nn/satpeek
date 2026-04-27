@@ -7,11 +7,15 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\OfferwallProviderSettingResource\Pages;
 use App\Models\OfferwallProviderSetting;
 use App\Providers\AppServiceProvider;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use UnitEnum;
 
 /**
  * Operator UI for flipping offerwall publisher integrations on/off without
@@ -29,18 +33,18 @@ class OfferwallProviderSettingResource extends Resource
 {
     protected static ?string $model = OfferwallProviderSetting::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-puzzle-piece';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-puzzle-piece';
 
-    protected static ?string $navigationGroup = 'Inventory';
+    protected static string|UnitEnum|null $navigationGroup = 'Inventory';
 
     protected static ?string $navigationLabel = 'Offerwall toggle';
 
     protected static ?int $navigationSort = 40;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form->schema([
-            Forms\Components\Section::make('Provider')->schema([
+        return $schema->components([
+            Schemas\Components\Section::make('Provider')->schema([
                 Forms\Components\TextInput::make('name')
                     ->label('Provider name')
                     ->required()
@@ -69,12 +73,12 @@ class OfferwallProviderSettingResource extends Resource
                 Tables\Columns\TextColumn::make('updated_at')->dateTime()->since()->sortable(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Actions\EditAction::make(),
+                Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                Actions\BulkActionGroup::make([
+                    Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('name');

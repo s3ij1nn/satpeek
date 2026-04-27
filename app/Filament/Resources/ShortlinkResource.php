@@ -7,30 +7,34 @@ use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
 use App\Shortlinks\Providers\ShortenerException;
 use App\Shortlinks\ShortlinkProviderRegistry;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
+use UnitEnum;
 
 class ShortlinkResource extends Resource
 {
     protected static ?string $model = Shortlink::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-link';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-link';
 
-    protected static ?string $navigationGroup = 'Inventory';
+    protected static string|UnitEnum|null $navigationGroup = 'Inventory';
 
     protected static ?string $navigationLabel = 'Shortlinks';
 
     protected static ?int $navigationSort = 20;
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form->schema([
-            Forms\Components\Section::make('Shortlink')->schema([
+        return $schema->components([
+            Schemas\Components\Section::make('Shortlink')->schema([
                 Forms\Components\TextInput::make('title')->required()->maxLength(200),
                 Forms\Components\TextInput::make('target_url')
                     ->label('Target URL')
@@ -51,12 +55,12 @@ class ShortlinkResource extends Resource
                     ->placeholder('— static, no rotation —')
                     ->helperText('When set, /api/shortlinks/{id}/start re-shortens source_url on every click so viewers never see the same URL twice.'),
             ]),
-            Forms\Components\Section::make('Reward & timing')->schema([
+            Schemas\Components\Section::make('Reward & timing')->schema([
                 Forms\Components\TextInput::make('reward_sat')->numeric()->required()->default(3)->minValue(1),
                 Forms\Components\TextInput::make('hold_seconds')->label('Hold (seconds)')->numeric()->required()->default(10)->minValue(3)->maxValue(120),
                 Forms\Components\TextInput::make('daily_limit_per_user')->numeric()->required()->default(5)->minValue(1),
             ])->columns(3),
-            Forms\Components\Section::make('Source & status')->schema([
+            Schemas\Components\Section::make('Source & status')->schema([
                 Forms\Components\Select::make('source')
                     ->options([
                         'internal' => 'Internal (own inventory)',
@@ -130,12 +134,12 @@ class ShortlinkResource extends Resource
                 // shortener (btcut.io et al.) and overwrites it with the returned
                 // shortened URL. The action is only visible when at least one
                 // provider has a token configured in .env.
-                Tables\Actions\Action::make('shorten')
+                Actions\Action::make('shorten')
                     ->label('Shorten via…')
                     ->icon('heroicon-o-scissors')
                     ->color('warning')
                     ->visible(fn () => count(app(ShortlinkProviderRegistry::class)->configuredNames()) > 0)
-                    ->form(function () {
+                    ->schema(function () {
                         $registry = app(ShortlinkProviderRegistry::class);
                         $opts = [];
                         foreach ($registry->configuredNames() as $name) {
@@ -182,12 +186,12 @@ class ShortlinkResource extends Resource
                                 ->send();
                         }
                     }),
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Actions\EditAction::make(),
+                Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                Actions\BulkActionGroup::make([
+                    Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('created_at', 'desc');

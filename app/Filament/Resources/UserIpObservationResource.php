@@ -7,10 +7,12 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\UserIpObservationResource\Pages;
 use App\Models\UserIpObservation;
 use App\Services\UserIpObserver;
+use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use UnitEnum;
 
 /**
  * Operator audit surface for the multi-account-by-IP detection.
@@ -32,9 +34,9 @@ class UserIpObservationResource extends Resource
 {
     protected static ?string $model = UserIpObservation::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-globe-alt';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?string $navigationLabel = 'IP observations';
 

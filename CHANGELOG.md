@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Laravel 12 → 13 + Filament 3 → 4 upgrade.** All 10 Filament
+  resources + Login auth page rewritten against the Filament 4
+  Schema-based API. Composer-only dependency bumps + targeted
+  per-resource API porting; zero behavioural change at the user-
+  facing surface.
+  - laravel/framework: ^12.0 → ^13.0 (installed v13.6.0, security
+    support through 2027-08-XX)
+  - filament/filament: ^3.2 → ^4.0 (installed v4.11.1)
+  - laravel/tinker: ^2.10 → ^3.0
+  - Filament 4 API renames applied per resource:
+    - `form(Form $form): Form` → `form(Schema $schema): Schema`
+    - `Forms\Components\Section` → `Schemas\Components\Section`
+      (and Group / Tabs / Fieldset / Wizard / Grid)
+    - `Tables\Actions\*` → `Filament\Actions\*` (top-level package)
+    - `Filament\Pages\Auth\Login` → `Filament\Auth\Pages\Login`
+    - `Filament\Forms\Set` → `Filament\Schemas\Components\Utilities\Set`
+    - `navigationGroup` / `navigationIcon` type widening to
+      `string|UnitEnum|null` / `string|BackedEnum|null` (per
+      Filament 4 parent class signature requirement)
+  - Input components (`TextInput`, `Toggle`, `Select`, `Placeholder`,
+    `Textarea`, `KeyValue`) stayed in `Filament\Forms\Components`.
+  - 276 tests stayed green throughout — no test-side updates needed.
+
 ### Added
 
 - Anti-adblock detection + earning gate. SatPeek's economics depend

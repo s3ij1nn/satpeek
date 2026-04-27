@@ -3,11 +3,11 @@
 namespace App\Filament\Pages\Auth;
 
 use App\Captcha\ChallengeVerifier;
-use Filament\Forms\Components\Component;
-use Filament\Forms\Components\View;
-use Filament\Forms\Form;
-use Filament\Http\Responses\Auth\Contracts\LoginResponse;
-use Filament\Pages\Auth\Login as BaseLogin;
+use Filament\Auth\Http\Responses\Contracts\LoginResponse;
+use Filament\Auth\Pages\Login as BaseLogin;
+use Filament\Schemas\Components\Component;
+use Filament\Schemas\Components\View;
+use Filament\Schemas\Schema;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -22,16 +22,15 @@ class Login extends BaseLogin
 
     public ?string $captcha_points = null;
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form
-            ->schema([
+        return $schema
+            ->components([
                 $this->getEmailFormComponent(),
                 $this->getPasswordFormComponent(),
                 $this->getRememberFormComponent(),
                 $this->getCaptchaFormComponent(),
-            ])
-            ->statePath('data');
+            ]);
     }
 
     protected function getCaptchaFormComponent(): Component

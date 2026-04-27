@@ -4,9 +4,12 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\PtcViewResource\Pages;
 use App\Models\PtcView;
+use BackedEnum;
+use Filament\Actions;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use UnitEnum;
 
 /**
  * Operator debug surface for in-flight + recent PTC watch sessions.
@@ -21,9 +24,9 @@ class PtcViewResource extends Resource
 {
     protected static ?string $model = PtcView::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-eye';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-eye';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?string $navigationLabel = 'PTC views';
 
@@ -83,7 +86,7 @@ class PtcViewResource extends Resource
                 // the user is looking at. Only meaningful while pending;
                 // hidden once the click has been resolved (the page would
                 // 410 anyway).
-                Tables\Actions\Action::make('open_auth_url')
+                Actions\Action::make('open_auth_url')
                     ->label('Auth URL')
                     ->icon('heroicon-o-arrow-top-right-on-square')
                     ->color('info')
