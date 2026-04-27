@@ -42,6 +42,13 @@ Why 2captcha cannot solve it:
 4. Bezier-curve replay fails the jerk-entropy lower bound.
 5. Florence-2 / VLM fine-tuning fails because every challenge has a fresh seed.
 
+**Tier-driven difficulty.** `ChallengeBuilder` looks up
+`PolicyEnforcer::captchaDifficulty($user)` for authenticated requests and
+passes the level to `TrajectoryTraceProvider::issue()`. Suspect (2) gets
+1.5× amplitude + 1 frequency, likely_bot (3) gets 2.0× + 2 + 1 s longer
+duration. Anonymous (login / register form) stays at level 1 since there's
+no user to score yet. Out-of-range values clamp to [1, 3].
+
 ## Per-click rotating auth URLs — `/ptc/auth/{token}` + `/shortlinks/auth/{token}`
 
 Both the PTC viewer and the shortlink hold/claim screen live behind a 28-character random URL slug minted at the moment the user clicks "Watch" / "Open & hold". Each click → fresh slug → unique URL.
@@ -79,6 +86,23 @@ ScoreEngine renormalises by total weight, so adding signals doesn't mute the oth
 | `suspect` | 0.30–0.60 | harder captcha, withdrawals reviewed |
 | `likely_bot` | 0.60–0.85 | PTC blocked, withdrawals held |
 | `banned` | ≥ 0.85 | account/IP/fingerprint blacklisted |
+
+### When ScoreEngine fires
+
+`ScoreEngine::evaluateThrottled()` (5 min default window via `BOTSCORE_MIN_REEVAL_SECONDS`) is invoked from two paths:
+
+- **`UserIpObserver::record()`** — runs on login + register submit. Catches `shared_ip` updates immediately when the operator opens a sock-puppet account from a known IP.
+- **`ChallengeVerifier::verify()` success path** — runs after every captcha pass when the challenge has a `user_id`. Catches every captcha-driven signal (response_time / trajectory_entropy / failure_rate / fingerprint_consistency / heartbeat_gap) so a bot grinding PTC views gets tier-bumped from its own behaviour without waiting for next login.
+
+Both paths wrap the engine call in try/catch — a scoring failure (DB blip, signal exception) never breaks the auth flow or rejects an already-accepted captcha. The `Re-score` row action on `/admin/users` bypasses the throttle for triage.
+
+### `is_banned` is a one-way ratchet
+
+When `ScoreEngine::evaluate()` writes `tier = banned`, it also sets `User.is_banned = true` and `ban_reason = 'bot_score'`. The `is_banned` flag is checked FIRST by `BotScoreGate`, so even if the user's score later drops back below 0.85 the ban stays. Manual unban: clear `is_banned` from `/admin/users/{id}/edit` AND hit `Re-score` so the tier reflects the new evaluation.
+
+### SharedIpSignal allowlist
+
+Operator escape hatch for known shared NATs (campus / mobile / household / corporate proxy). `BOTSCORE_SHARED_IP_ALLOWLIST` accepts comma-separated CIDR or single-IP entries (IPv4 + IPv6). Allowlisted IPs are excluded from the cross-account count entirely. Workflow: roll out, browse `/admin/user-ip-observations`, paste the noisy shared prefixes into env. See `App\BotDetection\IpAllowlist`.
 
 ### JA4 capture — `app/Http/Middleware/Ja4Capture.php`
 
