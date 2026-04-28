@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ShortlinkClick;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -11,11 +12,23 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * Per-click landing page (`/shortlinks/auth/{token}`).
  *
- * Each click on a shortlink generates a 28-char random `epoch_token` and the
- * user's tab is navigated to this URL. That gives every click a fresh,
- * unguessable URL slug — browser history shows different URLs each session,
- * a leaked URL is single-use and tied to one user, and bulk URL probing
+ * The user only reaches this page legitimately by going THROUGH the
+ * publisher shortener (btcut / cuty / ouo / …) — `/shortlinks` navigates
+ * the same tab to the shortener URL, so the only path back to this URL
+ * is the shortener's own redirect after its interstitial runs.
+ *
+ * Each click on `/shortlinks` generates a 28-char random `epoch_token`,
+ * giving every claim attempt a fresh, unguessable URL slug. Browser
+ * history shows different URLs each session, a leaked URL is single-use
+ * and tied to one user, and bulk URL probing
  * (`/shortlinks/auth/<sequential>`) is infeasible against the token space.
+ *
+ * The post-return hold UI was removed: the user already waited the
+ * shortener's own interstitial (5–15 s ad view), so making them wait
+ * again on SatPeek's side is gratuitous. The captcha alone is the
+ * anti-bot gate at this stage. Server-side, we still enforce a
+ * minimum traversal time at claim-time (see ShortlinkController) as
+ * defence-in-depth against forged arrivals.
  */
 class ShortlinkAuthController extends Controller
 {
@@ -35,20 +48,9 @@ class ShortlinkAuthController extends Controller
             throw new HttpException(410, 'This click has already been resolved.');
         }
 
-        // Provider-keyed clicks snapshot reward / hold on the click row
-        // itself (effective* helpers handle the legacy fallback to the
-        // parent Shortlink row). The view binds against $click directly
-        // so it doesn't need to know whether this is a new provider-keyed
-        // flow or a legacy inventory-keyed flow.
-        // started_at is non-nullable on the schema so no ?-> guard needed.
-        $elapsedSec = (int) $click->started_at->diffInSeconds(now(), absolute: true);
-        $remainingSec = max(0, $click->effectiveHoldSeconds() - $elapsedSec);
-
         return view('shortlinks.auth', [
             'click' => $click,
             'reward_sat' => $click->effectiveRewardSat(),
-            'hold_seconds' => $click->effectiveHoldSeconds(),
-            'remaining_sec' => $remainingSec,
         ]);
     }
 }

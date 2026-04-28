@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Shortlink flow now FORCES shortener traversal.** Previous design opened
+  the shortener in a new tab AND navigated the current tab to
+  `/shortlinks/auth/{token}`, which let a user close the shortener
+  tab and still claim the reward — the operator earned no ad
+  revenue, the user got free sats. Fixed by making the current tab
+  navigate directly to the shortener URL (same-tab). The only path
+  back to `/shortlinks/auth/{token}` is now the shortener's own
+  redirect after its interstitial. Also dropped the post-return
+  hold countdown UI on the auth page — the shortener's interstitial
+  IS the hold; making the user wait again on SatPeek's side was
+  gratuitous. The captcha alone gates the claim, with a
+  defence-in-depth `hold_seconds` (now labelled "Minimum round-trip
+  seconds") server-side floor on click→claim elapsed time.
+
 - **`/shortlinks` adopts firefaucet's multi-button visit pattern.**
   Each provider row used to render a single "Open via {label}"
   button. It now renders one numbered chip per remaining daily view

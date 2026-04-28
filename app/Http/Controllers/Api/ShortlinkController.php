@@ -191,11 +191,17 @@ class ShortlinkController extends Controller
         if (! hash_equals($click->epoch_token, (string) $request->input('epoch_token'))) {
             return response()->json(['error' => 'token_mismatch'], 422);
         }
-        // started_at is non-nullable on the schema (set in start()) so the
-        // bare diff is safe — no ?-> guard needed.
+        // Minimum round-trip floor: from the moment /start was called to
+        // the claim, at least N seconds must have elapsed. This is the
+        // anti-skip-the-shortener gate — the publisher's interstitial
+        // takes 5–15 s, so a return faster than that means the user
+        // bypassed it (or never opened it). The frontend already forces
+        // same-tab navigation to the shortener, but defence-in-depth on
+        // the server keeps the invariant if the frontend is replaced /
+        // bypassed by a script.
         $elapsed = (int) abs($click->started_at->diffInSeconds(Carbon::now()));
-        $minHold = $click->effectiveHoldSeconds() - 1;
-        if ($elapsed < $minHold) {
+        $minRoundTrip = $click->effectiveHoldSeconds() - 1;
+        if ($elapsed < $minRoundTrip) {
             $click->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
 
             return response()->json(['error' => 'too_fast'], 422);

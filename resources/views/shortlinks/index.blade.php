@@ -76,7 +76,7 @@
     <header class="sl__head">
         <span class="meta">/ shortlinks</span>
         <h1>Quick <em>clicks</em>.</h1>
-        <p style="color: var(--text-secondary); margin: 0;">Open the shortener link, complete the publisher's interstitial (a few seconds + an ad view), come back, hold for the listed seconds, solve a captcha, get paid. Each row shows which shortener you'll land on.</p>
+        <p style="color: var(--text-secondary); margin: 0;">Click a number to open that shortener. Complete the publisher's interstitial (the timer + skip-ad button on their page), and you'll be sent back here automatically to solve a captcha and claim. Skipping the shortener doesn't credit anything.</p>
     </header>
 
     <div id="slMsg" style="display:none;"></div>
@@ -180,15 +180,15 @@
                 btn.textContent = originalLabel;
                 return;
             }
-            // Open the freshly-shortened provider URL (e.g. https://btcut.io/abc123)
-            // in a new tab so the operator earns the publisher's ad revenue —
-            // meanwhile navigate the current tab to the auth landing page,
-            // which is also where the shortener's interstitial will redirect
-            // the user back to once they're done. The same page handles
-            // both the "you're waiting for them to come back" state and
-            // the "they came back, run hold + captcha + claim" state.
-            window.open(data.redirect_url, '_blank', 'noopener,noreferrer');
-            location.href = `/shortlinks/auth/${encodeURIComponent(data.epoch_token)}`;
+            // Same-tab navigation to the shortener URL. Critical for fairness:
+            // if we opened the shortener in a new tab and pushed the auth
+            // page to the current tab, the user could close the new tab
+            // and still hit the claim flow without ever crossing the
+            // shortener (= operator gets no ad revenue, user gets free
+            // sats). Forcing same-tab means the only path back to
+            // /shortlinks/auth/{token} is the shortener's own redirect
+            // after its interstitial runs.
+            location.href = data.redirect_url;
         } catch (err) {
             showMsg('err', 'Network error starting click.');
             btn.disabled = false;

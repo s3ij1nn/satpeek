@@ -98,13 +98,13 @@ class ShortlinkProviderCredentialResource extends Resource
                     ->minValue(1)
                     ->helperText('Paid only AFTER the user opens the shortener, returns to /shortlinks/auth/{token}, waits the post-return hold, and passes the captcha. A click alone yields nothing — start() never touches the balance.'),
                 Forms\Components\TextInput::make('hold_seconds')
-                    ->label('Post-return hold (seconds)')
+                    ->label('Minimum round-trip seconds')
                     ->numeric()
                     ->required()
                     ->default(5)
                     ->minValue(3)
                     ->maxValue(120)
-                    ->helperText('After the user lands back on the auth page, they wait this long before the claim button unlocks. Anti-bot — the captcha runs at the end of the hold.'),
+                    ->helperText('Floor on the total elapsed time between clicking the chip and claiming the reward. Defends against bots that bypass the shortener — if the user arrives back faster than this, the claim is rejected. Set near the shortener\'s own interstitial duration (btcut ≈ 5s, shrtfly ≈ 10s).'),
                 Forms\Components\TextInput::make('daily_limit_per_user')
                     ->label('Daily limit (per user)')
                     ->numeric()
@@ -131,7 +131,7 @@ class ShortlinkProviderCredentialResource extends Resource
                     ->boolean(),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
                 Tables\Columns\TextColumn::make('reward_sat')->label('Reward')->suffix(' sat')->numeric()->sortable(),
-                Tables\Columns\TextColumn::make('hold_seconds')->label('Hold')->suffix(' s')->numeric()->toggleable(),
+                Tables\Columns\TextColumn::make('hold_seconds')->label('Min round-trip')->suffix(' s')->numeric()->toggleable(),
                 Tables\Columns\TextColumn::make('daily_limit_per_user')->label('Daily/user')->numeric()->toggleable(),
                 Tables\Columns\TextColumn::make('last_used_at')->since()->placeholder('—')->sortable(),
                 Tables\Columns\TextColumn::make('updated_at')->dateTime()->since()->sortable()->toggleable(),
