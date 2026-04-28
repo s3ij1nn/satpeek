@@ -119,9 +119,11 @@ Composed via `CompositeProvider` (first non-null verdict wins, MaxMind registere
 
 `AsnStaticListSignal` piggybacks on the same provider cache to compare returned ASNs against `DATACENTER_ASNS` — defence-in-depth against operator-known abusive ranges.
 
-## Shortlinks — ouo.io-family monetisation
+## Shortlinks — provider-keyed earn flow
 
-The operator wraps destination URLs through external publisher shorteners (btcut.io / cuty.io / exe.io / shrtfly.com / ouo.io). Viewers click the wrapped URL on `/shortlinks` → land on the shortener's interstitial → forwarded to the destination. The operator earns the publisher revenue; SatPeek pays a portion to the viewer.
+The model: SatPeek mints a fresh `/shortlinks/auth/{token}` URL, shortens it through the operator-chosen provider (btcut.io / cuty.io / exe.io / shrtfly.com / ouo.io), opens the resulting `https://<provider>/<slug>` in a new tab, and pays the user when they come back to the token URL. The provider earns ad revenue from its interstitial; SatPeek's `reward_sat` is paid from that revenue.
+
+There is **no inventory of shortlinks**. Each row in `shortlink_provider_credentials` is one provider PLUS its per-click economics (`reward_sat` / `hold_seconds` / `daily_limit_per_user`). `/shortlinks` lists those providers as numbered visit chips (firefaucet-style — one chip per remaining daily view); each chip mints a fresh `ShortlinkClick` row.
 
 ### Provider clients — `app/Shortlinks/Providers/`
 
@@ -129,15 +131,19 @@ Two transport shapes covered:
 - **`GenericShortenerClient`** (query-token, btcut family): `GET <api_base>?api=<token>&url=<long>&alias=<custom>&format=json` → `{status, message, shortenedUrl}`.
 - **`OuoShortenerClient`** (path-token, ouo family): `GET <api_base>/<token>?s=<long>` → plain-text body containing the URL.
 
-Both implement `App\Shortlinks\Providers\ShortenerClient`. `ShortlinkProviderRegistry` (per-request scoped) builds the client set from `config('satpeek.shortlink_providers')` — adding a new query-family provider is a one-config-entry change.
+Both implement `App\Shortlinks\Providers\ShortenerClient`. `ShortlinkProviderRegistry` (per-request scoped) builds the client set from `config('satpeek.shortlink_providers')` merged with admin-managed credential rows — adding a new query-family provider is a one-config-entry change.
 
-### Per-click rotation — `App\Http\Controllers\Api\ShortlinkController::resolveRedirectUrl()`
+### Per-click cache-busted shorten
 
-Repeating the same shortened URL trains viewers to recognise + skip past it, and lets domain-level blocklists target one stable string. When a shortlink has `provider_name` + `source_url` set, every `/start` re-runs `source_url` through the configured shortener. A short random `?_r=<8 chars>` cache-buster is appended before the shorten call so providers that de-dup server-side (btcut/cuty/exe/shrtfly all do) mint a distinct slug per rotation. Shortener failure logs a warning and falls back to the cached `target_url` rather than 500ing the click.
+Repeating the same shortened URL trains viewers to recognise + skip past it, and lets domain-level blocklists target one stable string. Every `/api/shortlinks/start/{provider}` call appends a fresh `?_r=<8 chars>` cache-buster to the destination URL before invoking `shorten()`, so providers that de-dup server-side (btcut/cuty/exe/shrtfly all do) mint a distinct slug per click. The destination treats the unknown query param as noise. Shortener failure deletes the half-created click row and returns 502 — the user's daily-limit counter isn't penalised by an outage.
+
+### Snapshot economics on click rows
+
+`ShortlinkClick.reward_sat` + `hold_seconds` + `provider_name` are written at click creation. The auth-landing page reads from those snapshots (with a legacy fallback to the now-unused `Shortlink.reward_sat` for old rows), so an operator-config tweak in the middle of a user's hold can't retroactively change the reward.
 
 ### Admin-managed credentials — `App\Models\ShortlinkProviderCredential`
 
-Filament resource at `/admin/shortlink-provider-credentials` lets the operator paste API tokens without touching `.env`. The `api_token` column is encrypted at rest via Eloquent cast. The runtime registry merges DB rows over config defaults (DB token wins, transport overrides, `is_active=false` removes the provider from the picker). A "Test" row action probes the live API with a throwaway URL.
+Filament resource at `/admin/shortlink-provider-credentials` lets the operator paste API tokens AND tune per-click economics without touching `.env`. The `api_token` column is encrypted at rest via Eloquent cast. The runtime registry merges DB rows over config defaults (DB token wins, transport overrides, `is_active=false` removes the provider from the picker). A "Test" row action probes the live API with a throwaway URL.
 
 ## Self-serve advertising — `/advertise/*`
 
@@ -214,7 +220,7 @@ Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPa
 - `tests/Feature/Auth/RegisterFlowTest.php` — registration + welcome email path.
 - `tests/Feature/Captcha/Ja4PersistenceTest.php` — JA4 lands on issued challenges.
 - `tests/Feature/Ptc/` — viewer flow + auth landing.
-- `tests/Feature/Shortlinks/` — click flow + auth landing + rotation + credential override + provider registry boot.
+- `tests/Feature/Shortlinks/` — provider-keyed click flow + auth landing + credential override + provider registry boot.
 - `tests/Feature/Advertise/` — display_mode + edit flow.
 - `tests/Feature/Admin/DebugResourceAccessTest.php` — Filament debug resources scoping.
 - `tests/Feature/Health/HealthEndpointTest.php` — `/up` payload + status-code contract.
