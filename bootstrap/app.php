@@ -32,6 +32,23 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Honour X-Forwarded-{Proto,Host,For,Port} when running behind a TLS-
+        // terminating reverse proxy (Cloudflare orange-cloud, an ALB, ngrok in
+        // local dev, etc). Without this, Laravel sees the proxy→app hop as
+        // plain HTTP and route()/url() generate http:// links — those then
+        // get blocked as mixed content when the page itself is loaded over
+        // HTTPS through the proxy. `TRUSTED_PROXIES=*` is the right default
+        // when the origin firewall already restricts inbound to your CDN /
+        // tunnel; tighten to a CIDR list in stricter deployments.
+        $middleware->trustProxies(
+            at: env('TRUSTED_PROXIES', '*'),
+            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_AWS_ELB,
+        );
+
         // Normalise upstream JA4 TLS fingerprint headers (cf-ja4 / x-tls-ja4
         // / x-ja4 / x-sp-ja4) into the canonical X-SP-JA4 before any app code
         // reads it. Runs globally so admin / api / web requests all benefit
