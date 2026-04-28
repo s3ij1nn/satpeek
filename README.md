@@ -3,7 +3,8 @@
 [![CI](https://github.com/s3ij1nn/satpeek/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/s3ij1nn/satpeek/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PHP 8.3](https://img.shields.io/badge/PHP-8.3-777BB4?logo=php&logoColor=white)](composer.json)
-[![Laravel 11](https://img.shields.io/badge/Laravel-11-FF2D20?logo=laravel&logoColor=white)](composer.json)
+[![Laravel 13](https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white)](composer.json)
+[![Filament 4](https://img.shields.io/badge/Filament-4-F59E0B?logo=laravel&logoColor=white)](composer.json)
 
 A FaucetPay-payout PTC (paid-to-click) + URL-shortener earning site with intentionally adversarial captcha + bot detection. Built so that bot frameworks using 2captcha, hCaptcha-relay services, OpenRouter VLM, or self-hosted vision LoRAs cannot earn rewards.
 
@@ -20,7 +21,7 @@ open http://localhost:8080/admin   # email: admin@satpeek.local  pw: admin123
 curl http://localhost:8080/up      # JSON health check
 ```
 
-Stack: PHP 8.3 + Laravel 11 + Filament 3, **PostgreSQL 16**, **Redis 7**, all wired via Docker Compose.
+Stack: PHP 8.3 + Laravel 13 + Filament 4, **PostgreSQL 16**, **Redis 7**, all wired via Docker Compose.
 
 ## What's in the box
 
@@ -64,7 +65,7 @@ script aliases — run the whole pipeline locally with one command:
 
 ```bash
 docker compose exec app composer ci       # validate + lint + analyse + test
-docker compose exec app composer test     # PHPUnit only (130 tests / 393 assertions)
+docker compose exec app composer test     # PHPUnit only (280+ tests / 1,060+ assertions)
 docker compose exec app composer lint     # Pint check-only
 docker compose exec app composer format   # Pint autofix
 docker compose exec app composer analyse  # PHPStan / Larastan level 5
