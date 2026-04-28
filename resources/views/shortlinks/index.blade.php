@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @php
-    use App\Models\Shortlink;
+    use App\Http\Controllers\Api\ShortlinkController;
     use App\Models\ShortlinkClick;
     use App\Offerwall\OfferwallMerge;
     use Illuminate\Support\Carbon;
@@ -12,13 +12,16 @@
     // surface — operator policy is "shortener-API rotation OR BitcoTask
     // offerwall, never static". BitcoTask offers come in via OfferwallMerge
     // below.
-    $links = Shortlink::query()
-        ->where('is_active', true)
-        ->whereNotNull('provider_name')
-        ->whereNotNull('source_url')
+    $links = ShortlinkController::servableQuery()
         ->orderByDesc('reward_sat')
         ->limit(50)
         ->get();
+    // Pretty labels for the shortener domain shown on each row — comes from
+    // config('satpeek.shortlink_providers.{name}.label') so adding a new
+    // provider is a one-config-entry change.
+    $providerLabels = collect((array) config('satpeek.shortlink_providers', []))
+        ->mapWithKeys(fn ($cfg, $name) => [$name => (string) ($cfg['label'] ?? $name)])
+        ->all();
     $usedToday = ShortlinkClick::where('user_id', $u->id)
         ->where('status', 'verified')
         ->where('created_at', '>=', $today)
@@ -70,7 +73,7 @@
     <header class="sl__head">
         <span class="meta">/ shortlinks</span>
         <h1>Quick <em>clicks</em>.</h1>
-        <p style="color: var(--text-secondary); margin: 0;">Open the link, hold for the listed seconds, solve a captcha, get paid. Faster than PTC, smaller rewards.</p>
+        <p style="color: var(--text-secondary); margin: 0;">Open the shortener link, complete the publisher's interstitial (a few seconds + an ad view), come back, hold for the listed seconds, solve a captcha, get paid. Each row shows which shortener you'll land on.</p>
     </header>
 
     <div id="slMsg" style="display:none;"></div>
@@ -90,7 +93,8 @@
                 <article class="row {{ $exhausted ? 'exhausted' : '' }}" data-link-id="{{ $l->id }}" data-hold="{{ $l->hold_seconds }}" data-reward="{{ $l->reward_sat }}">
                     <div>
                         <h3 class="row__title">{{ $l->title }}</h3>
-                        <div class="row__meta">{{ $l->source }} · {{ $l->hold_seconds }}s hold · {{ $left }}/{{ $l->daily_limit_per_user }} left today</div>
+                        @php $providerLabel = $providerLabels[$l->provider_name] ?? $l->provider_name; @endphp
+                        <div class="row__meta">via <strong style="color: var(--amber-soft);">{{ $providerLabel }}</strong> · {{ $l->hold_seconds }}s hold · {{ $left }}/{{ $l->daily_limit_per_user }} left today</div>
                     </div>
                     <div class="row__reward">{{ number_format($l->reward_sat) }}<small>sat</small></div>
                     <div>
@@ -116,7 +120,7 @@
                 <article class="row">
                     <div>
                         <h3 class="row__title">{{ $offer->title }}</h3>
-                        <div class="row__meta">{{ $offer->source }} · {{ $offer->durationSec }}s hold · {{ $offer->dailyLimitPerUser }}/day</div>
+                        <div class="row__meta">via <strong style="color: var(--amber-soft);">{{ $offer->source }}</strong> · {{ $offer->durationSec }}s hold · {{ $offer->dailyLimitPerUser }}/day</div>
                     </div>
                     <div class="row__reward">{{ number_format($offer->rewardSat) }}<small>sat</small></div>
                     <div>
