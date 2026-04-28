@@ -208,7 +208,21 @@ class ShortlinkController extends Controller
         }
 
         $reward = $click->effectiveRewardSat();
-        DB::transaction(function () use ($user, $click, $reward) {
+        $credited = DB::transaction(function () use ($user, $click, $reward) {
+            // Atomic claim: only ONE concurrent request can flip the row
+            // out of `pending`. The next request sees affected_rows=0 and
+            // bails without crediting, so a double-tap on the claim button
+            // (or two parallel /complete posts) can't double-pay. The
+            // earlier `$click->status !== 'pending'` check up the stack
+            // catches sequential replays cheaply; this is the
+            // race-condition backstop for true concurrency.
+            $claimed = ShortlinkClick::where('id', $click->id)
+                ->where('status', 'pending')
+                ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
+            if ($claimed === 0) {
+                return false;
+            }
+
             BalanceLedger::create([
                 'user_id' => $user->id,
                 'delta_sat' => $reward,
@@ -222,8 +236,13 @@ class ShortlinkController extends Controller
             // never deducted from the viewer's reward. See ReferralPayout
             // for the funding invariant.
             $this->referralPayout->settle($user, $reward, ShortlinkClick::class, $click->id);
-            $click->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
+
+            return true;
         });
+
+        if (! $credited) {
+            return response()->json(['error' => 'click_not_pending'], 422);
+        }
 
         return response()->json(['ok' => true, 'reward_sat' => $reward]);
     }

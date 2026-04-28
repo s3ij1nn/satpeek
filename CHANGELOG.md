@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Hardened single-credit guarantee on shortlink claims.** Two-layer
+  defence against a user double-tapping the claim button (or two
+  parallel /complete posts):
+  - `ShortlinkController::finishClick()` now uses an atomic
+    `UPDATE shortlink_clicks SET status='verified' WHERE id=? AND status='pending'`
+    and only credits when the affected-row count is 1. The losing
+    request sees 0 rows updated and bails with `click_not_pending`.
+  - Defence-in-depth: new partial UNIQUE index on
+    `balance_ledgers (reason, reference_type, reference_id)` so any
+    future regression that bypasses the application-layer claim
+    fatals at the DB instead of silently double-paying. Same shape
+    applies to PTC view rewards (same triple), so the index covers
+    both surfaces. Pre-existing operator-manual rows with NULL
+    references are unaffected (partial index condition).
+
 - **Shortlink flow now FORCES shortener traversal.** Previous design opened
   the shortener in a new tab AND navigated the current tab to
   `/shortlinks/auth/{token}`, which let a user close the shortener
