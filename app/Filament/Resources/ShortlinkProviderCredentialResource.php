@@ -91,12 +91,12 @@ class ShortlinkProviderCredentialResource extends Resource
             // — already-pending claims keep the rate they were minted at.
             Schemas\Components\Section::make('Per-click economics')->schema([
                 Forms\Components\TextInput::make('reward_sat')
-                    ->label('Reward per click (sat)')
+                    ->label('Reward per completed click (sat)')
                     ->numeric()
                     ->required()
                     ->default(5)
                     ->minValue(1)
-                    ->helperText('Paid to the user when they complete the provider interstitial AND the post-return hold.'),
+                    ->helperText('Paid only AFTER the user opens the shortener, returns to /shortlinks/auth/{token}, waits the post-return hold, and passes the captcha. A click alone yields nothing — start() never touches the balance.'),
                 Forms\Components\TextInput::make('hold_seconds')
                     ->label('Post-return hold (seconds)')
                     ->numeric()
@@ -104,7 +104,7 @@ class ShortlinkProviderCredentialResource extends Resource
                     ->default(5)
                     ->minValue(3)
                     ->maxValue(120)
-                    ->helperText('After the user comes back from the provider, they wait this long before claiming. Anti-bot — the captcha runs at the end.'),
+                    ->helperText('After the user lands back on the auth page, they wait this long before the claim button unlocks. Anti-bot — the captcha runs at the end of the hold.'),
                 Forms\Components\TextInput::make('daily_limit_per_user')
                     ->label('Daily limit (per user)')
                     ->numeric()
