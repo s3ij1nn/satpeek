@@ -1,12 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Feature\Shortlinks;
 
 use App\Captcha\TrajectoryTraceProvider;
 use App\Models\CaptchaChallenge;
-use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
+use App\Models\ShortlinkProviderCredential;
 use App\Models\User;
+use App\Shortlinks\Providers\ShortenerClient;
+use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -23,13 +27,19 @@ class AuthLandingTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->bindFakeProvider('mock', new FixedShortener('mock', 'https://mock.test/AAAAAA'));
+    }
+
     public function test_each_click_yields_a_unique_auth_url_token(): void
     {
         $user = User::factory()->create();
-        $link = $this->seedLink();
+        $this->seedProvider();
 
-        $first = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
-        $second = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
+        $first = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
+        $second = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
 
         $this->assertNotSame($first['epoch_token'], $second['epoch_token']);
         $this->assertMatchesRegularExpression('/^sc_[a-z0-9]{28}$/', $first['epoch_token']);
@@ -44,7 +54,6 @@ class AuthLandingTest extends TestCase
         $response = $this->actingAs($user)->get(route('shortlinks.auth', ['token' => $click->epoch_token]));
 
         $response->assertOk();
-        // Token must appear in the page (the JS uses it for the completion call).
         $response->assertSee($click->epoch_token, false);
     }
 
@@ -85,11 +94,11 @@ class AuthLandingTest extends TestCase
     public function test_token_endpoint_credits_balance_on_success(): void
     {
         $user = User::factory()->create(['balance_sat' => 0, 'total_earned_sat' => 0]);
-        $link = $this->seedLink(['hold_seconds' => 5, 'reward_sat' => 9]);
         $click = $this->seedClick([
             'user_id' => $user->id,
-            'shortlink_id' => $link->id,
-            'started_at' => Carbon::now()->subSeconds($link->hold_seconds + 2),
+            'reward_sat' => 9,
+            'hold_seconds' => 5,
+            'started_at' => Carbon::now()->subSeconds(7),
         ]);
 
         $challenge = $this->seedChallenge();
@@ -119,34 +128,41 @@ class AuthLandingTest extends TestCase
         )->assertStatus(404)->assertJson(['error' => 'click_not_found']);
     }
 
-    private function seedLink(array $overrides = []): Shortlink
+    private function seedProvider(array $overrides = []): ShortlinkProviderCredential
     {
-        return Shortlink::create(array_merge([
-            'source' => 'internal',
-            'external_id' => 'sl-auth-'.uniqid(),
-            'title' => 'Auth landing test',
-            'target_url' => 'https://destination.example.com/',
-            'source_url' => 'https://destination.example.com/source',
-            'provider_name' => 'mock',
+        return ShortlinkProviderCredential::create(array_merge([
+            'name' => 'mock',
+            'label' => 'Mock provider',
+            'transport' => 'query',
+            'api_base' => 'https://mock.test/api',
+            'api_token' => 'mock_token',
+            'is_active' => true,
             'reward_sat' => 5,
             'hold_seconds' => 5,
             'daily_limit_per_user' => 5,
-            'is_active' => true,
         ], $overrides));
     }
 
     private function seedClick(array $overrides): ShortlinkClick
     {
         $defaults = [
+            'provider_name' => 'mock',
+            'reward_sat' => 5,
+            'hold_seconds' => 5,
             'epoch_token' => 'sc_'.bin2hex(random_bytes(14)),
             'status' => 'pending',
             'started_at' => Carbon::now(),
         ];
-        if (! isset($overrides['shortlink_id'])) {
-            $overrides['shortlink_id'] = $this->seedLink()->id;
-        }
 
         return ShortlinkClick::create(array_merge($defaults, $overrides));
+    }
+
+    private function bindFakeProvider(string $name, ShortenerClient $client): void
+    {
+        $this->app->instance(
+            ShortlinkProviderRegistry::class,
+            new ShortlinkProviderRegistry([$name => $client]),
+        );
     }
 
     private function seedChallenge(): CaptchaChallenge
@@ -169,5 +185,25 @@ class AuthLandingTest extends TestCase
             'issued_at' => $issuedAt,
             'expires_at' => $issuedAt->copy()->addSeconds(60),
         ]);
+    }
+}
+
+class FixedShortener implements ShortenerClient
+{
+    public function __construct(private string $name, private string $url) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
+    public function shorten(string $url, ?string $alias = null): string
+    {
+        return $this->url;
     }
 }

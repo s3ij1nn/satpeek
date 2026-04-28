@@ -40,11 +40,11 @@ class ShortlinkClickResource extends Resource
                     ->label('Clicker')
                     ->searchable()
                     ->url(fn (ShortlinkClick $r) => $r->user_id ? UserResource::getUrl('edit', ['record' => $r->user_id]) : null),
-                Tables\Columns\TextColumn::make('shortlink.title')
-                    ->label('Shortlink')
-                    ->searchable()
-                    ->wrap()
-                    ->url(fn (ShortlinkClick $r) => $r->shortlink_id ? ShortlinkResource::getUrl('edit', ['record' => $r->shortlink_id]) : null),
+                Tables\Columns\TextColumn::make('provider_name')
+                    ->label('Provider')
+                    ->badge()
+                    ->placeholder('—')
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->colors([

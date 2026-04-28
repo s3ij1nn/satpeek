@@ -7,31 +7,26 @@
     use Illuminate\Support\Carbon;
     $u = auth()->user();
     $today = Carbon::now()->startOfDay();
-    // Only surface rotation-enabled internal entries (provider_name + source_url
-    // both set). Static shortlinks are no longer supported by the /shortlinks
-    // surface — operator policy is "shortener-API rotation OR BitcoTask
-    // offerwall, never static". BitcoTask offers come in via OfferwallMerge
-    // below.
-    $links = ShortlinkController::servableQuery()
-        ->orderByDesc('reward_sat')
-        ->limit(50)
-        ->get();
-    // Pretty labels for the shortener domain shown on each row — comes from
-    // config('satpeek.shortlink_providers.{name}.label') so adding a new
-    // provider is a one-config-entry change.
-    $providerLabels = collect((array) config('satpeek.shortlink_providers', []))
-        ->mapWithKeys(fn ($cfg, $name) => [$name => (string) ($cfg['label'] ?? $name)])
-        ->all();
-    $usedToday = ShortlinkClick::where('user_id', $u->id)
+    // Provider-keyed shortlinks: one row per active shortener (btcut /
+    // cuty / exe / shrtfly / ouo) with a configured API token. The user
+    // picks a provider; SatPeek mints a fresh /shortlinks/auth/{token},
+    // shortens it through the chosen provider, and pays when the user
+    // completes the provider's interstitial and lands back on the token URL.
+    $providers = ShortlinkController::enabledProviders();
+    // Per-(user, provider_name) verified-clicks-today counter for the
+    // "N/M left today" display. Mirrors the daily_limit check in
+    // ShortlinkController::start.
+    $usedTodayByProvider = ShortlinkClick::where('user_id', $u->id)
         ->where('status', 'verified')
         ->where('created_at', '>=', $today)
-        ->selectRaw('shortlink_id, count(*) as used')
-        ->groupBy('shortlink_id')
-        ->pluck('used', 'shortlink_id');
+        ->whereNotNull('provider_name')
+        ->selectRaw('provider_name, count(*) as used')
+        ->groupBy('provider_name')
+        ->pluck('used', 'provider_name');
 
     // External per-user offers (BitcoTasks today). Empty when no per-user
     // adapter is enabled or its API key is unset, so /shortlinks keeps
-    // working on internal inventory alone — important because BitcoTasks
+    // working on internal providers alone — important because BitcoTasks
     // gates publisher-API access on a manual review.
     $externalLinks = app(OfferwallMerge::class)->fetchShortlinkFor($u, request()->ip() ?? '');
 @endphp
@@ -78,30 +73,31 @@
 
     <div id="slMsg" style="display:none;"></div>
 
-    @if ($links->isEmpty())
+    @if ($providers->isEmpty())
         <div class="empty">
-            <h2 style="font-family: var(--font-display); font-size: 1.5rem; color: var(--text-secondary); font-weight: 400; margin: 0 0 .5rem;">No shortlinks yet.</h2>
-            <p>Inventory empty — check back shortly.</p>
+            <h2 style="font-family: var(--font-display); font-size: 1.5rem; color: var(--text-secondary); font-weight: 400; margin: 0 0 .5rem;">No shortlink providers configured.</h2>
+            <p>An admin needs to add at least one shortener API token at <code>/admin/shortlink-provider-credentials</code>.</p>
         </div>
     @else
         <div class="row-list">
-            @foreach ($links as $l)
+            @foreach ($providers as $p)
                 @php
-                    $left = max(0, (int) $l->daily_limit_per_user - (int) ($usedToday[$l->id] ?? 0));
+                    $used = (int) ($usedTodayByProvider[$p->name] ?? 0);
+                    $left = max(0, (int) $p->daily_limit_per_user - $used);
                     $exhausted = $left <= 0;
+                    $label = $p->label ?: $p->name;
                 @endphp
-                <article class="row {{ $exhausted ? 'exhausted' : '' }}" data-link-id="{{ $l->id }}" data-hold="{{ $l->hold_seconds }}" data-reward="{{ $l->reward_sat }}">
+                <article class="row {{ $exhausted ? 'exhausted' : '' }}" data-provider="{{ $p->name }}" data-hold="{{ $p->hold_seconds }}" data-reward="{{ $p->reward_sat }}">
                     <div>
-                        <h3 class="row__title">{{ $l->title }}</h3>
-                        @php $providerLabel = $providerLabels[$l->provider_name] ?? $l->provider_name; @endphp
-                        <div class="row__meta">via <strong style="color: var(--amber-soft);">{{ $providerLabel }}</strong> · {{ $l->hold_seconds }}s hold · {{ $left }}/{{ $l->daily_limit_per_user }} left today</div>
+                        <h3 class="row__title">{{ $label }}</h3>
+                        <div class="row__meta">{{ $p->hold_seconds }}s hold after return · {{ $left }}/{{ $p->daily_limit_per_user }} left today</div>
                     </div>
-                    <div class="row__reward">{{ number_format($l->reward_sat) }}<small>sat</small></div>
+                    <div class="row__reward">{{ number_format($p->reward_sat) }}<small>sat</small></div>
                     <div>
                         @if ($exhausted)
                             <span class="row__cta row__cta--disabled">Done today</span>
                         @else
-                            <button type="button" class="row__cta sl-go">Open &amp; hold →</button>
+                            <button type="button" class="row__cta sl-go">Open via {{ $label }} →</button>
                         @endif
                     </div>
                 </article>
@@ -148,36 +144,40 @@
 
     document.querySelectorAll('.sl-go').forEach(btn => btn.addEventListener('click', async (e) => {
         const row = e.target.closest('.row');
-        const linkId = row.dataset.linkId;
+        const provider = row.dataset.provider;
+        const originalLabel = btn.textContent;
         btn.disabled = true;
         btn.classList.add('row__cta--in-flight');
         btn.textContent = 'Opening…';
 
         try {
-            const r = await fetch(`/api/shortlinks/${linkId}/start`, {
+            const r = await fetch(`/api/shortlinks/start/${encodeURIComponent(provider)}`, {
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-SP-Fingerprint': fp },
                 credentials: 'same-origin',
             });
             const data = await r.json();
             if (!r.ok) {
-                showMsg('err', data?.error || 'Could not start click.');
+                showMsg('err', data?.message || data?.error || 'Could not start click.');
                 btn.disabled = false;
                 btn.classList.remove('row__cta--in-flight');
-                btn.textContent = 'Open & hold →';
+                btn.textContent = originalLabel;
                 return;
             }
-            // Open the destination (rotated shortener URL) in a new tab so
-            // the operator's affiliate revenue lands as expected — meanwhile
-            // navigate the current tab to the per-click rotating auth URL,
-            // where the hold timer + captcha + claim live.
+            // Open the freshly-shortened provider URL (e.g. https://btcut.io/abc123)
+            // in a new tab so the operator earns the publisher's ad revenue —
+            // meanwhile navigate the current tab to the auth landing page,
+            // which is also where the shortener's interstitial will redirect
+            // the user back to once they're done. The same page handles
+            // both the "you're waiting for them to come back" state and
+            // the "they came back, run hold + captcha + claim" state.
             window.open(data.redirect_url, '_blank', 'noopener,noreferrer');
             location.href = `/shortlinks/auth/${encodeURIComponent(data.epoch_token)}`;
         } catch (err) {
             showMsg('err', 'Network error starting click.');
             btn.disabled = false;
             btn.classList.remove('row__cta--in-flight');
-            btn.textContent = 'Open & hold →';
+            btn.textContent = originalLabel;
         }
     }));
 })();

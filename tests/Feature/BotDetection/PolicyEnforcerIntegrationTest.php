@@ -6,7 +6,7 @@ namespace Tests\Feature\BotDetection;
 
 use App\Models\BotScore;
 use App\Models\PtcAd;
-use App\Models\Shortlink;
+use App\Models\ShortlinkProviderCredential;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -75,20 +75,19 @@ class PolicyEnforcerIntegrationTest extends TestCase
         // gate the shortlink controller uses (same likely_bot/banned
         // exclusion list). Confirms the share-ban-list invariant holds.
         $user = $this->userAtTier('likely_bot');
-        $link = Shortlink::create([
-            'source' => 'internal',
-            'external_id' => 'sl-'.uniqid(),
-            'title' => 'go',
-            'target_url' => 'https://example.com',
-            'source_url' => 'https://destination.example.com/source',
-            'provider_name' => 'mock',
+        ShortlinkProviderCredential::create([
+            'name' => 'mock',
+            'label' => 'mock',
+            'transport' => 'query',
+            'api_base' => 'https://mock.test/api',
+            'api_token' => 'tk',
+            'is_active' => true,
             'reward_sat' => 5,
             'hold_seconds' => 5,
-            'is_active' => true,
             'daily_limit_per_user' => 10,
         ]);
 
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
+        $response = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
 
         $response->assertStatus(403);
     }

@@ -8,27 +8,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- `/shortlinks` now serves only rotation-enabled internal entries +
-  BitcoTask offerwall offers — static shortlinks (no `provider_name`
-  or no `source_url`) are hidden from both the Blade index AND the
-  `/api/shortlinks` JSON list. Operator policy: shortener-API
-  rotation OR BitcoTask offerwall, never static.
-  - Filament `ShortlinkResource` form now requires `source_url` AND
-    `provider_name`. The "Rotation provider" select is no longer
-    optional.
-  - New `ShortlinkController::servableQuery()` is the single source
-    of truth used by the Blade view, the JSON index API, and the
-    per-id `start` resolver — keeps every entrypoint in sync.
-  - Existing static rows in DB stay (operator can clean up via
-    Filament) but are unreachable from user-facing surfaces.
-    `/api/shortlinks/{id}/start` 404s on static-row ids even when
-    the attacker enumerates them directly.
-  - 4 new feature tests in
-    `tests/Feature/Shortlinks/ServableFilterTest.php` pin the
-    filter at all three layers (servableQuery / index / start).
-    Removed the now-contradictory
-    `test_static_shortlink_returns_target_url_without_rotation`
-    from RotationTest.
+- **Shortlinks re-shaped around the provider, not the inventory row.**
+  Operator clarification: SatPeek's shortlink earn flow is "user
+  picks a shortener → SatPeek mints `/shortlinks/auth/{token}` →
+  shortens through that provider → user completes the provider's
+  interstitial (operator earns ad revenue) → user lands back on the
+  token URL → SatPeek pays". There is no inventory of shortlinks —
+  only providers. The previous design carried both `Shortlink` rows
+  AND `ShortlinkProviderCredential` rows in Filament, which split the
+  per-click economics across two surfaces.
+  - **DB**: per-click economics (`reward_sat`, `hold_seconds`,
+    `daily_limit_per_user`) move onto `shortlink_provider_credentials`.
+    `shortlink_clicks` gains `provider_name` + snapshotted
+    `reward_sat` / `hold_seconds`. `shortlink_clicks.shortlink_id`
+    becomes nullable (legacy column; new clicks omit it).
+  - **API**: `POST /api/shortlinks/start/{provider}` replaces
+    `POST /api/shortlinks/{id}/start`. The response now returns the
+    actual shortener URL (`https://btcut.io/...`) directly — there's
+    no more `/sl/{token}` indirection because the new flow doesn't
+    need to hide the destination (the destination IS the shortener
+    interstitial, which is the operator's revenue source).
+    `GET /api/shortlinks` now lists providers, not inventory rows.
+  - **Filament**: `ShortlinkResource` and the `/sl/{token}`
+    redirector are removed. `ShortlinkProviderCredentialResource`
+    grows a "Per-click economics" section so the operator manages
+    everything from one screen.
+  - **Blade**: `/shortlinks` lists providers ("Open via btcut.io")
+    instead of inventory rows. The auth-landing page reads its
+    reward + hold from the click row's snapshot, so a later operator
+    config tweak doesn't retroactively change unfinished clicks.
+  - **Tests**: rewrote `ClickFlowTest` + `AuthLandingTest` against
+    the new endpoint shape, removed `ServableFilterTest` and
+    `RotationTest` (concepts gone — there is no inventory to filter
+    and no `/sl/{token}` to rotate). Updated `DebugResourceAccessTest`
+    + `PolicyEnforcerIntegrationTest` to seed the new shape.
 
 ## [0.5.0] — 2026-04-27
 

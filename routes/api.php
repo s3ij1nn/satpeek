@@ -41,7 +41,11 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     Route::post('/ptc/{viewId}/complete', [PtcController::class, 'complete'])->whereNumber('viewId');
 
     Route::get('/shortlinks', [ShortlinkController::class, 'index']);
-    Route::post('/shortlinks/{id}/start', [ShortlinkController::class, 'start'])->middleware('adblock.gate')->whereNumber('id');
+    // Provider-keyed start: pick which shortener (btcut / cuty / exe / etc)
+    // to mint the click through. Replaces the old inventory-id-keyed route.
+    Route::post('/shortlinks/start/{provider}', [ShortlinkController::class, 'start'])
+        ->middleware('adblock.gate')
+        ->where('provider', '[a-z0-9_-]+');
     // Token-keyed completion pairs with the /shortlinks/auth/{token} landing —
     // same 28-char random as the URL slug, no numeric ID exposure. Declared
     // BEFORE the legacy clickId route so /auth/<token>/complete doesn't get

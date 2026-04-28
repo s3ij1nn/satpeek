@@ -34,9 +34,9 @@ class ShortlinkProviderCredentialResource extends Resource
 
     protected static string|UnitEnum|null $navigationGroup = 'Inventory';
 
-    protected static ?string $navigationLabel = 'Shortener APIs';
+    protected static ?string $navigationLabel = 'Shortlink providers';
 
-    protected static ?int $navigationSort = 30;
+    protected static ?int $navigationSort = 20;
 
     public static function form(Schema $schema): Schema
     {
@@ -85,6 +85,33 @@ class ShortlinkProviderCredentialResource extends Resource
                     ->default(true)
                     ->helperText('Inactive providers are hidden from the shortlink picker even if a token is set.'),
             ])->columns(2),
+
+            // Per-click economics. Snapshotted onto each ShortlinkClick row
+            // at start time, so editing these only affects FUTURE clicks
+            // — already-pending claims keep the rate they were minted at.
+            Schemas\Components\Section::make('Per-click economics')->schema([
+                Forms\Components\TextInput::make('reward_sat')
+                    ->label('Reward per click (sat)')
+                    ->numeric()
+                    ->required()
+                    ->default(5)
+                    ->minValue(1)
+                    ->helperText('Paid to the user when they complete the provider interstitial AND the post-return hold.'),
+                Forms\Components\TextInput::make('hold_seconds')
+                    ->label('Post-return hold (seconds)')
+                    ->numeric()
+                    ->required()
+                    ->default(5)
+                    ->minValue(3)
+                    ->maxValue(120)
+                    ->helperText('After the user comes back from the provider, they wait this long before claiming. Anti-bot — the captcha runs at the end.'),
+                Forms\Components\TextInput::make('daily_limit_per_user')
+                    ->label('Daily limit (per user)')
+                    ->numeric()
+                    ->required()
+                    ->default(10)
+                    ->minValue(1),
+            ])->columns(3),
         ]);
     }
 
@@ -103,6 +130,9 @@ class ShortlinkProviderCredentialResource extends Resource
                     ->getStateUsing(fn (ShortlinkProviderCredential $r) => filled($r->api_token))
                     ->boolean(),
                 Tables\Columns\IconColumn::make('is_active')->boolean(),
+                Tables\Columns\TextColumn::make('reward_sat')->label('Reward')->suffix(' sat')->numeric()->sortable(),
+                Tables\Columns\TextColumn::make('hold_seconds')->label('Hold')->suffix(' s')->numeric()->toggleable(),
+                Tables\Columns\TextColumn::make('daily_limit_per_user')->label('Daily/user')->numeric()->toggleable(),
                 Tables\Columns\TextColumn::make('last_used_at')->since()->placeholder('—')->sortable(),
                 Tables\Columns\TextColumn::make('updated_at')->dateTime()->since()->sortable()->toggleable(),
             ])

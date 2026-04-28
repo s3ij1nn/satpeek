@@ -1,69 +1,99 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Tests\Feature\Shortlinks;
 
 use App\BotDetection\PolicyEnforcer;
 use App\Captcha\TrajectoryTraceProvider;
 use App\Models\BotScore;
 use App\Models\CaptchaChallenge;
-use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
+use App\Models\ShortlinkProviderCredential;
 use App\Models\User;
+use App\Shortlinks\Providers\ShortenerClient;
+use App\Shortlinks\Providers\ShortenerException;
+use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
- * Locks the ouo.io-style shortlink interstitial flow:
- *   - list returns active links with their hold time + reward
- *   - start hands the viewer the target URL + a hold_seconds budget
+ * Locks the provider-keyed shortlink earn flow:
+ *   - GET /api/shortlinks lists active, token-configured providers
+ *   - POST /api/shortlinks/start/{provider} mints a click row, snapshots
+ *     the provider's reward + hold + daily-limit, and returns the
+ *     shortened URL (the user opens it in a new tab — there is no
+ *     /sl/{token} indirection in the new flow)
  *   - completing the hold credits balance + writes the ledger row
- *   - the abuse guards (daily limit, tier gate, too-fast, token mismatch,
- *     replayed completion) fire so a viewer can't bypass the wait
+ *   - the abuse guards (daily limit per provider, tier gate, too-fast,
+ *     token mismatch, replayed completion) fire so a viewer can't bypass
+ *     the wait
  */
 class ClickFlowTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_index_returns_only_active_shortlinks(): void
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->bindFakeProvider('mock', new FakeShortener('mock', 'https://mock.test/AAAAAA'));
+    }
+
+    public function test_index_returns_only_active_token_configured_providers(): void
     {
         $user = User::factory()->create();
-        $live = $this->seedLink(['title' => 'Live link']);
-        $disabled = $this->seedLink(['title' => 'Off link', 'is_active' => false]);
+        $this->seedProvider(['name' => 'mock', 'is_active' => true]);
+        $this->seedProvider(['name' => 'cuty', 'is_active' => false]);
+        $this->seedProvider(['name' => 'exe', 'api_token' => null]);
 
         $response = $this->actingAs($user)->getJson('/api/shortlinks');
 
         $response->assertOk();
-        $titles = collect($response->json('data'))->pluck('title')->all();
-        $this->assertContains('Live link', $titles);
-        $this->assertNotContains('Off link', $titles);
+        $names = collect($response->json('data'))->pluck('name')->all();
+        $this->assertContains('mock', $names);
+        $this->assertNotContains('cuty', $names);
+        $this->assertNotContains('exe', $names);
     }
 
-    public function test_start_returns_satpeek_redirector_url_not_destination(): void
+    public function test_start_returns_shortened_url_and_persists_click_with_snapshot(): void
     {
         $user = User::factory()->create();
-        $link = $this->seedLink([
-            'target_url' => 'https://example.com/landing',
-            'hold_seconds' => 8,
-            'reward_sat' => 3,
+        $this->seedProvider([
+            'name' => 'mock',
+            'reward_sat' => 7,
+            'hold_seconds' => 9,
+            'daily_limit_per_user' => 3,
         ]);
 
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
+        $response = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
 
         $response->assertOk();
-        $response->assertJson(['hold_seconds' => 8]);
+        $response->assertJson([
+            'hold_seconds' => 9,
+            'reward_sat' => 7,
+            'redirect_url' => 'https://mock.test/AAAAAA',
+        ]);
         $token = $response->json('epoch_token');
-        // /start returns the SatPeek redirector path keyed by the per-click
-        // epoch token — NOT the destination URL. A bot that XHR-scrapes
-        // /start gets a SatPeek URL it has to follow (and burn through
-        // the user's pending click) to learn the destination.
-        $this->assertSame(route('shortlinks.click', ['token' => $token]), $response->json('redirect_url'));
-        $this->assertStringNotContainsString('example.com', (string) $response->json('redirect_url'));
+        $this->assertMatchesRegularExpression('/^sc_[a-z0-9]{28}$/', $token);
         $this->assertDatabaseHas('shortlink_clicks', [
             'user_id' => $user->id,
-            'shortlink_id' => $link->id,
+            'provider_name' => 'mock',
+            'reward_sat' => 7,
+            'hold_seconds' => 9,
             'status' => 'pending',
         ]);
+    }
+
+    public function test_start_404s_when_provider_unknown(): void
+    {
+        $user = User::factory()->create();
+        // No credential row for "ghost".
+
+        $response = $this->actingAs($user)->postJson('/api/shortlinks/start/ghost');
+
+        $response->assertStatus(404);
+        $response->assertJson(['error' => 'provider_unavailable']);
     }
 
     public function test_start_blocks_when_user_tier_is_likely_bot(): void
@@ -75,49 +105,80 @@ class ClickFlowTest extends TestCase
             'tier' => 'likely_bot',
             'signals' => [],
         ]);
-        // Sanity: the policy classifies them as blocked.
         $this->assertFalse(app(PolicyEnforcer::class)->canStartPtcView($user->fresh()));
+        $this->seedProvider(['name' => 'mock']);
 
-        $link = $this->seedLink();
-
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
+        $response = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
 
         $response->assertStatus(403);
         $response->assertJson(['error' => 'tier_blocked']);
         $this->assertDatabaseMissing('shortlink_clicks', ['user_id' => $user->id]);
     }
 
-    public function test_start_returns_429_when_daily_limit_reached(): void
+    public function test_start_returns_429_when_per_provider_daily_limit_reached(): void
     {
         $user = User::factory()->create();
-        $link = $this->seedLink(['daily_limit_per_user' => 2]);
-        // Two prior verified clicks today exhaust the daily quota.
+        $this->seedProvider(['name' => 'mock', 'daily_limit_per_user' => 2]);
         for ($i = 0; $i < 2; $i++) {
             ShortlinkClick::create([
                 'user_id' => $user->id,
-                'shortlink_id' => $link->id,
+                'provider_name' => 'mock',
+                'reward_sat' => 5,
+                'hold_seconds' => 5,
                 'epoch_token' => 'sc_used_'.$i.'_'.uniqid(),
                 'status' => 'verified',
                 'started_at' => Carbon::now()->subMinutes($i + 1),
-                'completed_at' => Carbon::now()->subMinutes($i + 1)->addSeconds($link->hold_seconds),
+                'completed_at' => Carbon::now()->subMinutes($i + 1)->addSeconds(5),
             ]);
         }
 
-        $response = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start");
+        $response = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
 
         $response->assertStatus(429);
         $response->assertJson(['error' => 'daily_limit_reached']);
     }
 
+    public function test_start_returns_502_and_deletes_click_when_shortener_throws(): void
+    {
+        $user = User::factory()->create();
+        $this->seedProvider(['name' => 'mock']);
+        $this->bindFakeProvider('mock', new ThrowingFakeShortener('mock'));
+
+        $response = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
+
+        $response->assertStatus(502);
+        $response->assertJson(['error' => 'provider_failed']);
+        $this->assertDatabaseMissing('shortlink_clicks', ['user_id' => $user->id]);
+    }
+
+    public function test_each_start_sends_a_distinct_cache_busted_url_to_shorten(): void
+    {
+        $user = User::factory()->create();
+        $this->seedProvider(['name' => 'mock']);
+        $shortener = new SequenceFakeShortener('mock', [
+            'https://mock.test/AAAAAA',
+            'https://mock.test/BBBBBB',
+        ]);
+        $this->bindFakeProvider('mock', $shortener);
+
+        $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->assertOk();
+        $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->assertOk();
+
+        $this->assertCount(2, $shortener->received);
+        $this->assertNotSame($shortener->received[0], $shortener->received[1]);
+        foreach ($shortener->received as $u) {
+            $this->assertMatchesRegularExpression('/[?&]_r=[a-z0-9]+/', $u);
+        }
+    }
+
     public function test_complete_credits_balance_after_full_hold(): void
     {
         $user = User::factory()->create(['balance_sat' => 0, 'total_earned_sat' => 0]);
-        $link = $this->seedLink(['hold_seconds' => 5, 'reward_sat' => 11]);
+        $this->seedProvider(['name' => 'mock', 'reward_sat' => 11, 'hold_seconds' => 5]);
 
-        $start = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
-        // Backdate started_at so the elapsed-vs-hold check sees a full wait.
+        $start = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
         ShortlinkClick::where('id', $start['click_id'])->update([
-            'started_at' => Carbon::now()->subSeconds($link->hold_seconds + 2),
+            'started_at' => Carbon::now()->subSeconds(7),
         ]);
 
         $challenge = $this->seedChallenge();
@@ -143,11 +204,10 @@ class ClickFlowTest extends TestCase
     public function test_complete_rejects_when_hold_too_fast(): void
     {
         $user = User::factory()->create(['balance_sat' => 0]);
-        $link = $this->seedLink(['hold_seconds' => 30]);
+        $this->seedProvider(['name' => 'mock', 'hold_seconds' => 30]);
 
-        $start = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
+        $start = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
         // started_at left at "now" → elapsed ~ 0 << hold_seconds.
-
         $challenge = $this->seedChallenge();
         $challenge->update(['status' => 'verified']);
 
@@ -165,11 +225,11 @@ class ClickFlowTest extends TestCase
     public function test_complete_rejects_on_epoch_token_mismatch(): void
     {
         $user = User::factory()->create(['balance_sat' => 0]);
-        $link = $this->seedLink(['hold_seconds' => 5]);
+        $this->seedProvider(['name' => 'mock', 'hold_seconds' => 5]);
 
-        $start = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
+        $start = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
         ShortlinkClick::where('id', $start['click_id'])->update([
-            'started_at' => Carbon::now()->subSeconds($link->hold_seconds + 2),
+            'started_at' => Carbon::now()->subSeconds(7),
         ]);
         $challenge = $this->seedChallenge();
         $challenge->update(['status' => 'verified']);
@@ -182,18 +242,17 @@ class ClickFlowTest extends TestCase
         $response->assertStatus(422);
         $response->assertJson(['error' => 'token_mismatch']);
         $this->assertSame(0, (int) $user->fresh()->balance_sat);
-        // Click stays pending — token mismatch alone shouldn't burn the slot.
         $this->assertSame('pending', ShortlinkClick::find($start['click_id'])->status);
     }
 
     public function test_complete_cannot_be_replayed_after_verification(): void
     {
         $user = User::factory()->create(['balance_sat' => 0]);
-        $link = $this->seedLink(['hold_seconds' => 5, 'reward_sat' => 7]);
+        $this->seedProvider(['name' => 'mock', 'hold_seconds' => 5, 'reward_sat' => 7]);
 
-        $start = $this->actingAs($user)->postJson("/api/shortlinks/{$link->id}/start")->json();
+        $start = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
         ShortlinkClick::where('id', $start['click_id'])->update([
-            'started_at' => Carbon::now()->subSeconds($link->hold_seconds + 2),
+            'started_at' => Carbon::now()->subSeconds(7),
         ]);
         $challenge = $this->seedChallenge();
         $challenge->update(['status' => 'verified']);
@@ -212,24 +271,30 @@ class ClickFlowTest extends TestCase
 
         $replay->assertStatus(422);
         $replay->assertJson(['error' => 'click_not_pending']);
-        // Balance must not double-credit on replay.
         $this->assertSame(7, (int) $user->fresh()->balance_sat);
     }
 
-    private function seedLink(array $overrides = []): Shortlink
+    private function seedProvider(array $overrides = []): ShortlinkProviderCredential
     {
-        return Shortlink::create(array_merge([
-            'source' => 'internal',
-            'external_id' => 'sl-'.uniqid(),
-            'title' => 'Test shortlink',
-            'target_url' => 'https://destination.example.com/',
-            'source_url' => 'https://destination.example.com/source',
-            'provider_name' => 'mock',
-            'reward_sat' => 5,
-            'hold_seconds' => 10,
-            'daily_limit_per_user' => 5,
+        return ShortlinkProviderCredential::create(array_merge([
+            'name' => 'mock',
+            'label' => 'Mock provider',
+            'transport' => 'query',
+            'api_base' => 'https://mock.test/api',
+            'api_token' => 'mock_token',
             'is_active' => true,
+            'reward_sat' => 5,
+            'hold_seconds' => 5,
+            'daily_limit_per_user' => 5,
         ], $overrides));
+    }
+
+    private function bindFakeProvider(string $name, ShortenerClient $client): void
+    {
+        $this->app->instance(
+            ShortlinkProviderRegistry::class,
+            new ShortlinkProviderRegistry([$name => $client]),
+        );
     }
 
     private function seedChallenge(): CaptchaChallenge
@@ -252,5 +317,78 @@ class ClickFlowTest extends TestCase
             'issued_at' => $issuedAt,
             'expires_at' => $issuedAt->copy()->addSeconds(60),
         ]);
+    }
+}
+
+class FakeShortener implements ShortenerClient
+{
+    public function __construct(private string $name, private string $url) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
+    public function shorten(string $url, ?string $alias = null): string
+    {
+        return $this->url;
+    }
+}
+
+/**
+ * Returns successive URLs from a queue. Captures the inputs so tests can
+ * assert the controller really sent a fresh cache-buster per call.
+ */
+class SequenceFakeShortener implements ShortenerClient
+{
+    /** @var array<int, string> URLs received from the controller (for assertions). */
+    public array $received = [];
+
+    /** @param array<int, string> $queue */
+    public function __construct(private string $name, private array $queue) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
+    public function shorten(string $url, ?string $alias = null): string
+    {
+        $this->received[] = $url;
+        if (empty($this->queue)) {
+            throw new ShortenerException('queue exhausted');
+        }
+
+        return array_shift($this->queue);
+    }
+}
+
+class ThrowingFakeShortener implements ShortenerClient
+{
+    public function __construct(private string $name) {}
+
+    public function name(): string
+    {
+        return $this->name;
+    }
+
+    public function isConfigured(): bool
+    {
+        return true;
+    }
+
+    public function shorten(string $url, ?string $alias = null): string
+    {
+        throw new ShortenerException('boom');
     }
 }

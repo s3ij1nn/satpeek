@@ -10,7 +10,6 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\PtcAuthController;
 use App\Http\Controllers\ReadArticlesController;
 use App\Http\Controllers\ShortlinkAuthController;
-use App\Http\Controllers\ShortlinkRedirectController;
 use Illuminate\Support\Facades\Route;
 
 // Public landing
@@ -77,13 +76,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/shortlinks/auth/{token}', [ShortlinkAuthController::class, 'show'])
         ->where('token', '[A-Za-z0-9_]+')
         ->name('shortlinks.auth');
-    // Server-side click redirector — the destination URL is minted at
-    // follow time and 302'd, never returned via JSON. Defeats XHR-scrape
-    // bots that try to learn the destination without spending the hold.
-    // See ShortlinkRedirectController.
-    Route::get('/sl/{token}', [ShortlinkRedirectController::class, 'show'])
-        ->where('token', '[A-Za-z0-9_]+')
-        ->name('shortlinks.click');
 
     // Read-article tasks — pure pass-through to whichever per-user adapter
     // (BitcoTasks today) is enabled. Renders an empty/disabled state when

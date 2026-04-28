@@ -5,16 +5,33 @@ namespace App\Http\Controllers\Api;
 use App\BotDetection\PolicyEnforcer;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
-use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
+use App\Models\ShortlinkProviderCredential;
 use App\Services\ReferralPayout;
-use Illuminate\Database\Eloquent\Builder;
+use App\Shortlinks\Providers\ShortenerException;
+use App\Shortlinks\ShortlinkProviderRegistry;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+/**
+ * Provider-keyed shortlink earn flow.
+ *
+ * The model: SatPeek mints a fresh `/shortlinks/auth/{token}` URL,
+ * shortens it through the operator-chosen provider (btcut / cuty /
+ * exe / shrtfly / ouo), opens the resulting `https://<provider>/<slug>`
+ * in a new tab, and pays the user when they come back to the token URL.
+ * The provider earns ad revenue from its interstitial; SatPeek's
+ * `reward_sat` is paid from that revenue.
+ *
+ * There is NO inventory of shortlinks. Each row in
+ * `shortlink_provider_credentials` is one provider. The user picks a
+ * provider; the click flow generates the URL.
+ */
 class ShortlinkController extends Controller
 {
     public function __construct(
@@ -23,77 +40,115 @@ class ShortlinkController extends Controller
     ) {}
 
     /**
-     * Source-of-truth filter for "shortlinks the platform is willing to
-     * serve to users". Single place so the index view, the JSON API, the
-     * `start` resolver, and any future caller stay in sync. Operator
-     * policy: only rotation-enabled internal entries (provider_name +
-     * source_url both set) — static shortlinks are no longer surfaced.
-     * BitcoTask shortlink offers come in via OfferwallMerge, not this
-     * table.
+     * Active, token-configured providers with their per-click economics.
+     * Single source of truth used by `index()` and the Blade view.
+     *
+     * @return Collection<int, ShortlinkProviderCredential>
      */
-    /**
-     * @return Builder<Shortlink>
-     */
-    public static function servableQuery(): Builder
+    public static function enabledProviders(): Collection
     {
-        return Shortlink::query()
+        return ShortlinkProviderCredential::query()
             ->where('is_active', true)
-            ->whereNotNull('provider_name')
-            ->whereNotNull('source_url');
+            ->whereNotNull('api_token')
+            ->orderByDesc('reward_sat')
+            ->get();
     }
 
     public function index(Request $request): JsonResponse
     {
-        // Only surface rotation-enabled entries (provider_name + source_url
-        // both set). Static shortlinks are no longer offered by /shortlinks
-        // — operator policy is "shortener-API rotation OR BitcoTask
-        // offerwall, never static". Mirror of the index.blade.php filter.
-        $links = self::servableQuery()->orderByDesc('reward_sat')->limit(50)->get();
-
         return response()->json([
-            'data' => $links->map(fn ($l) => [
-                'id' => $l->id,
-                'title' => $l->title,
-                'reward_sat' => $l->reward_sat,
-                'hold_seconds' => $l->hold_seconds,
+            'data' => self::enabledProviders()->map(fn (ShortlinkProviderCredential $p) => [
+                'name' => $p->name,
+                'label' => $p->label ?: $p->name,
+                'reward_sat' => $p->reward_sat,
+                'hold_seconds' => $p->hold_seconds,
+                'daily_limit_per_user' => $p->daily_limit_per_user,
             ]),
         ]);
     }
 
-    public function start(Request $request, int $id): JsonResponse
+    /**
+     * Mint a fresh ShortlinkClick row, shorten the auth URL via the chosen
+     * provider, and return the shortened URL the frontend opens in a new
+     * tab. The user completes the provider's interstitial, lands back on
+     * `/shortlinks/auth/{token}`, and the auth landing page calls
+     * `complete` to settle the reward.
+     */
+    public function start(Request $request, string $provider): JsonResponse
     {
         $user = $request->user();
         if (! $this->policy->canStartPtcView($user)) {
             return response()->json(['error' => 'tier_blocked'], 403);
         }
-        $link = self::servableQuery()->findOrFail($id);
 
-        $usedToday = ShortlinkClick::where('user_id', $user->id)
-            ->where('shortlink_id', $link->id)
+        /** @var ShortlinkProviderCredential|null $providerRow */
+        $providerRow = ShortlinkProviderCredential::query()
+            ->where('name', $provider)
+            ->where('is_active', true)
+            ->whereNotNull('api_token')
+            ->first();
+        if (! $providerRow) {
+            return response()->json(['error' => 'provider_unavailable'], 404);
+        }
+
+        $usedToday = ShortlinkClick::query()
+            ->where('user_id', $user->id)
+            ->where('provider_name', $providerRow->name)
             ->where('status', 'verified')
             ->where('created_at', '>=', Carbon::now()->startOfDay())
             ->count();
-        if ($usedToday >= $link->daily_limit_per_user) {
+        if ($usedToday >= $providerRow->daily_limit_per_user) {
             return response()->json(['error' => 'daily_limit_reached'], 429);
         }
 
         $click = ShortlinkClick::create([
             'user_id' => $user->id,
-            'shortlink_id' => $link->id,
+            'provider_name' => $providerRow->name,
+            // Snapshot the economics so a later config tweak doesn't
+            // retroactively change unfinished clicks' rewards.
+            'reward_sat' => (int) $providerRow->reward_sat,
+            'hold_seconds' => (int) $providerRow->hold_seconds,
             'epoch_token' => 'sc_'.Str::lower(Str::random(28)),
             'status' => 'pending',
             'started_at' => Carbon::now(),
         ]);
 
+        // Build the auth-landing URL the user will return to AFTER
+        // completing the provider's interstitial. Append a cache-buster
+        // so providers that de-dup by destination URL still mint a
+        // distinct slug (mirrors the old rotation logic). The token is
+        // already unique per click but the cache-buster covers the
+        // edge case where the provider key off URL hash, not body.
+        $destination = route('shortlinks.auth', ['token' => $click->epoch_token]).'?_r='.Str::lower(Str::random(8));
+
+        try {
+            $client = app(ShortlinkProviderRegistry::class)->get($providerRow->name);
+            $shortened = $client->shorten($destination);
+        } catch (ShortenerException $e) {
+            // Wipe the half-created click so the daily-limit counter
+            // doesn't penalise the user for our outage.
+            $click->delete();
+            Log::warning('shortlink start: shortener failed', [
+                'provider' => $providerRow->name,
+                'user_id' => $user->id,
+                'err' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'provider_failed', 'message' => $e->getMessage()], 502);
+        }
+
+        $providerRow->forceFill(['last_used_at' => Carbon::now()])->save();
+
         return response()->json([
             'click_id' => $click->id,
             'epoch_token' => $click->epoch_token,
-            // Server-side redirector — the actual destination URL is minted
-            // at follow time and 302'd, never returned via JSON. Keeps a
-            // bot fleet from learning the destination by XHR-scraping /start.
-            // Rotation logic + cache-buster live in ShortlinkRedirectController.
-            'redirect_url' => route('shortlinks.click', ['token' => $click->epoch_token]),
-            'hold_seconds' => $link->hold_seconds,
+            // The actual shortener URL the user opens in a new tab.
+            // No /sl/{token} indirection — the destination is the
+            // shortener interstitial itself, which is the whole point
+            // of this flow (operator earns ad revenue from the click).
+            'redirect_url' => $shortened,
+            'hold_seconds' => $click->hold_seconds,
+            'reward_sat' => $click->reward_sat,
         ]);
     }
 
@@ -139,14 +194,15 @@ class ShortlinkController extends Controller
         // started_at is non-nullable on the schema (set in start()) so the
         // bare diff is safe — no ?-> guard needed.
         $elapsed = (int) abs($click->started_at->diffInSeconds(Carbon::now()));
-        if ($elapsed < $click->shortlink->hold_seconds - 1) {
+        $minHold = $click->effectiveHoldSeconds() - 1;
+        if ($elapsed < $minHold) {
             $click->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
 
             return response()->json(['error' => 'too_fast'], 422);
         }
 
-        DB::transaction(function () use ($user, $click) {
-            $reward = (int) $click->shortlink->reward_sat;
+        $reward = $click->effectiveRewardSat();
+        DB::transaction(function () use ($user, $click, $reward) {
             BalanceLedger::create([
                 'user_id' => $user->id,
                 'delta_sat' => $reward,
@@ -163,6 +219,6 @@ class ShortlinkController extends Controller
             $click->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
         });
 
-        return response()->json(['ok' => true, 'reward_sat' => $click->shortlink->reward_sat]);
+        return response()->json(['ok' => true, 'reward_sat' => $reward]);
     }
 }

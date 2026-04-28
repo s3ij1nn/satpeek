@@ -35,14 +35,19 @@ class ShortlinkAuthController extends Controller
             throw new HttpException(410, 'This click has already been resolved.');
         }
 
-        $link = $click->shortlink;
+        // Provider-keyed clicks snapshot reward / hold on the click row
+        // itself (effective* helpers handle the legacy fallback to the
+        // parent Shortlink row). The view binds against $click directly
+        // so it doesn't need to know whether this is a new provider-keyed
+        // flow or a legacy inventory-keyed flow.
         // started_at is non-nullable on the schema so no ?-> guard needed.
         $elapsedSec = (int) $click->started_at->diffInSeconds(now(), absolute: true);
-        $remainingSec = max(0, (int) $link->hold_seconds - $elapsedSec);
+        $remainingSec = max(0, $click->effectiveHoldSeconds() - $elapsedSec);
 
         return view('shortlinks.auth', [
             'click' => $click,
-            'link' => $link,
+            'reward_sat' => $click->effectiveRewardSat(),
+            'hold_seconds' => $click->effectiveHoldSeconds(),
             'remaining_sec' => $remainingSec,
         ]);
     }

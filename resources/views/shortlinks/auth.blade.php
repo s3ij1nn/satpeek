@@ -29,9 +29,9 @@
 <section class="sl-auth">
     <header class="sl-auth__head">
         <span class="meta">/ shortlinks · claim</span>
-        <h1>{{ $link->title }}</h1>
+        <h1>Shortlink earn</h1>
         <p style="color: var(--text-secondary); margin: .25rem 0 .75rem;">When the timer hits zero, solve the captcha and claim.</p>
-        <span class="reward-pill">+{{ number_format($link->reward_sat) }}<small style="color: var(--text-tertiary);">sat</small></span>
+        <span class="reward-pill">+{{ number_format($reward_sat) }}<small style="color: var(--text-tertiary);">sat</small></span>
     </header>
 
     <div id="slMsg" style="display:none;"></div>
@@ -51,7 +51,7 @@
         <h2>Step 2 — Solve captcha to claim</h2>
         <x-trajectory-captcha name="sl-auth" />
         <button type="button" class="cta cta--primary" id="slClaim" disabled style="justify-content:center;">
-            Claim {{ number_format($link->reward_sat) }} sat <span class="cta__arrow">→</span>
+            Claim {{ number_format($reward_sat) }} sat <span class="cta__arrow">→</span>
         </button>
     </div>
 
@@ -69,7 +69,7 @@
     // attacker would need to guess a 28-char random just to probe an existing
     // click — and even then it's user-scoped + single-use server-side.
     const token = @json($click->epoch_token);
-    const holdTotal = {{ (int) $link->hold_seconds }};
+    const holdTotal = {{ (int) $hold_seconds }};
     const fp = window.SPCaptcha?.fingerprint || '';
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
 

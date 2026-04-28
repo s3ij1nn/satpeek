@@ -6,7 +6,6 @@ use App\Filament\Resources\PtcViewResource;
 use App\Filament\Resources\ShortlinkClickResource;
 use App\Models\PtcAd;
 use App\Models\PtcView;
-use App\Models\Shortlink;
 use App\Models\ShortlinkClick;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,7 +64,8 @@ class DebugResourceAccessTest extends TestCase
         $response = $this->actingAs($admin)->get('/admin/shortlink-clicks');
 
         $response->assertOk();
-        $response->assertSee($click->shortlink->title, false);
+        // Provider name is the surfaced badge column for provider-keyed clicks.
+        $response->assertSee($click->provider_name, false);
     }
 
     public function test_resources_forbid_create_edit_delete_via_filament_helpers(): void
@@ -120,23 +120,13 @@ class DebugResourceAccessTest extends TestCase
 
     private function seedShortlinkClick(): ShortlinkClick
     {
-        $link = Shortlink::create([
-            'source' => 'internal',
-            'external_id' => 'debug-sl-'.uniqid(),
-            'title' => 'Debug shortlink',
-            'target_url' => 'https://example.com/destination',
-            'source_url' => 'https://destination.example.com/source',
-            'provider_name' => 'mock',
-            'reward_sat' => 5,
-            'hold_seconds' => 5,
-            'daily_limit_per_user' => 5,
-            'is_active' => true,
-        ]);
         $clicker = User::factory()->create();
 
         return ShortlinkClick::create([
             'user_id' => $clicker->id,
-            'shortlink_id' => $link->id,
+            'provider_name' => 'mock',
+            'reward_sat' => 5,
+            'hold_seconds' => 5,
             'epoch_token' => 'sc_'.bin2hex(random_bytes(14)),
             'status' => 'pending',
             'started_at' => Carbon::now(),
