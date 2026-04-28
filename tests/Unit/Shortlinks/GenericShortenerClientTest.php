@@ -73,6 +73,33 @@ class GenericShortenerClientTest extends TestCase
         $client->shorten('not-a-url');
     }
 
+    public function test_array_message_in_error_response_does_not_fatal_with_array_to_string(): void
+    {
+        // Some shortener APIs (cuty in the wild) return validation errors
+        // as a nested object: { "message": { "url": ["The url is invalid."] } }.
+        // The previous (string) cast on $data['message'] would fatal with
+        // "Array to string conversion" → 500 to the user. We now JSON-encode
+        // arrays so the operator at least sees the field detail in the toast.
+        $http = new HttpFactory;
+        $http->fake([
+            '*' => $http->response([
+                'status' => 'error',
+                'message' => ['url' => ['The url field is invalid.']],
+                'shortenedUrl' => '',
+            ], 200),
+        ]);
+
+        $client = new GenericShortenerClient($http, 'cuty', 'https://cuty.io/api', 'TOKEN_xyz');
+
+        try {
+            $client->shorten('not-a-url');
+            $this->fail('expected ShortenerException');
+        } catch (ShortenerException $e) {
+            $this->assertStringContainsString('cuty', $e->getMessage());
+            $this->assertStringContainsString('url', $e->getMessage());
+        }
+    }
+
     public function test_empty_shortened_url_in_response_is_treated_as_error(): void
     {
         $http = new HttpFactory;

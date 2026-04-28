@@ -87,9 +87,16 @@ class GenericShortenerClient implements ShortenerClient
         $short = is_array($data) ? (string) ($data['shortenedUrl'] ?? '') : '';
 
         if ($status !== 'success' || $short === '') {
-            $msg = is_array($data) && isset($data['message']) && $data['message'] !== ''
-                ? (string) $data['message']
-                : 'unknown error';
+            // Some providers return `message` as a nested array (validation
+            // errors keyed by field). Flatten so the toast shows something
+            // readable and the (string) cast on the next line never fatals
+            // with "Array to string conversion".
+            $rawMsg = is_array($data) ? ($data['message'] ?? null) : null;
+            $msg = match (true) {
+                is_string($rawMsg) && $rawMsg !== '' => $rawMsg,
+                is_array($rawMsg) && $rawMsg !== [] => json_encode($rawMsg, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                default => 'unknown error',
+            };
             Log::warning('shortener api error', [
                 'provider' => $this->name,
                 'status' => $status,
