@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`/shortlinks` adopts firefaucet's multi-button visit pattern.**
+  Each provider row used to render a single "Open via {label}"
+  button. It now renders one numbered chip per remaining daily view
+  (1, 2, 3, …) plus a "Views Left: N/M" counter. Each chip is its
+  own click → fresh `ShortlinkClick` row → new shortener URL → user
+  navigates to `/shortlinks/auth/{token}` while the shortener tab
+  loads in parallel. The position number is purely visual — server
+  state is unchanged. Matches the operator's reference UX.
+
 - **Shortlinks re-shaped around the provider, not the inventory row.**
   Operator clarification: SatPeek's shortlink earn flow is "user
   picks a shortener → SatPeek mints `/shortlinks/auth/{token}` →

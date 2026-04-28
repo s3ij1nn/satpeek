@@ -38,17 +38,25 @@
     .sl__head h1 em { color: var(--amber-soft); font-style: italic; }
     .sl__head .meta { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .14em; }
     .row-list { display: grid; gap: .75rem; }
-    .row { background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem 1.25rem; display: grid; grid-template-columns: 1fr auto auto; gap: 1rem; align-items: center; }
+    .row { background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem 1.25rem; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem 1.25rem; align-items: start; }
     .row.exhausted { opacity: .55; }
-    .row__title { font-size: var(--text-base); color: var(--text-primary); margin: 0; }
-    .row__meta { font-family: var(--font-mono); font-size: .65rem; text-transform: uppercase; letter-spacing: .12em; color: var(--text-tertiary); margin-top: .25rem; }
-    .row__reward { font-family: var(--font-display); font-size: 1.25rem; color: var(--amber-soft); white-space: nowrap; }
+    .row__title { font-size: var(--text-base); color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .row__meta { font-family: var(--font-mono); font-size: .65rem; text-transform: uppercase; letter-spacing: .12em; color: var(--text-tertiary); margin-top: .35rem; }
+    .row__meta strong { color: var(--text-secondary); }
+    .row__reward { font-family: var(--font-display); font-size: 1.25rem; color: var(--amber-soft); white-space: nowrap; text-align: right; }
     .row__reward small { font-family: var(--font-mono); font-size: .55em; color: var(--text-tertiary); margin-left: .15rem; }
-    .row__cta { padding: .45rem .9rem; border-radius: var(--radius-md); background: var(--amber); color: #1a0e00; font-weight: 500; text-decoration: none; font-size: var(--text-sm); }
-    .row__cta:hover { background: var(--amber-soft); color: #1a0e00; }
-    .row__cta--disabled { background: var(--bg-elev); color: var(--text-tertiary); pointer-events: none; }
-    .row__cta--in-flight { background: var(--bg-elev); color: var(--amber-soft); }
-    @media (max-width: 540px) { .row { grid-template-columns: 1fr; } }
+
+    /* Multi-button visit chip strip — one chip per remaining daily view,
+       firefaucet-style. Each chip is its own click → fresh ShortlinkClick. */
+    .row__chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .35rem; padding-top: .25rem; }
+    .chip { min-width: 2.25rem; padding: .35rem .55rem; border-radius: var(--radius-sm, 6px); background: var(--bg-elev); border: 1px solid var(--border-subtle); color: var(--amber-soft); font-family: var(--font-mono); font-size: var(--text-xs); cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease; text-align: center; line-height: 1; }
+    .chip:hover { background: var(--amber); color: #1a0e00; border-color: var(--amber); }
+    .chip[disabled] { background: var(--bg-elev); color: var(--text-tertiary); border-color: var(--border-subtle); cursor: not-allowed; opacity: .55; }
+    .chip--in-flight { background: var(--bg-elev); color: var(--text-tertiary); cursor: progress; }
+
+    .row__badge { display: inline-flex; align-items: center; padding: .15rem .4rem; border-radius: var(--radius-sm, 4px); background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.3); color: var(--rose); font-family: var(--font-mono); font-size: .55rem; text-transform: uppercase; letter-spacing: .14em; }
+
+    @media (max-width: 540px) { .row { grid-template-columns: 1fr; } .row__reward { text-align: left; } }
 
     .empty { background: var(--bg-panel); border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); padding: 3rem 1.5rem; text-align: center; color: var(--text-tertiary); }
     .alert--ok { padding: .75rem 1rem; border-radius: var(--radius-md); background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.3); color: var(--mint); font-size: var(--text-sm); }
@@ -83,21 +91,29 @@
             @foreach ($providers as $p)
                 @php
                     $used = (int) ($usedTodayByProvider[$p->name] ?? 0);
-                    $left = max(0, (int) $p->daily_limit_per_user - $used);
+                    $limit = (int) $p->daily_limit_per_user;
+                    $left = max(0, $limit - $used);
                     $exhausted = $left <= 0;
                     $label = $p->label ?: $p->name;
                 @endphp
                 <article class="row {{ $exhausted ? 'exhausted' : '' }}" data-provider="{{ $p->name }}" data-hold="{{ $p->hold_seconds }}" data-reward="{{ $p->reward_sat }}">
                     <div>
                         <h3 class="row__title">{{ $label }}</h3>
-                        <div class="row__meta">{{ $p->hold_seconds }}s hold after return · {{ $left }}/{{ $p->daily_limit_per_user }} left today</div>
+                        <div class="row__meta">Views Left: <strong>{{ $left }}/{{ $limit }}</strong> · {{ $p->hold_seconds }}s hold after return</div>
                     </div>
-                    <div class="row__reward">{{ number_format($p->reward_sat) }}<small>sat</small></div>
-                    <div>
+                    <div class="row__reward">+{{ number_format($p->reward_sat) }}<small>sat</small></div>
+                    <div class="row__chips">
                         @if ($exhausted)
-                            <span class="row__cta row__cta--disabled">Done today</span>
+                            <span class="chip" disabled>Done today</span>
                         @else
-                            <button type="button" class="row__cta sl-go">Open via {{ $label }} →</button>
+                            {{-- One numbered chip per remaining daily view —
+                                 firefaucet-style. Each chip mints a fresh
+                                 ShortlinkClick when clicked; the position
+                                 number is just an affordance, not part of
+                                 server state. --}}
+                            @for ($i = 1; $i <= $left; $i++)
+                                <button type="button" class="chip sl-go" data-idx="{{ $i }}">{{ $i }}</button>
+                            @endfor
                         @endif
                     </div>
                 </article>
@@ -147,8 +163,8 @@
         const provider = row.dataset.provider;
         const originalLabel = btn.textContent;
         btn.disabled = true;
-        btn.classList.add('row__cta--in-flight');
-        btn.textContent = 'Opening…';
+        btn.classList.add('chip--in-flight');
+        btn.textContent = '…';
 
         try {
             const r = await fetch(`/api/shortlinks/start/${encodeURIComponent(provider)}`, {
@@ -160,7 +176,7 @@
             if (!r.ok) {
                 showMsg('err', data?.message || data?.error || 'Could not start click.');
                 btn.disabled = false;
-                btn.classList.remove('row__cta--in-flight');
+                btn.classList.remove('chip--in-flight');
                 btn.textContent = originalLabel;
                 return;
             }
@@ -176,7 +192,7 @@
         } catch (err) {
             showMsg('err', 'Network error starting click.');
             btn.disabled = false;
-            btn.classList.remove('row__cta--in-flight');
+            btn.classList.remove('chip--in-flight');
             btn.textContent = originalLabel;
         }
     }));
