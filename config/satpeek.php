@@ -214,6 +214,24 @@ return [
             'api_base' => env('OUO_API_BASE', 'https://ouo.io/api'),
             'api_token' => env('OUO_API_TOKEN', ''),
         ],
+        'earnow' => [
+            'label' => 'earnow.online',
+            'transport' => 'query',
+            'api_base' => env('EARNOW_API_BASE', 'https://earnow.online/api'),
+            'api_token' => env('EARNOW_API_TOKEN', ''),
+        ],
+        'shortano' => [
+            'label' => 'shortano.link',
+            'transport' => 'query',
+            'api_base' => env('SHORTANO_API_BASE', 'https://shortano.link/api'),
+            'api_token' => env('SHORTANO_API_TOKEN', ''),
+        ],
+        'shortino' => [
+            'label' => 'shortino.link',
+            'transport' => 'query',
+            'api_base' => env('SHORTINO_API_BASE', 'https://shortino.link/api'),
+            'api_token' => env('SHORTINO_API_TOKEN', ''),
+        ],
     ],
 
     'offerwalls' => [

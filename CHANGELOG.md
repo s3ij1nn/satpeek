@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Three new shortener providers: `earnow.online`, `shortano.link`,
+  `shortino.link`. All three use the existing query-token transport
+  shape (`?api=TOKEN&url=DESTINATION&format=json`) so they slot into
+  `GenericShortenerClient` with no new code — just a config block
+  + `*_API_TOKEN` / `*_API_BASE` env pair each.
+
 ### Changed
 
 - **Hardened single-credit guarantee on shortlink claims.** Two-layer

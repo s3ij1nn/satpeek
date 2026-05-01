@@ -54,7 +54,10 @@ class RegistryBootTest extends TestCase
         $names = array_keys($registry->all());
 
         // Bumping this list means updating .env.example as well.
-        $this->assertEqualsCanonicalizing(['btcut', 'cuty', 'exe', 'shrtfly', 'ouo'], $names);
+        $this->assertEqualsCanonicalizing(
+            ['btcut', 'cuty', 'exe', 'shrtfly', 'ouo', 'earnow', 'shortano', 'shortino'],
+            $names,
+        );
     }
 
     public function test_transport_switch_picks_the_right_client_class(): void
