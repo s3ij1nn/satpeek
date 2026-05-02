@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Admin;
 
 use App\Filament\Widgets\BotTierDistributionWidget;
+use App\Filament\Widgets\BotTierTrendChartWidget;
 use App\Filament\Widgets\EarningActivityWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
 use App\Filament\Widgets\PayoutVolumeChartWidget;
 use App\Filament\Widgets\SharedIpDetectionsWidget;
 use App\Models\BalanceLedger;
 use App\Models\BotScore;
+use App\Models\BotScoreHistory;
 use App\Models\InternalArticle;
 use App\Models\InternalArticleView;
 use App\Models\PtcAd;
@@ -317,6 +319,50 @@ class DashboardWidgetTest extends TestCase
         // No negative or out-of-window contamination.
         $this->assertSame(0, array_sum(array_slice($ptcSeries, 0, 13)));
         $this->assertSame(0, array_sum(array_slice($shortSeries, 0, 13)));
+    }
+
+    public function test_bot_tier_trend_chart_groups_evaluations_by_day_and_tier(): void
+    {
+        $u1 = User::factory()->create();
+        $u2 = User::factory()->create();
+
+        // Today: one trust, two suspect, one banned evaluation.
+        BotScoreHistory::create(['user_id' => $u1->id, 'score' => 0.10, 'tier' => 'trust', 'signals' => [], 'created_at' => Carbon::now()]);
+        BotScoreHistory::create(['user_id' => $u1->id, 'score' => 0.40, 'tier' => 'suspect', 'signals' => [], 'created_at' => Carbon::now()]);
+        BotScoreHistory::create(['user_id' => $u2->id, 'score' => 0.45, 'tier' => 'suspect', 'signals' => [], 'created_at' => Carbon::now()]);
+        BotScoreHistory::create(['user_id' => $u2->id, 'score' => 0.95, 'tier' => 'banned', 'signals' => [], 'created_at' => Carbon::now()]);
+
+        // Out-of-window row — must NOT contaminate today's bucket.
+        $old = BotScoreHistory::create(['user_id' => $u1->id, 'score' => 0.99, 'tier' => 'banned', 'signals' => [], 'created_at' => Carbon::now()->subDays(20)]);
+        $old->forceFill(['created_at' => Carbon::now()->subDays(20)])->save();
+
+        $data = $this->extractChartData(new BotTierTrendChartWidget);
+
+        $this->assertCount(14, $data['labels']);
+        $this->assertCount(4, $data['datasets']);
+        // dataset order = trust, suspect, likely_bot, banned.
+        $trust = $data['datasets'][0]['data'];
+        $suspect = $data['datasets'][1]['data'];
+        $likelyBot = $data['datasets'][2]['data'];
+        $banned = $data['datasets'][3]['data'];
+        // Today is the LAST element.
+        $this->assertSame(1, end($trust));
+        $this->assertSame(2, end($suspect));
+        $this->assertSame(0, end($likelyBot));
+        $this->assertSame(1, end($banned));
+        // Out-of-window 'banned' must not contaminate the 14-day window.
+        $this->assertSame(1, array_sum($banned), 'only the in-window banned row should appear');
+    }
+
+    public function test_bot_tier_trend_chart_zero_state_returns_14_zero_filled_buckets(): void
+    {
+        $data = $this->extractChartData(new BotTierTrendChartWidget);
+
+        $this->assertCount(14, $data['labels']);
+        foreach ($data['datasets'] as $ds) {
+            $this->assertCount(14, $ds['data']);
+            $this->assertSame(0, array_sum($ds['data']));
+        }
     }
 
     /**

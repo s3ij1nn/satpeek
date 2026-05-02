@@ -4,6 +4,7 @@ namespace Tests\Unit\BotDetection;
 
 use App\BotDetection\ScoreEngine;
 use App\BotDetection\Signals\Signal;
+use App\Models\BotScoreHistory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -44,6 +45,32 @@ class ScoreEngineTest extends TestCase
         $engine->evaluate($user);
         $user->refresh();
         $this->assertTrue($user->is_banned);
+    }
+
+    public function test_each_evaluate_appends_a_bot_score_history_row(): void
+    {
+        config()->set('satpeek.bot_score.weights', ['a' => 1.0]);
+        config()->set('satpeek.bot_score.ban', 0.85);
+        config()->set('satpeek.bot_score.likely_bot', 0.60);
+        config()->set('satpeek.bot_score.suspect', 0.30);
+
+        $engine = new ScoreEngine([$this->fakeSignal('a', 0.40)]);
+        $user = User::factory()->create();
+
+        // Three back-to-back evaluations should produce three history rows,
+        // even though `bot_scores` only ever holds one (latest) row per user.
+        // updateOrCreate semantics on the live row are intentional; the
+        // dashboard-trend widget needs the trail.
+        $engine->evaluate($user);
+        $engine->evaluate($user);
+        $engine->evaluate($user);
+
+        $rows = BotScoreHistory::where('user_id', $user->id)->get();
+        $this->assertCount(3, $rows);
+        foreach ($rows as $row) {
+            $this->assertSame('suspect', $row->tier);
+            $this->assertEqualsWithDelta(0.40, (float) $row->score, 0.001);
+        }
     }
 
     private function fakeSignal(string $name, float $value): Signal

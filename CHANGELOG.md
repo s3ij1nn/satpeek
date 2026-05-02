@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Bot tier evaluation trail + dashboard chart.** New
+  `bot_score_history` append-only table; `ScoreEngine::evaluate()`
+  inserts on every run alongside the existing `bot_scores`
+  updateOrCreate. Without this, only the LATEST tier per user
+  survived — the dashboard's tier distribution snapshot couldn't
+  show direction or rate of change.
+  - New `BotTierTrendChartWidget` plots 14-day daily counts of
+    evaluations grouped by resulting tier (trust / suspect /
+    likely_bot / banned). Operators can spot attack-wave spikes
+    or signal-pipeline gaps the live snapshot can't surface.
+  - History writes are wrapped in try/catch so a fresh DB without
+    the table (e.g. mid-migration tinker) doesn't break the live
+    tier write — best-effort by design.
+
 - **Two new bot-detection signals** wired into the ScoreEngine:
   - `RegistrationBurstSignal` (weight 0.08): for each IP this user
     registered from, counts distinct OTHER user registrations from

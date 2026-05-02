@@ -4,6 +4,7 @@ namespace App\BotDetection;
 
 use App\BotDetection\Signals\Signal;
 use App\Models\BotScore;
+use App\Models\BotScoreHistory;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 
@@ -75,6 +76,23 @@ class ScoreEngine
                 'last_evaluated_at' => Carbon::now(),
             ]
         );
+
+        // Append to the trail so the dashboard's tier-trend widget has data
+        // to plot. updateOrCreate above only keeps the latest evaluation;
+        // without this row we'd lose the transition signal entirely. Wrapped
+        // in a try/catch so a fresh DB without the history table (e.g. a
+        // Tinker eval mid-migration) doesn't break the live tier write.
+        try {
+            BotScoreHistory::create([
+                'user_id' => $user->id,
+                'score' => $score,
+                'tier' => $tier,
+                'signals' => $detail,
+                'created_at' => Carbon::now(),
+            ]);
+        } catch (\Throwable) {
+            // History is best-effort — never let it block the live decision.
+        }
 
         if ($tier === 'banned') {
             // Bypass mass-assignment guard: is_banned must remain admin-only via fillable.
