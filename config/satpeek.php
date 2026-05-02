@@ -67,6 +67,19 @@ return [
             // the `shared_ip` block below so a shared NAT (campus,
             // mobile, household) doesn't false-positive.
             'shared_ip' => 0.15,
+            // Time-windowed registration burst from a single IP. Narrower
+            // than shared_ip (only counts REGISTER source within the last
+            // window_hours), so it pinpoints sock-puppet farm activity vs.
+            // long-tail shared-NAT noise. Lower weight because the static
+            // shared_ip catch already covers most of the multi-account
+            // pattern; this is the high-confidence positive on top.
+            'registration_burst' => 0.08,
+            // Per-user withdrawal cadence. A flurry of withdrawals (any
+            // status) inside 24 h is the hallmark of "extract before the
+            // operator catches on". Lower weight — legitimate users on
+            // payday do this too — but the signal is high-precision
+            // when combined with shared_ip / fingerprint hits.
+            'payout_burst' => 0.07,
         ],
 
         // Tunables for SharedIpSignal. The defaults treat 1 sibling
@@ -89,6 +102,29 @@ return [
                 'trim',
                 explode(',', (string) env('BOTSCORE_SHARED_IP_ALLOWLIST', '')),
             ))),
+        ],
+
+        // Tunables for RegistrationBurstSignal. The window is anchored on
+        // each registration row's first_seen_at, so a sock-puppet farm
+        // creating 5 accounts in an hour from one IP scores the full burst
+        // even years later (the burst itself is the signal). Reuses the
+        // shared_ip allowlist — operators manage one list.
+        'registration_burst' => [
+            'window_hours' => (int) env('BOTSCORE_REG_BURST_WINDOW_HOURS', 24),
+            'min_others_for_signal' => (int) env('BOTSCORE_REG_BURST_MIN_OTHERS', 2),
+            'score_per_other' => (float) env('BOTSCORE_REG_BURST_SCORE_PER_OTHER', 0.25),
+            'max_score' => (float) env('BOTSCORE_REG_BURST_MAX_SCORE', 1.0),
+        ],
+
+        // Tunables for PayoutBurstSignal. Default 3 withdrawals/24h fires
+        // a soft positive — most legit users withdraw weekly, so 3 in a
+        // day is a meaningful spike. The score grows linearly above the
+        // threshold, capped at max_score.
+        'payout_burst' => [
+            'window_hours' => (int) env('BOTSCORE_PAYOUT_BURST_WINDOW_HOURS', 24),
+            'min_for_signal' => (int) env('BOTSCORE_PAYOUT_BURST_MIN', 3),
+            'score_per_extra' => (float) env('BOTSCORE_PAYOUT_BURST_SCORE_PER_EXTRA', 0.2),
+            'max_score' => (float) env('BOTSCORE_PAYOUT_BURST_MAX_SCORE', 1.0),
         ],
     ],
 

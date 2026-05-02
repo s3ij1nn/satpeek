@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Two new bot-detection signals** wired into the ScoreEngine:
+  - `RegistrationBurstSignal` (weight 0.08): for each IP this user
+    registered from, counts distinct OTHER user registrations from
+    the same IP within `window_hours` of the user's first observation.
+    Narrower than `SharedIpSignal` — focuses on REGISTER events
+    inside a tight time window — so a real shared NAT with users
+    joining years apart doesn't false-positive while a fresh
+    sock-puppet farm does. Reuses the `bot_score.shared_ip.allowlist`
+    so the operator manages one list.
+  - `PayoutBurstSignal` (weight 0.07): counts withdrawals (any
+    status — failed/hold burst is also signal) for the user in
+    the last `window_hours`. Defaults: 3 in 24h fires the floor,
+    each additional adds 0.2 capped at 1.0.
+  Both signals are config-tunable via `config/satpeek.php`
+  (`bot_score.registration_burst.*` / `bot_score.payout_burst.*`)
+  and corresponding `BOTSCORE_*` env vars. ScoreEngine renormalises
+  by total weight so adding them doesn't mute the existing signals.
+
 - **Two new admin dashboard widgets** alongside the existing
   withdrawal + bot-tier + shared-IP cards:
   - `EarningActivityWidget`: today's verified PTC views / shortlink

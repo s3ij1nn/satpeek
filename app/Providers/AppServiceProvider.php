@@ -9,6 +9,8 @@ use App\BotDetection\Signals\FailureRateSignal;
 use App\BotDetection\Signals\FingerprintConsistencySignal;
 use App\BotDetection\Signals\HeartbeatGapSignal;
 use App\BotDetection\Signals\IpReputationSignal;
+use App\BotDetection\Signals\PayoutBurstSignal;
+use App\BotDetection\Signals\RegistrationBurstSignal;
 use App\BotDetection\Signals\ResponseTimeSignal;
 use App\BotDetection\Signals\SharedIpSignal;
 use App\BotDetection\Signals\Signal;
@@ -162,6 +164,8 @@ class AppServiceProvider extends ServiceProvider
                 new IpReputationSignal($reputation),
                 new AsnStaticListSignal($reputation),
                 new SharedIpSignal,
+                new RegistrationBurstSignal,
+                new PayoutBurstSignal,
             ]);
         });
 
