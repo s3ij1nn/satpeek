@@ -8,6 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Named per-IP / per-user rate limits across the API surface.**
+  Six named limiters defined in
+  `AppServiceProvider::registerRateLimiters()` and applied as
+  `throttle:<name>` middleware on the relevant routes. Limits err
+  on the lenient side — they're a DoS / abuse backstop, not the
+  primary gate (captcha + bot-score + adblock checks remain that):
+  - `captcha-issue` 60/min/IP — anonymous; covers form + AJAX
+    captcha refreshes for honest multi-tab users while shutting
+    down a CDP-driven seed harvester.
+  - `captcha-verify` 30/min/IP — anonymous; rules out a relay
+    grinding through pre-issued challenge IDs.
+  - `beacon` 120/min/IP — anonymous telemetry; tight enough to
+    catch a script firing 1000s/sec of fake events.
+  - `earning-start` 30/min/user — covers PTC view start,
+    shortlink chip click, internal article open. Well above any
+    human cadence; catches XHR-driven inventory hammering.
+  - `withdraw` 5/min/user — heavy endpoint (FaucetPay round-trip).
+    Per-user keyed so a shared NAT can't punish neighbours.
+  - `adblock-report` 30/min/user — fires on every authenticated
+    page load.
+
 - **Bot tier evaluation trail + dashboard chart.** New
   `bot_score_history` append-only table; `ScoreEngine::evaluate()`
   inserts on every run alongside the existing `bot_scores`

@@ -37,7 +37,10 @@ use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\Providers\ShortenerClient;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use GuzzleHttp\Client;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -172,7 +175,74 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(Signal::class, ResponseTimeSignal::class);
     }
 
-    public function boot(): void {}
+    public function boot(): void
+    {
+        $this->registerRateLimiters();
+    }
+
+    /**
+     * Named rate limiters for the API surface. Anonymous endpoints are
+     * keyed by IP; authenticated ones prefer the user ID so a user
+     * behind a shared NAT isn't punished by neighbours' traffic.
+     *
+     * Limits err on the lenient side — they're a DoS / abuse backstop,
+     * not the primary gate. Captcha + bot-score + adblock checks remain
+     * the main throttles on bot behaviour. The numbers below assume the
+     * default `bot_score.min_reevaluate_interval_seconds = 300` keeps
+     * captcha refreshes and per-action verifies bounded for legit users.
+     */
+    private function registerRateLimiters(): void
+    {
+        // Captcha issue is hit by EVERY page render that includes the
+        // widget (login, register, /shortlinks/auth, /ptc/auth,
+        // /read-articles/internal). 60/min/IP comfortably covers a
+        // legit user opening multiple tabs while still defeating a
+        // CDP-driven scraper trying to harvest seeds.
+        RateLimiter::for('captcha-issue', fn (Request $r) => Limit::perMinute(60)->by($r->ip()));
+
+        // Captcha verify cost = one DB read + shape/jerk math. Cheap
+        // server-side but expensive in challenge-id consumption budget
+        // for a bot. 30/min/IP rules out a relay grinding through
+        // pre-issued challenges without blocking a multi-tab user.
+        RateLimiter::for('captcha-verify', fn (Request $r) => Limit::perMinute(30)->by($r->ip()));
+
+        // Beacons land on every page load with `mouse|focus|key|fp`
+        // payloads. Generous because the legitimate volume is
+        // page-load-driven, not user-action-driven. Tight enough to
+        // catch a script firing 1000s/sec of fake telemetry.
+        RateLimiter::for('beacon', fn (Request $r) => Limit::perMinute(120)->by($r->ip()));
+
+        // Earning starts (PTC view / shortlink click / internal article
+        // read) cost a row insert + an external HTTP for shortlinks. 30/min
+        // is well above any human cadence (a chip click takes 5-10 s of
+        // shortener interstitial; 30/min = 2/s would mean opening a chip
+        // every half-second for a full minute).
+        RateLimiter::for('earning-start', function (Request $r) {
+            $key = optional($r->user())->id ?: $r->ip();
+
+            return Limit::perMinute(30)->by('earning-start:'.$key);
+        });
+
+        // Withdrawals are heavy (FaucetPay round-trip, balance ledger
+        // write, possible review-queue routing). A legit user submits
+        // 1-2/day; 5/min/user is a hard ceiling against a script
+        // hammering /withdraw to cycle balance + auth state.
+        RateLimiter::for('withdraw', function (Request $r) {
+            $key = optional($r->user())->id ?: $r->ip();
+
+            return Limit::perMinute(5)->by('withdraw:'.$key);
+        });
+
+        // Adblock report fires on EVERY authenticated page load + on
+        // any change to detection state. 30/min/user is generous for
+        // multi-tab users while catching a script faking "cleared"
+        // reports faster than a real browser would.
+        RateLimiter::for('adblock-report', function (Request $r) {
+            $key = optional($r->user())->id ?: $r->ip();
+
+            return Limit::perMinute(30)->by('adblock-report:'.$key);
+        });
+    }
 
     private static function buildShortenerClient(HttpFactory $http, string $name, array $cfg): ShortenerClient
     {

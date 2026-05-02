@@ -11,11 +11,19 @@ use Illuminate\Support\Facades\Route;
 
 // Captcha + telemetry — open to anonymous callers because they're hit by the
 // public registration / login forms before the user has a session. Fingerprint
-// header is required (FingerprintRequired middleware).
+// header is required (FingerprintRequired middleware). Per-IP throttles back
+// the captcha + bot-score gates with a DoS / abuse cap; see
+// AppServiceProvider::registerRateLimiters() for the named limits.
 Route::middleware(['fingerprint'])->group(function () {
-    Route::get('/captcha/issue', [CaptchaController::class, 'issue'])->name('api.captcha.issue');
-    Route::post('/captcha/verify', [CaptchaController::class, 'verify'])->name('api.captcha.verify');
-    Route::post('/beacon', [BeaconController::class, 'store'])->name('api.beacon');
+    Route::get('/captcha/issue', [CaptchaController::class, 'issue'])
+        ->middleware('throttle:captcha-issue')
+        ->name('api.captcha.issue');
+    Route::post('/captcha/verify', [CaptchaController::class, 'verify'])
+        ->middleware('throttle:captcha-verify')
+        ->name('api.captcha.verify');
+    Route::post('/beacon', [BeaconController::class, 'store'])
+        ->middleware('throttle:beacon')
+        ->name('api.beacon');
 });
 
 // State-changing endpoints — use the standard web session guard now that the
@@ -25,10 +33,14 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     // Anti-adblock report endpoint — needs to land BEFORE adblock.gate
     // applies, otherwise a freshly-checking client gets locked out of
     // the very endpoint they need to call to clear the lock.
-    Route::post('/adblock/report', [AdblockController::class, 'report'])->name('api.adblock.report');
+    Route::post('/adblock/report', [AdblockController::class, 'report'])
+        ->middleware('throttle:adblock-report')
+        ->name('api.adblock.report');
 
     Route::get('/ptc', [PtcController::class, 'index']);
-    Route::post('/ptc/{adId}/start', [PtcController::class, 'start'])->middleware('adblock.gate')->whereNumber('adId');
+    Route::post('/ptc/{adId}/start', [PtcController::class, 'start'])
+        ->middleware(['adblock.gate', 'throttle:earning-start'])
+        ->whereNumber('adId');
     // Token-keyed endpoints pair with the /ptc/auth/{token} viewer URL —
     // declared BEFORE the legacy {viewId} routes so /auth/<token>/… isn't
     // shadowed by the numeric {viewId} pattern.
@@ -45,7 +57,7 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     // Provider-keyed start: pick which shortener (btcut / cuty / exe / etc)
     // to mint the click through. Replaces the old inventory-id-keyed route.
     Route::post('/shortlinks/start/{provider}', [ShortlinkController::class, 'start'])
-        ->middleware('adblock.gate')
+        ->middleware(['adblock.gate', 'throttle:earning-start'])
         ->where('provider', '[a-z0-9_-]+');
     // Token-keyed completion pairs with the /shortlinks/auth/{token} landing —
     // same 28-char random as the URL slug, no numeric ID exposure. Declared
@@ -56,13 +68,14 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     // Legacy: complete-by-numeric-clickId. Kept for tests / external callers.
     Route::post('/shortlinks/{clickId}/complete', [ShortlinkController::class, 'complete'])->whereNumber('clickId');
 
-    Route::post('/withdraw', [WithdrawController::class, 'store'])->middleware('adblock.gate');
+    Route::post('/withdraw', [WithdrawController::class, 'store'])
+        ->middleware(['adblock.gate', 'throttle:withdraw']);
 
     // Internal read-and-earn articles (admin-managed inventory). Same
     // start → token-keyed complete shape as PTC + shortlinks.
     Route::get('/internal-articles', [InternalArticleController::class, 'index']);
     Route::post('/internal-articles/start/{articleId}', [InternalArticleController::class, 'start'])
-        ->middleware('adblock.gate')
+        ->middleware(['adblock.gate', 'throttle:earning-start'])
         ->whereNumber('articleId');
     Route::post('/internal-articles/auth/{token}/complete', [InternalArticleController::class, 'completeByToken'])
         ->where('token', '[A-Za-z0-9_]+');
