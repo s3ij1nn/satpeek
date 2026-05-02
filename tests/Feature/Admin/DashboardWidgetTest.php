@@ -5,9 +5,17 @@ declare(strict_types=1);
 namespace Tests\Feature\Admin;
 
 use App\Filament\Widgets\BotTierDistributionWidget;
+use App\Filament\Widgets\EarningActivityWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
+use App\Filament\Widgets\PayoutVolumeChartWidget;
 use App\Filament\Widgets\SharedIpDetectionsWidget;
+use App\Models\BalanceLedger;
 use App\Models\BotScore;
+use App\Models\InternalArticle;
+use App\Models\InternalArticleView;
+use App\Models\PtcAd;
+use App\Models\PtcView;
+use App\Models\ShortlinkClick;
 use App\Models\User;
 use App\Models\UserIpObservation;
 use App\Models\Withdrawal;
@@ -190,6 +198,136 @@ class DashboardWidgetTest extends TestCase
         // pins the actual widget output. The smoke test here catches the
         // case where a widget class fails to autoload or registers wrong.
         $response->assertOk();
+    }
+
+    public function test_earning_activity_widget_zero_state(): void
+    {
+        $stats = $this->extractStats(new EarningActivityWidget);
+
+        $this->assertCount(3, $stats);
+        [$ptc, $shortlink, $article] = $stats;
+        $this->assertSame('PTC views (24 h)', $ptc->getLabel());
+        $this->assertSame('0', $ptc->getValue());
+        $this->assertSame('Shortlink clicks (24 h)', $shortlink->getLabel());
+        $this->assertSame('Article reads (24 h)', $article->getLabel());
+    }
+
+    public function test_earning_activity_widget_counts_only_verified_in_today_window(): void
+    {
+        $u = User::factory()->create();
+        $ad = PtcAd::create([
+            'source' => 'mock', 'external_id' => 'ad-'.uniqid(),
+            'title' => 'x', 'target_url' => 'https://e.x', 'reward_sat' => 1,
+            'duration_sec' => 5, 'daily_limit_per_user' => 5,
+            'is_active' => true, 'status' => 'approved',
+        ]);
+        $article = InternalArticle::create([
+            'title' => 'a', 'body' => 'b', 'reward_sat' => 1, 'read_seconds' => 30,
+            'daily_limit_per_user' => 3, 'is_active' => true,
+        ]);
+
+        // Today verified rows — must count.
+        PtcView::create([
+            'user_id' => $u->id, 'ptc_ad_id' => $ad->id,
+            'epoch_token' => 'pv_today_'.uniqid(),
+            'status' => 'verified', 'started_at' => Carbon::now()->subMinutes(5),
+            'completed_at' => Carbon::now(), 'heartbeats_received' => 3,
+            'heartbeats_expected' => 3,
+        ]);
+        ShortlinkClick::create([
+            'user_id' => $u->id, 'provider_name' => 'mock',
+            'reward_sat' => 5, 'hold_seconds' => 5,
+            'epoch_token' => 'sc_today_'.uniqid(),
+            'status' => 'verified', 'started_at' => Carbon::now()->subMinutes(5),
+        ]);
+        InternalArticleView::create([
+            'user_id' => $u->id, 'internal_article_id' => $article->id,
+            'reward_sat' => 1, 'read_seconds' => 30,
+            'epoch_token' => 'ia_today_'.uniqid(),
+            'status' => 'verified', 'started_at' => Carbon::now()->subMinutes(5),
+        ]);
+
+        // Today rejected — MUST NOT count (verified-only rule).
+        ShortlinkClick::create([
+            'user_id' => $u->id, 'provider_name' => 'mock',
+            'reward_sat' => 5, 'hold_seconds' => 5,
+            'epoch_token' => 'sc_rej_'.uniqid(),
+            'status' => 'rejected', 'started_at' => Carbon::now()->subMinutes(5),
+        ]);
+
+        // Two days ago (outside both windows) — must not affect either side.
+        // Backdate via forceFill since timestamps aren't mass-assignable.
+        $oldView = PtcView::create([
+            'user_id' => $u->id, 'ptc_ad_id' => $ad->id,
+            'epoch_token' => 'pv_old_'.uniqid(),
+            'status' => 'verified', 'started_at' => Carbon::now()->subDays(2),
+            'completed_at' => Carbon::now()->subDays(2),
+            'heartbeats_received' => 3, 'heartbeats_expected' => 3,
+        ]);
+        $oldView->forceFill([
+            'created_at' => Carbon::now()->subDays(2),
+            'updated_at' => Carbon::now()->subDays(2),
+        ])->save();
+
+        [$ptcStat, $shortlinkStat, $articleStat] = $this->extractStats(new EarningActivityWidget);
+        $this->assertSame('1', $ptcStat->getValue());
+        $this->assertSame('1', $shortlinkStat->getValue());
+        $this->assertSame('1', $articleStat->getValue());
+    }
+
+    public function test_payout_volume_chart_only_includes_positive_deltas_in_window(): void
+    {
+        $u = User::factory()->create();
+        // Two positive ledger rows today on different reasons.
+        BalanceLedger::create([
+            'user_id' => $u->id, 'delta_sat' => 100,
+            'reason' => 'ptc_view', 'reference_type' => PtcView::class, 'reference_id' => 1,
+        ]);
+        BalanceLedger::create([
+            'user_id' => $u->id, 'delta_sat' => 50,
+            'reason' => 'shortlink', 'reference_type' => ShortlinkClick::class, 'reference_id' => 1,
+        ]);
+        // Negative delta (a withdrawal debit) — MUST NOT show in payout-out chart.
+        BalanceLedger::create([
+            'user_id' => $u->id, 'delta_sat' => -1000,
+            'reason' => 'withdraw_request', 'reference_type' => Withdrawal::class, 'reference_id' => 1,
+        ]);
+        // Out-of-window row — must not affect today's bucket.
+        // BalanceLedger doesn't include created_at in $fillable so we use
+        // forceFill to backdate (mass-assignment ignores timestamp fields
+        // by default).
+        $old = BalanceLedger::create([
+            'user_id' => $u->id, 'delta_sat' => 999,
+            'reason' => 'ptc_view', 'reference_type' => PtcView::class, 'reference_id' => 2,
+        ]);
+        $old->forceFill([
+            'created_at' => Carbon::now()->subDays(20),
+            'updated_at' => Carbon::now()->subDays(20),
+        ])->save();
+
+        $data = $this->extractChartData(new PayoutVolumeChartWidget);
+
+        $this->assertCount(14, $data['labels']);
+        $this->assertCount(3, $data['datasets']);
+        $ptcSeries = $data['datasets'][0]['data'];
+        $shortSeries = $data['datasets'][1]['data'];
+        // Today is the LAST entry in the 14-day window.
+        $this->assertSame(100, end($ptcSeries));
+        $this->assertSame(50, end($shortSeries));
+        // No negative or out-of-window contamination.
+        $this->assertSame(0, array_sum(array_slice($ptcSeries, 0, 13)));
+        $this->assertSame(0, array_sum(array_slice($shortSeries, 0, 13)));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function extractChartData(object $widget): array
+    {
+        $m = new ReflectionMethod($widget, 'getData');
+        $m->setAccessible(true);
+
+        return $m->invoke($widget);
     }
 
     /**

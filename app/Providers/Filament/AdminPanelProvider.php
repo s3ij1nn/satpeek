@@ -4,7 +4,9 @@ namespace App\Providers\Filament;
 
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Widgets\BotTierDistributionWidget;
+use App\Filament\Widgets\EarningActivityWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
+use App\Filament\Widgets\PayoutVolumeChartWidget;
 use App\Filament\Widgets\SharedIpDetectionsWidget;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -39,7 +41,9 @@ class AdminPanelProvider extends PanelProvider
                 Widgets\AccountWidget::class,
                 InFlightWithdrawalsWidget::class,
                 BotTierDistributionWidget::class,
+                EarningActivityWidget::class,
                 SharedIpDetectionsWidget::class,
+                PayoutVolumeChartWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,

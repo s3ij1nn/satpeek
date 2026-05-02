@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Two new admin dashboard widgets** alongside the existing
+  withdrawal + bot-tier + shared-IP cards:
+  - `EarningActivityWidget`: today's verified PTC views / shortlink
+    clicks / internal article reads with previous-24-h delta and
+    a click-through to the corresponding `verified` filter on the
+    debug resource. Three lightweight COUNTs against the existing
+    `(status, created_at)` shape.
+  - `PayoutVolumeChartWidget`: 14-day line chart of positive ledger
+    deltas grouped by surface (PTC / shortlink / read article).
+    Single GROUP BY day, reason query; SQL portable across
+    Postgres + SQLite for the test suite.
+
 - **Internal "read & earn" articles.** Admin-managed inline article
   inventory rendered inside SatPeek (Markdown body, sanitised at
   view time), with the same single-credit + atomic-claim defences
