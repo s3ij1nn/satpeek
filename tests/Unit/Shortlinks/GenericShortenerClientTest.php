@@ -73,6 +73,43 @@ class GenericShortenerClientTest extends TestCase
         $client->shorten('not-a-url');
     }
 
+    public function test_http_response_url_is_upgraded_when_api_base_is_https(): void
+    {
+        // earnow / shortano / shortino return `http://` URLs even though
+        // their /api endpoint is HTTPS. Navigating to those from an HTTPS
+        // page (ngrok / cloudflare / production) gets silently blocked
+        // as mixed content. We upgrade scheme on the way out so the
+        // browser can actually follow the redirect.
+        $http = new HttpFactory;
+        $http->fake([
+            '*' => $http->response([
+                'status' => 'success',
+                'shortenedUrl' => 'http://earnow.online/Yc0wBQA',
+            ], 200),
+        ]);
+        $client = new GenericShortenerClient($http, 'earnow', 'https://earnow.online/api', 'TOKEN');
+
+        $this->assertSame('https://earnow.online/Yc0wBQA', $client->shorten('https://example.com/x'));
+    }
+
+    public function test_http_response_url_is_left_alone_when_host_differs_from_api_base(): void
+    {
+        // Conservative match: never rewrite a cross-domain URL on the way
+        // out, even when api_base is HTTPS — that response shape would be
+        // an intentional handoff to a different host (rare for shorteners,
+        // but the safe default).
+        $http = new HttpFactory;
+        $http->fake([
+            '*' => $http->response([
+                'status' => 'success',
+                'shortenedUrl' => 'http://other.example/abc',
+            ], 200),
+        ]);
+        $client = new GenericShortenerClient($http, 'earnow', 'https://earnow.online/api', 'TOKEN');
+
+        $this->assertSame('http://other.example/abc', $client->shorten('https://example.com/x'));
+    }
+
     public function test_array_message_in_error_response_does_not_fatal_with_array_to_string(): void
     {
         // Some shortener APIs (cuty in the wild) return validation errors

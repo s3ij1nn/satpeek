@@ -14,6 +14,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GenericShortenerClient` with no new code — just a config block
   + `*_API_TOKEN` / `*_API_BASE` env pair each.
 
+### Fixed
+
+- `GenericShortenerClient` now matches the response URL's scheme to
+  the api_base scheme (HTTPS-first). earnow / shortano / shortino
+  return `http://` URLs even though their /api endpoint is HTTPS;
+  navigating from an HTTPS page to those was silently blocked as
+  mixed content, leaving the chip click feeling broken. The
+  upgrade is conservative — same host + api_base must be HTTPS —
+  so a hypothetical cross-domain handoff stays untouched.
+
 ### Changed
 
 - **Hardened single-credit guarantee on shortlink claims.** Two-layer

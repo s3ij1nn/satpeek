@@ -86,6 +86,8 @@ class GenericShortenerClient implements ShortenerClient
         $status = is_array($data) ? ($data['status'] ?? null) : null;
         $short = is_array($data) ? (string) ($data['shortenedUrl'] ?? '') : '';
 
+        $short = $this->matchApiScheme($short);
+
         if ($status !== 'success' || $short === '') {
             // Some providers return `message` as a nested array (validation
             // errors keyed by field). Flatten so the toast shows something
@@ -106,5 +108,32 @@ class GenericShortenerClient implements ShortenerClient
         }
 
         return $short;
+    }
+
+    /**
+     * Some providers (earnow.online / shortano.link / shortino.link…) return
+     * `http://` URLs even when their /api endpoint is HTTPS. Navigating from
+     * an HTTPS page to those is silently blocked by browsers as mixed
+     * content — the chip click "does nothing". If our api_base is HTTPS
+     * AND the returned URL points at the same host with `http://`, upgrade
+     * the scheme. Conservative match (same host) so a hypothetical
+     * cross-domain redirect intentionally on http isn't rewritten.
+     */
+    private function matchApiScheme(string $url): string
+    {
+        if (! str_starts_with($url, 'http://')) {
+            return $url;
+        }
+        $apiScheme = parse_url($this->apiBase, PHP_URL_SCHEME) ?: 'https';
+        if ($apiScheme !== 'https') {
+            return $url;
+        }
+        $apiHost = parse_url($this->apiBase, PHP_URL_HOST);
+        $urlHost = parse_url($url, PHP_URL_HOST);
+        if ($apiHost === null || $urlHost === null || strcasecmp($apiHost, $urlHost) !== 0) {
+            return $url;
+        }
+
+        return 'https://'.substr($url, 7);
     }
 }
