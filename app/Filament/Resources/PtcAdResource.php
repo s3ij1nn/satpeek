@@ -8,6 +8,7 @@ use App\Mail\AdRejectedEmail;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
 use App\Models\PtcView;
+use App\Services\AdminAuditor;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -202,6 +203,7 @@ class PtcAdResource extends Resource
                             'approved_at' => Carbon::now(),
                             'reviewed_by' => auth()->id(),
                         ]);
+                        AdminAuditor::record('ptc_ad.approve', $r);
                         if ($r->user_id) {
                             try {
                                 Mail::to($r->advertiser->email)->queue(new AdApprovedEmail($r->fresh()));
@@ -222,9 +224,11 @@ class PtcAdResource extends Resource
                             ->required(),
                     ])
                     ->action(function (PtcAd $r, array $data) {
-                        DB::transaction(function () use ($r, $data) {
-                            // Refund whatever budget hasn't been spent yet.
-                            $refund = (int) ($r->views_remaining * $r->cost_per_view_sat);
+                        // Capture the refund amount BEFORE the transaction
+                        // mutates views_remaining → 0; otherwise the audit
+                        // entry below would always log 0.
+                        $refund = (int) ($r->views_remaining * $r->cost_per_view_sat);
+                        DB::transaction(function () use ($r, $data, $refund) {
                             if ($refund > 0) {
                                 BalanceLedger::create([
                                     'user_id' => $r->user_id,
@@ -243,6 +247,10 @@ class PtcAdResource extends Resource
                                 'views_remaining' => 0,
                             ]);
                         });
+                        AdminAuditor::record('ptc_ad.reject', $r, [
+                            'rejection_reason' => $data['rejection_reason'],
+                            'refunded_sat' => $refund,
+                        ]);
                         try {
                             Mail::to($r->advertiser->email)->queue(new AdRejectedEmail($r->fresh()));
                         } catch (\Throwable $e) {

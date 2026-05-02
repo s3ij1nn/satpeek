@@ -6,6 +6,7 @@ use App\BotDetection\ScoreEngine;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use App\Models\UserIpObservation;
+use App\Services\AdminAuditor;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -191,6 +192,10 @@ class UserResource extends Resource
                     ->modalDescription('Force a fresh ScoreEngine pass for this user, ignoring the throttle window. Useful for triaging a manual ban / unban decision.')
                     ->action(function (User $record): void {
                         $row = app(ScoreEngine::class)->evaluate($record);
+                        AdminAuditor::record('user.rescore', $record, [
+                            'tier' => $row->tier,
+                            'score' => round((float) $row->score, 4),
+                        ]);
                         Notification::make()
                             ->title('Re-scored '.$record->username)
                             ->body(sprintf('Tier: %s · Score: %.3f', $row->tier, (float) $row->score))

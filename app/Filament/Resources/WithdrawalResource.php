@@ -6,6 +6,7 @@ use App\Filament\Resources\WithdrawalResource\Pages;
 use App\Mail\WithdrawalRejectedEmail;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use App\Services\AdminAuditor;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -145,6 +146,9 @@ class WithdrawalResource extends Resource
                             'requires_review' => false,
                             'reviewed_by' => auth()->id(),
                         ]);
+                        AdminAuditor::record('withdrawal.approve', $r, [
+                            'amount_sat' => (int) $r->amount_sat,
+                        ]);
                     }),
                 Actions\Action::make('reject')
                     ->label('Reject & refund')
@@ -158,6 +162,7 @@ class WithdrawalResource extends Resource
                             ->required(),
                     ])
                     ->action(function (Withdrawal $r, array $data) {
+                        $refunded = (int) $r->amount_sat;
                         DB::transaction(function () use ($r, $data) {
                             BalanceLedger::create([
                                 'user_id' => $r->user_id,
@@ -175,6 +180,10 @@ class WithdrawalResource extends Resource
                                 'processed_at' => Carbon::now(),
                             ]);
                         });
+                        AdminAuditor::record('withdrawal.reject', $r, [
+                            'failure_reason' => $data['failure_reason'],
+                            'refunded_sat' => $refunded,
+                        ]);
                         try {
                             Mail::to($r->user->email)->queue(new WithdrawalRejectedEmail($r->fresh()));
                         } catch (\Throwable $e) {

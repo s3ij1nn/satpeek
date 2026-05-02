@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Admin audit log.** New `admin_audit_log` table + `AdminAuditor`
+  service centralise the "who did what to whom and when" trail
+  for operator actions inside `/admin`. Wired into the existing
+  custom Filament actions:
+  - `user.rescore` — captures resulting tier + score
+  - `ptc_ad.approve` — bare event (target is the ad row)
+  - `ptc_ad.reject` — captures rejection_reason + refunded_sat
+    (snapshotted BEFORE the views_remaining → 0 mutation)
+  - `withdrawal.approve` — captures amount_sat
+  - `withdrawal.reject` — captures failure_reason + refunded_sat
+  Exposed via the read-only `/admin/admin-audit-logs` Filament
+  resource (Operations group). admin_user_id is nullOnDelete so
+  removing an admin account doesn't cascade-wipe the trail —
+  rows stay attributable to "(deleted admin)".
+
 - **Operator notifications on bot tier escalation.** ScoreEngine
   now compares the new tier to the previous and dispatches a
   Filament database notification to admin users when a tier
