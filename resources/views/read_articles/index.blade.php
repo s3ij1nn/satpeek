@@ -1,5 +1,21 @@
 @extends('layouts.app')
 
+@php
+    use App\Http\Controllers\Api\InternalArticleController;
+    use App\Models\InternalArticleView;
+    use Illuminate\Support\Carbon;
+    $u = auth()->user();
+    $internalArticles = InternalArticleController::activeArticles();
+    $usedTodayByArticle = $u
+        ? InternalArticleView::where('user_id', $u->id)
+            ->where('status', 'verified')
+            ->where('created_at', '>=', Carbon::now()->startOfDay())
+            ->selectRaw('internal_article_id, count(*) as used')
+            ->groupBy('internal_article_id')
+            ->pluck('used', 'internal_article_id')
+        : collect();
+@endphp
+
 @push('head')
 <style>
     .ra { max-width: 64rem; margin: 0 auto; padding: 3rem 1.5rem; display: grid; gap: 2rem; }
@@ -34,37 +50,107 @@
         <p style="color: var(--text-secondary); margin: 0;">Quick read-through tasks supplied by connected publishers. Reward credits to your balance once the publisher confirms the read on their side.</p>
     </header>
 
-    @if (! $hasProvider)
-        <div class="empty">
-            <h2>No read-article partners connected.</h2>
-            <p>This surface lights up automatically once an offerwall publisher with a read-article inventory is enabled in <code>OFFERWALLS_ENABLED</code>.</p>
-        </div>
-    @elseif (empty($offers))
-        <div class="empty">
-            <h2>No tasks available right now.</h2>
-            <p>The partner returned an empty list for your account &amp; IP. Check back shortly.</p>
-        </div>
-    @else
-        <div class="ad-list">
-            @foreach ($offers as $offer)
-                <article class="ad">
+    @if ($internalArticles->isNotEmpty())
+        <div class="ad-list" data-section="internal-articles">
+            @foreach ($internalArticles as $a)
+                @php
+                    $used = (int) ($usedTodayByArticle[$a->id] ?? 0);
+                    $left = max(0, (int) $a->daily_limit_per_user - $used);
+                    $exhausted = $left <= 0;
+                @endphp
+                <article class="ad" data-article="{{ $a->id }}">
                     <div>
-                        <h3 class="ad__title">{{ $offer->title }}</h3>
-                        @if ($offer->description)
-                            <p class="ad__desc">{{ $offer->description }}</p>
+                        <h3 class="ad__title">{{ $a->title }}</h3>
+                        @if ($a->source_attribution)
+                            <p class="ad__desc">— {{ $a->source_attribution }}</p>
                         @endif
-                        <p class="ad__source">{{ $offer->source }} · {{ $offer->durationSec }}s · {{ $offer->dailyLimitPerUser }}/day</p>
+                        <p class="ad__source">internal · {{ $a->read_seconds }}s read · {{ $left }}/{{ $a->daily_limit_per_user }} left today</p>
                     </div>
                     <div class="ad__meta">
-                        <div class="ad__reward">{{ number_format($offer->rewardSat) }}<small>sat</small></div>
-                        <div>via {{ $offer->source }}</div>
+                        <div class="ad__reward">{{ number_format($a->reward_sat) }}<small>sat</small></div>
+                        <div>internal</div>
                     </div>
                     <div>
-                        <a href="{{ $offer->targetUrl }}" target="_blank" rel="noopener noreferrer" class="ad__cta">Read <span aria-hidden="true">↗</span></a>
+                        @if ($exhausted)
+                            <span class="ad__cta" style="background: var(--bg-elev); color: var(--text-tertiary); pointer-events: none;">Done today</span>
+                        @else
+                            <button type="button" class="ad__cta ia-go">Read &amp; earn <span aria-hidden="true">→</span></button>
+                        @endif
                     </div>
                 </article>
             @endforeach
         </div>
     @endif
+
+    @if ($hasProvider)
+        @if (empty($offers))
+            <div class="empty">
+                <h2>Partner returned no offers right now.</h2>
+                <p>Check back shortly — partner inventories rotate based on your account &amp; IP.</p>
+            </div>
+        @else
+            <div class="ad-list" data-section="partner-offers">
+                @foreach ($offers as $offer)
+                    <article class="ad">
+                        <div>
+                            <h3 class="ad__title">{{ $offer->title }}</h3>
+                            @if ($offer->description)
+                                <p class="ad__desc">{{ $offer->description }}</p>
+                            @endif
+                            <p class="ad__source">{{ $offer->source }} · {{ $offer->durationSec }}s · {{ $offer->dailyLimitPerUser }}/day</p>
+                        </div>
+                        <div class="ad__meta">
+                            <div class="ad__reward">{{ number_format($offer->rewardSat) }}<small>sat</small></div>
+                            <div>via {{ $offer->source }}</div>
+                        </div>
+                        <div>
+                            <a href="{{ $offer->targetUrl }}" target="_blank" rel="noopener noreferrer" class="ad__cta">Read <span aria-hidden="true">↗</span></a>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        @endif
+    @elseif ($internalArticles->isEmpty())
+        <div class="empty">
+            <h2>No read-article tasks available right now.</h2>
+            <p>Check back shortly — new articles are added regularly.</p>
+        </div>
+    @endif
 </section>
 @endsection
+
+@push('body')
+<script>
+(() => {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    const fp = window.SPCaptcha?.fingerprint || '';
+    document.querySelectorAll('.ia-go').forEach(btn => btn.addEventListener('click', async (e) => {
+        const card = e.target.closest('[data-article]');
+        const articleId = card?.dataset.article;
+        if (!articleId) return;
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = 'Opening…';
+        try {
+            const r = await fetch(`/api/internal-articles/start/${encodeURIComponent(articleId)}`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json', 'X-SP-Fingerprint': fp },
+                credentials: 'same-origin',
+            });
+            const data = await r.json();
+            if (!r.ok) {
+                alert(data?.error || 'Could not open article.');
+                btn.disabled = false;
+                btn.textContent = original;
+                return;
+            }
+            location.href = data.redirect_url;
+        } catch (err) {
+            alert('Network error opening article.');
+            btn.disabled = false;
+            btn.textContent = original;
+        }
+    }));
+})();
+</script>
+@endpush

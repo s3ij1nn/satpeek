@@ -83,8 +83,8 @@
 
     @if ($providers->isEmpty())
         <div class="empty">
-            <h2 style="font-family: var(--font-display); font-size: 1.5rem; color: var(--text-secondary); font-weight: 400; margin: 0 0 .5rem;">No shortlink providers configured.</h2>
-            <p>An admin needs to add at least one shortener API token at <code>/admin/shortlink-provider-credentials</code>.</p>
+            <h2 style="font-family: var(--font-display); font-size: 1.5rem; color: var(--text-secondary); font-weight: 400; margin: 0 0 .5rem;">No shortlinks available right now.</h2>
+            <p>Check back shortly — new providers are added regularly.</p>
         </div>
     @else
         <div class="row-list">

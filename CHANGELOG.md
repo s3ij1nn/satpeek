@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Internal "read & earn" articles.** Admin-managed inline article
+  inventory rendered inside SatPeek (Markdown body, sanitised at
+  view time), with the same single-credit + atomic-claim defences
+  as PTC + shortlinks. Admins manage from
+  `/admin/internal-articles` (full CRUD); operators triage in-flight
+  reads from the read-only `/admin/internal-article-views` resource.
+  Per-article tunables: `reward_sat`, `read_seconds`, `daily_limit_per_user`.
+  Snapshotted on each `internal_article_views` row at start time so
+  a mid-flight admin tweak doesn't retroactively change unfinished
+  views' rewards. The `/read-articles` page now shows internal
+  articles above the BitcoTask offerwall passthrough (when
+  configured); the partner section continues to render as plain
+  external links because attribution is publisher-side.
+
+### Changed
+
+- User-facing empty states on `/shortlinks` and `/read-articles`
+  no longer name internal admin URLs or environment variables.
+  Operator-only information leaking into the public surface gave
+  attackers a free reconnaissance hint. The new copy just tells the
+  user "no tasks right now, check back shortly".
+
 ## [0.6.0] — 2026-05-02
 
 Theme: shortlink earn flow rewritten to a provider-keyed model

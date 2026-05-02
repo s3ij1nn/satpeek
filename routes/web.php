@@ -7,6 +7,7 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\InternalArticleAuthController;
 use App\Http\Controllers\PtcAuthController;
 use App\Http\Controllers\ReadArticlesController;
 use App\Http\Controllers\ShortlinkAuthController;
@@ -81,6 +82,12 @@ Route::middleware(['auth'])->group(function () {
     // (BitcoTasks today) is enabled. Renders an empty/disabled state when
     // no partner is configured, so the route is safe to keep registered.
     Route::get('/read-articles', ReadArticlesController::class)->name('read_articles.index');
+    // Per-view rotating reader URL for internal admin-managed articles.
+    // Same single-use 28-char token pattern as /ptc/auth and
+    // /shortlinks/auth — see InternalArticleAuthController.
+    Route::get('/read-articles/internal/{token}', [InternalArticleAuthController::class, 'show'])
+        ->where('token', '[A-Za-z0-9_]+')
+        ->name('internal_articles.read');
 
     // Withdrawals require email verification — the page renders a warning otherwise.
     Route::view('/withdraw', 'withdraw.index')->name('withdraw.index');

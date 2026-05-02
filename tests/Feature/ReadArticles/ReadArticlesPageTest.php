@@ -33,7 +33,11 @@ class ReadArticlesPageTest extends TestCase
         $response = $this->actingAs($user)->get('/read-articles');
 
         $response->assertOk();
-        $response->assertSeeText('No read-article partners connected.');
+        // Empty-state copy was deliberately reworded so it doesn't leak
+        // operator-only information (admin URLs, env var names) to end
+        // users. Cover both branches of "no internal articles + no
+        // partner offerwall" with a single user-facing message.
+        $response->assertSeeText('No read-article tasks available right now.');
     }
 
     public function test_renders_partner_offers_when_adapter_enabled(): void
@@ -65,7 +69,7 @@ class ReadArticlesPageTest extends TestCase
         $response = $this->actingAs($user)->get('/read-articles');
 
         $response->assertOk();
-        $response->assertSeeText('No tasks available right now.');
+        $response->assertSeeText('Partner returned no offers right now.');
     }
 
     public function test_route_requires_auth(): void

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AdblockController;
 use App\Http\Controllers\Api\BeaconController;
 use App\Http\Controllers\Api\CaptchaController;
+use App\Http\Controllers\Api\InternalArticleController;
 use App\Http\Controllers\Api\PtcController;
 use App\Http\Controllers\Api\ShortlinkController;
 use App\Http\Controllers\Api\WithdrawController;
@@ -56,4 +57,13 @@ Route::middleware(['auth', 'bot.gate'])->group(function () {
     Route::post('/shortlinks/{clickId}/complete', [ShortlinkController::class, 'complete'])->whereNumber('clickId');
 
     Route::post('/withdraw', [WithdrawController::class, 'store'])->middleware('adblock.gate');
+
+    // Internal read-and-earn articles (admin-managed inventory). Same
+    // start → token-keyed complete shape as PTC + shortlinks.
+    Route::get('/internal-articles', [InternalArticleController::class, 'index']);
+    Route::post('/internal-articles/start/{articleId}', [InternalArticleController::class, 'start'])
+        ->middleware('adblock.gate')
+        ->whereNumber('articleId');
+    Route::post('/internal-articles/auth/{token}/complete', [InternalArticleController::class, 'completeByToken'])
+        ->where('token', '[A-Za-z0-9_]+');
 });
