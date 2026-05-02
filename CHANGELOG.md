@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-02
+
+Theme: shortlink earn flow rewritten to a provider-keyed model
+matching firefaucet's approach, with a previously-undetected
+hold-loophole closed and double-credit guarantees hardened end-to-end.
+The /shortlinks surface is now operator-managed entirely from one
+Filament screen (Shortlink providers); each chip click forces a real
+shortener traversal and the auth-landing page is captcha-only.
+
+Operator setup just needs API tokens pasted into
+`/admin/shortlink-provider-credentials` (or `*_API_TOKEN` env entries).
+
 ### Added
 
 - Three new shortener providers: `earnow.online`, `shortano.link`,
@@ -861,7 +873,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/s3ij1nn/satpeek/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/s3ij1nn/satpeek/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/s3ij1nn/satpeek/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/s3ij1nn/satpeek/compare/v0.4.1...v0.4.2
