@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Operator notifications on bot tier escalation.** ScoreEngine
+  now compares the new tier to the previous and dispatches a
+  Filament database notification to admin users when a tier
+  rises (trust → suspect → likely_bot → banned). De-escalations
+  stay silent — the operator doesn't need to be paged every time
+  noise abates. Notifications include the user, the from→to
+  transition, the resulting score, and a "Open user" action that
+  deep-links to the Filament edit page (when the panel is booted —
+  unit-test paths gracefully skip the link). Filament's
+  `databaseNotifications()` panel feature is now enabled with a
+  60s polling cadence so the bell badge surfaces new events
+  without a manual refresh. New `notifications` table migration
+  follows Laravel's standard schema.
+
 - **Named per-IP / per-user rate limits across the API surface.**
   Six named limiters defined in
   `AppServiceProvider::registerRateLimiters()` and applied as

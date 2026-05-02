@@ -3,9 +3,12 @@
 namespace App\BotDetection;
 
 use App\BotDetection\Signals\Signal;
+use App\Filament\Resources\UserResource;
 use App\Models\BotScore;
 use App\Models\BotScoreHistory;
 use App\Models\User;
+use Filament\Notifications\Actions\Action;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Carbon;
 
 class ScoreEngine
@@ -67,6 +70,12 @@ class ScoreEngine
 
         $tier = self::scoreToTier($score);
 
+        // Capture the previous tier BEFORE updateOrCreate overwrites it,
+        // so we can detect transitions and notify on escalations.
+        $previousTier = BotScore::query()
+            ->where('user_id', $user->id)
+            ->value('tier');
+
         $row = BotScore::updateOrCreate(
             ['user_id' => $user->id],
             [
@@ -99,7 +108,98 @@ class ScoreEngine
             $user->forceFill(['is_banned' => true, 'ban_reason' => 'bot_score'])->save();
         }
 
+        // Notify operators on tier escalation so a sock-puppet getting
+        // bumped from trust→suspect (or worse, →banned) doesn't sit
+        // unnoticed in the queue. De-escalations (re-score after a
+        // signal cleared) are intentionally silent — the operator
+        // doesn't need to be paged every time noise abates.
+        if ($previousTier !== null && self::tierRank($tier) > self::tierRank($previousTier)) {
+            $this->notifyAdminsOfTierEscalation($user, $previousTier, $tier, $score);
+        }
+
         return $row;
+    }
+
+    /**
+     * Order trust < suspect < likely_bot < banned. Returns -1 for unknown
+     * tiers (defensive — keeps the comparison from false-positively firing
+     * on a future renamed tier).
+     */
+    private static function tierRank(string $tier): int
+    {
+        return match ($tier) {
+            'trust' => 0,
+            'suspect' => 1,
+            'likely_bot' => 2,
+            'banned' => 3,
+            default => -1,
+        };
+    }
+
+    /**
+     * Best-effort fan-out to admin Filament inboxes. Silent on failure —
+     * a notification dispatch error must never block the live tier write.
+     */
+    private function notifyAdminsOfTierEscalation(User $user, string $from, string $to, float $score): void
+    {
+        try {
+            $admins = User::query()
+                ->where('is_admin', true)
+                ->where('id', '!=', $user->id)
+                ->get();
+            if ($admins->isEmpty()) {
+                return;
+            }
+
+            $title = match ($to) {
+                'banned' => 'User auto-banned',
+                'likely_bot' => 'User flagged as likely bot',
+                'suspect' => 'User flagged as suspect',
+                default => 'Bot tier transition',
+            };
+            $body = sprintf(
+                '%s (#%d) %s → %s · score %.2f',
+                $user->username ?? $user->email ?? 'user',
+                $user->id,
+                $from,
+                $to,
+                $score,
+            );
+            $color = match ($to) {
+                'banned' => 'danger',
+                'likely_bot' => 'danger',
+                'suspect' => 'warning',
+                default => 'info',
+            };
+
+            // Build the action lazily so a unit test that doesn't boot
+            // the Filament panel can still exercise this path.
+            $url = null;
+            try {
+                $url = UserResource::getUrl('edit', ['record' => $user->id]);
+            } catch (\Throwable) {
+                // Filament panel not registered (CLI tinker, some unit
+                // tests). The notification still surfaces the user id
+                // in the body so the operator can navigate manually.
+            }
+
+            $notification = Notification::make()
+                ->title($title)
+                ->body($body)
+                ->color($color)
+                ->icon('heroicon-o-shield-exclamation');
+
+            if ($url) {
+                $notification->actions([
+                    Action::make('view')->label('Open user')->url($url, shouldOpenInNewTab: true),
+                ]);
+            }
+
+            $notification->sendToDatabase($admins);
+        } catch (\Throwable) {
+            // Best-effort — never let a notification failure break the
+            // tier write or the calling controller.
+        }
     }
 
     public static function scoreToTier(float $score): string

@@ -73,6 +73,85 @@ class ScoreEngineTest extends TestCase
         }
     }
 
+    public function test_tier_escalation_dispatches_admin_notification(): void
+    {
+        config()->set('satpeek.bot_score.weights', ['a' => 1.0]);
+        config()->set('satpeek.bot_score.ban', 0.85);
+        config()->set('satpeek.bot_score.likely_bot', 0.60);
+        config()->set('satpeek.bot_score.suspect', 0.30);
+
+        $admin = User::factory()->create(['is_admin' => true, 'username' => 'opsadmin']);
+        $user = User::factory()->create(['username' => 'suspect_user']);
+
+        // First evaluation lands the user in `trust` (raw 0.10) — no
+        // previous tier so no notification fires (the very first
+        // evaluation isn't a transition).
+        $low = new ScoreEngine([$this->fakeSignal('a', 0.10)]);
+        $low->evaluate($user);
+        $this->assertSame(0, \Illuminate\Notifications\DatabaseNotification::query()
+            ->where('notifiable_id', $admin->id)->count());
+
+        // Second evaluation pushes them to `suspect` (raw 0.40) → 1
+        // notification fans out to the admin inbox.
+        $mid = new ScoreEngine([$this->fakeSignal('a', 0.40)]);
+        $mid->evaluate($user);
+        $notifications = \Illuminate\Notifications\DatabaseNotification::query()
+            ->where('notifiable_id', $admin->id)->get();
+        $this->assertCount(1, $notifications, 'admin must receive one tier-escalation notification');
+        $payload = $notifications->first()->data;
+        $this->assertSame('User flagged as suspect', $payload['title']);
+        $this->assertStringContainsString('trust → suspect', $payload['body']);
+        $this->assertStringContainsString('suspect_user', $payload['body']);
+    }
+
+    public function test_tier_de_escalation_does_not_dispatch_notification(): void
+    {
+        // De-escalation (signal noise abated) is intentionally silent —
+        // we don't page the operator every time a flagged user goes
+        // back to clean. Only escalations matter.
+        config()->set('satpeek.bot_score.weights', ['a' => 1.0]);
+        config()->set('satpeek.bot_score.ban', 0.85);
+        config()->set('satpeek.bot_score.likely_bot', 0.60);
+        config()->set('satpeek.bot_score.suspect', 0.30);
+
+        $admin = User::factory()->create(['is_admin' => true]);
+        $user = User::factory()->create();
+
+        // Land the user in suspect first (no escalation notification on
+        // first eval).
+        (new ScoreEngine([$this->fakeSignal('a', 0.40)]))->evaluate($user);
+        // Drop them back to trust — must produce zero new notifications.
+        \Illuminate\Notifications\DatabaseNotification::query()
+            ->where('notifiable_id', $admin->id)->delete();
+
+        (new ScoreEngine([$this->fakeSignal('a', 0.10)]))->evaluate($user);
+
+        $this->assertSame(0, \Illuminate\Notifications\DatabaseNotification::query()
+            ->where('notifiable_id', $admin->id)->count());
+    }
+
+    public function test_tier_notification_skips_self_when_admin_user_is_the_subject(): void
+    {
+        // Edge case: an admin who somehow gets bot-flagged shouldn't
+        // get notified about their own escalation. The query filters
+        // `id != $user->id` to handle this.
+        config()->set('satpeek.bot_score.weights', ['a' => 1.0]);
+        config()->set('satpeek.bot_score.ban', 0.85);
+        config()->set('satpeek.bot_score.likely_bot', 0.60);
+        config()->set('satpeek.bot_score.suspect', 0.30);
+
+        $admin = User::factory()->create(['is_admin' => true]);
+
+        // First evaluation lands in trust silently.
+        (new ScoreEngine([$this->fakeSignal('a', 0.10)]))->evaluate($admin);
+        // Escalate. With a single admin and no other recipients, the
+        // notification must NOT bounce back to the subject.
+        (new ScoreEngine([$this->fakeSignal('a', 0.40)]))->evaluate($admin);
+
+        $this->assertSame(0, \Illuminate\Notifications\DatabaseNotification::query()
+            ->where('notifiable_id', $admin->id)->count());
+    }
+
     private function fakeSignal(string $name, float $value): Signal
     {
         return new class($name, $value) implements Signal
