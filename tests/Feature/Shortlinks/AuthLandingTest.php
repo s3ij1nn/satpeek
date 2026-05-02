@@ -57,6 +57,46 @@ class AuthLandingTest extends TestCase
         $response->assertSee($click->epoch_token, false);
     }
 
+    public function test_landing_page_does_not_render_post_return_hold_countdown_ui(): void
+    {
+        // v0.6.0 regression lock: the previous design rendered a
+        // hold-after-return countdown timer that ran on the auth page
+        // BEFORE the user was even confirmed to have traversed the
+        // shortener. We removed both the UI and the corresponding JS to
+        // close the loophole where a user could close the shortener tab
+        // and still walk through the timer. This pins the absence so a
+        // future "let's bring back the countdown for UX warmth" PR fails
+        // CI loud and clear.
+        $user = User::factory()->create();
+        $click = $this->seedClick(['user_id' => $user->id, 'status' => 'pending']);
+
+        $response = $this->actingAs($user)->get(route('shortlinks.auth', ['token' => $click->epoch_token]));
+
+        $response->assertOk();
+        $response->assertDontSee('Time remaining', false);
+        $response->assertDontSee('countdown__num', false);
+        $response->assertDontSee('id="slLeft"', false);
+        $response->assertDontSee('tickInit', false);
+    }
+
+    public function test_landing_page_renders_captcha_unlocked_from_first_paint(): void
+    {
+        // Companion to the above: the captcha widget must be present and
+        // the claim button must NOT carry the `disabled` attribute on
+        // initial render. The v0.5.x design `disabled`'d the button
+        // until the (now-deleted) hold timer expired; v0.6.0 ships it
+        // unlocked because the shortener interstitial IS the wait.
+        $user = User::factory()->create();
+        $click = $this->seedClick(['user_id' => $user->id, 'status' => 'pending']);
+
+        $response = $this->actingAs($user)->get(route('shortlinks.auth', ['token' => $click->epoch_token]));
+
+        $response->assertOk();
+        $response->assertSee('data-trajectory-captcha', false);
+        $response->assertSee('id="slClaim"', false);
+        $response->assertDontSee('id="slClaim" disabled', false);
+    }
+
     public function test_landing_page_404s_for_other_users_token(): void
     {
         $owner = User::factory()->create();
