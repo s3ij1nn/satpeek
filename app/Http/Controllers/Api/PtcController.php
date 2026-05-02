@@ -180,7 +180,21 @@ class PtcController extends Controller
             return response()->json(['error' => 'too_fast'], 422);
         }
 
-        DB::transaction(function () use ($user, $view) {
+        $credited = DB::transaction(function () use ($user, $view) {
+            // Atomic claim mirrored from ShortlinkController::finishClick():
+            // only one concurrent /complete can flip the row out of pending.
+            // Without this the precheck up at line ~156 has a TOCTOU window
+            // and two parallel posts both increment balance even though the
+            // balance_ledgers UNIQUE index would later block one of the
+            // ledger inserts. Failing fast at the claim is cheaper than a
+            // QueryException-rollback round-trip.
+            $claimed = PtcView::where('id', $view->id)
+                ->where('status', 'pending')
+                ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
+            if ($claimed === 0) {
+                return false;
+            }
+
             $reward = (int) $view->ad->reward_sat;
             BalanceLedger::create([
                 'user_id' => $user->id,
@@ -194,8 +208,6 @@ class PtcController extends Controller
 
             $this->referralPayout->settle($user, $reward, PtcView::class, $view->id);
 
-            $view->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
-
             // Decrement the advertiser's view budget. User-submitted ads only;
             // admin-created rows (user_id = null) have no budget to decrement.
             $ad = $view->ad;
@@ -205,7 +217,13 @@ class PtcController extends Controller
                     $ad->update(['status' => 'completed', 'is_active' => false]);
                 }
             }
+
+            return true;
         });
+
+        if (! $credited) {
+            return response()->json(['error' => 'view_not_pending'], 422);
+        }
 
         return response()->json(['ok' => true, 'reward_sat' => $view->ad->reward_sat]);
     }

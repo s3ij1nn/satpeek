@@ -155,6 +155,59 @@ class ViewerFlowTest extends TestCase
         ]);
     }
 
+    public function test_complete_is_idempotent_under_concurrent_requests(): void
+    {
+        // Mirror of ShortlinkController's idempotency test: two parallel
+        // /complete posts on the same view must NOT double-credit. The
+        // atomic UPDATE WHERE status=pending wins at most once per view;
+        // the partial UNIQUE on balance_ledgers (reason, reference_type,
+        // reference_id) is the second line of defence.
+        $user = User::factory()->create(['balance_sat' => 0]);
+        $ad = $this->seedAd(['reward_sat' => 23, 'duration_sec' => 5]);
+
+        $start = $this->actingAs($user)->postJson("/api/ptc/{$ad->id}/start")->json();
+        $viewId = $start['view_id'];
+        $token = $start['epoch_token'];
+
+        for ($i = 0; $i < $start['heartbeats_expected']; $i++) {
+            $this->actingAs($user)->postJson("/api/ptc/{$viewId}/heartbeat", [
+                'epoch_token' => $token,
+                'beacon_at_ms' => now()->valueOf() + $i * 1500,
+            ])->assertOk();
+        }
+        PtcView::where('id', $viewId)->update([
+            'started_at' => Carbon::now()->subSeconds($ad->duration_sec + 2),
+        ]);
+
+        [$challenge] = $this->seedChallenge();
+        $challenge->update(['status' => 'verified']);
+
+        $first = $this->actingAs($user)->postJson("/api/ptc/{$viewId}/complete", [
+            'epoch_token' => $token,
+            'captcha_challenge_id' => $challenge->challenge_id,
+        ]);
+        $first->assertOk();
+        $this->assertSame(23, (int) $user->fresh()->balance_sat);
+
+        // Forcibly relax to pending to simulate a concurrent /complete that
+        // saw the row as pending before the first one updated it.
+        PtcView::where('id', $viewId)->update(['status' => 'pending']);
+        try {
+            $this->actingAs($user)->postJson("/api/ptc/{$viewId}/complete", [
+                'epoch_token' => $token,
+                'captcha_challenge_id' => $challenge->challenge_id,
+            ]);
+        } catch (\Throwable) {
+            // QueryException from the unique-index violation is a valid
+            // outcome — caught so the assertions below still run.
+        }
+
+        $this->assertSame(23, (int) $user->fresh()->balance_sat, 'balance must not double-credit');
+        $this->assertSame(1, \App\Models\BalanceLedger::where('reference_type', PtcView::class)
+            ->where('reference_id', $viewId)
+            ->count(), 'exactly one ledger row per view');
+    }
+
     public function test_complete_rejects_when_heartbeats_too_few(): void
     {
         $user = User::factory()->create(['balance_sat' => 0]);
