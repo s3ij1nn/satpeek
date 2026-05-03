@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Weekly operator summary email.** New
+  `satpeek:weekly-summary` Artisan command + `OperatorWeeklySummary`
+  Mailable + `WeeklySummaryBuilder` service. Builds last-7-days
+  buckets — earning activity (verified PTC views / shortlinks /
+  article reads with prev-week delta), payouts (sent count + sat
+  total, failed, hold), new users, and bot tier evaluations
+  (suspect / likely_bot / banned counts) — and dispatches HTML +
+  plain-text mail to every admin user. Scheduled Mondays 09:00
+  UTC. `--dry-run` prints the JSON payload without sending. Pairs
+  with the dashboard widgets — same data shape, push delivery for
+  operators who don't habitually open `/admin`. 7 new tests pin
+  bucket semantics + admin-only dispatch + dry-run / no-admins
+  graceful exits.
+
 - **Operator-tunable bot signal weights via Filament.** New
   `bot_signal_weights` table + `BotSignalWeight` model + Filament
   resource at `/admin/bot-signal-weights` (Inventory group). DB
