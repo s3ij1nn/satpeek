@@ -32,7 +32,22 @@ class TrajectoryTraceProvider implements CaptchaProvider
 
     private const SHAPE_SAMPLES = 60;
 
-    private const CURVES = ['linear', 'sine', 'lissajous'];
+    /**
+     * The set of canonical curves a single challenge can sample.
+     *
+     * Curve diversity is a first-class defence: a bot that fine-tunes
+     * a Bezier replay for `sine` sees only ~1/N of issued challenges;
+     * adding a curve flavour cuts the per-flavour replay match rate
+     * proportionally without raising any user-facing difficulty knob.
+     *
+     * - `linear`        baseline diagonal
+     * - `sine`          symmetric sin envelope
+     * - `lissajous`     sin × cos modulation (variable amplitude)
+     * - `damped_sine`   amplitude decays with u — strong start, soft end
+     * - `growing_sine`  amplitude grows with u — soft start, strong end
+     * - `triangle`      sharp triangle wave, defeats smooth-only Bezier
+     */
+    private const CURVES = ['linear', 'sine', 'lissajous', 'damped_sine', 'growing_sine', 'triangle'];
 
     public function name(): string
     {
@@ -215,6 +230,19 @@ class TrajectoryTraceProvider implements CaptchaProvider
                 'linear' => $baseY,
                 'sine' => $baseY + sin($u * M_PI * 2 * $frequency) * $amplitude,
                 'lissajous' => $baseY + sin($u * M_PI * 2 * $frequency) * $amplitude * cos($u * M_PI),
+                // Amplitude decays linearly with u — the wobble fades as
+                // the user approaches the goal. A bot fitting a uniform
+                // sine model gets the early peaks right and overshoots
+                // the late ones.
+                'damped_sine' => $baseY + sin($u * M_PI * 2 * $frequency) * $amplitude * (1.0 - $u),
+                // Inverse envelope — flat at the start, growing wobble
+                // as u → 1. Symmetric counterpart to damped_sine; a
+                // single bezier-replay model can't cover both at once.
+                'growing_sine' => $baseY + sin($u * M_PI * 2 * $frequency) * $amplitude * $u,
+                // Triangle wave via the arcsin(sin) identity. Sharp
+                // peaks instead of smooth — a Bezier-only replay
+                // collapses the corners and trips the shape check.
+                'triangle' => $baseY + ($amplitude * 2.0 / M_PI) * asin(sin($u * M_PI * 2 * $frequency)),
                 default => $baseY,
             };
             $out[] = ['x' => round($x, 2), 'y' => round($y, 2), 't' => round($t, 1)];

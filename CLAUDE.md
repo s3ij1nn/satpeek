@@ -28,7 +28,7 @@ The entrypoint serialises composer downloads (`COMPOSER_MAX_PARALLEL_HTTP=1`) to
 ## Captcha — `app/Captcha/TrajectoryTraceProvider.php`
 
 The "trajectory trace" challenge:
-- Server issues a parametric curve (linear/sine/lissajous) bound to a per-issue seed.
+- Server issues a parametric curve (linear / sine / lissajous / damped_sine / growing_sine / triangle) bound to a per-issue seed.
 - Client renders a moving target on `<canvas>`; user drags a token along the live target into a goal marker.
 - Submit = an array of `{x, y, t, pressure}` samples (20–2000 points).
 - Server validates: shape (Frechet distance), Δt jitter, jerk-entropy, completion dwell, fingerprint match, response-time window `[800 ms, 60 s]`.

@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Three new captcha curve flavours: damped_sine, growing_sine,
+  triangle.** Brings `TrajectoryTraceProvider::CURVES` from 3 to
+  6. Each issued challenge picks one uniformly at random; a bot
+  fine-tuning a Bezier replay for `sine` now matches only ~1/6
+  of issued challenges instead of ~1/3 — proportional reduction
+  in attack hit rate without raising any user-facing difficulty
+  knob.
+  - `damped_sine`: amplitude tapers as u→1 (strong start, soft
+    end). A uniform-amplitude bot model overshoots the late peaks.
+  - `growing_sine`: inverse envelope (soft start, strong end).
+    Symmetric counterpart — a single bezier-replay model can't
+    cover both at once.
+  - `triangle`: arcsin(sin) wave with sharp peaks. A Bezier-only
+    replay collapses the corners and trips the shape check.
+  Lock-in test pins the roster cardinality at >=6 + per-curve
+  human-like-trace verification, so adding/removing a flavour
+  fails CI loud.
+
 - **Two new `/up` health checks.** Pull-side counterpart to the
   weekly summary's push:
   - `bot_detection`: counts ScoreEngine evaluations in the last 24 h

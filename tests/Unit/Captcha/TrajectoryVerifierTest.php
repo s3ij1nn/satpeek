@@ -123,6 +123,72 @@ class TrajectoryVerifierTest extends TestCase
     }
 
     /**
+     * Locks the curve roster so adding / removing a flavour fails CI loud.
+     * We don't pin the exact list to make refactors painless, just the
+     * minimum cardinality and that every name resolves to a non-trivial
+     * shape (more than one distinct y across the sweep).
+     */
+    public function test_curve_roster_has_minimum_six_distinct_shapes(): void
+    {
+        // Reflect to read the private constant.
+        $r = new \ReflectionClass(TrajectoryTraceProvider::class);
+        $names = $r->getConstant('CURVES');
+        $this->assertIsArray($names);
+        $this->assertGreaterThanOrEqual(6, count($names), 'curve diversity is a defence — keep at least six flavours');
+
+        foreach ($names as $name) {
+            $shape = TrajectoryTraceProvider::sampleCurve(
+                $name, 30, 120, 280, 120, 40, 2, 8000, 60
+            );
+            $this->assertCount(60, $shape, "curve {$name} must produce the requested sample count");
+            $ys = array_map(fn ($p) => (float) $p['y'], $shape);
+            // Linear is the deliberate flat exception (1 distinct y).
+            $minDistinct = $name === 'linear' ? 1 : 5;
+            $this->assertGreaterThanOrEqual(
+                $minDistinct,
+                count(array_unique($ys)),
+                "curve {$name} should produce a meaningfully varied y-trace, got ".count(array_unique($ys)).' distinct values'
+            );
+        }
+    }
+
+    /**
+     * Human-like follow against each curve flavour must pass the verifier.
+     * Catches the regression where a new curve introduces a singularity
+     * or amplitude that the existing tolerance / jerk-entropy thresholds
+     * can't handle.
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('curveProvider')]
+    public function test_human_like_trace_passes_for_every_curve(string $curve): void
+    {
+        $shape = TrajectoryTraceProvider::sampleCurve($curve, 30, 120, 280, 120, 40, 2, 8000, 60);
+        $points = $this->humanLikeFollow($shape, jitterMs: 5.0, posJitter: 1.5);
+
+        $result = $this->provider->verify(
+            challenge: ['expected_shape' => $shape, 'fingerprint_hash' => null],
+            points: $points,
+            context: ['solve_ms' => 6500, 'fingerprint_hash' => null]
+        );
+        $this->assertTrue(
+            $result->passed,
+            "curve `{$curve}` rejected a human-like follow with reason: {$result->reason}"
+        );
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function curveProvider(): array
+    {
+        return [
+            'linear' => ['linear'],
+            'sine' => ['sine'],
+            'lissajous' => ['lissajous'],
+            'damped_sine' => ['damped_sine'],
+            'growing_sine' => ['growing_sine'],
+            'triangle' => ['triangle'],
+        ];
+    }
+
+    /**
      * Synthesise a "humanish" trace: follow the canonical curve with sub-pixel
      * jitter, ~16ms intervals, randomised pressure, and a 250ms dwell at end.
      *
