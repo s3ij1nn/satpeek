@@ -90,15 +90,33 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        DB::transaction(function () use ($w) {
-            $meta = (array) $w->meta;
-            $meta['attempts'] = (int) ($meta['attempts'] ?? 0) + 1;
-            $meta['last_attempted_at'] = Carbon::now()->toIso8601String();
-            $w->update(['status' => 'processing', 'meta' => $meta]);
-        });
+        // Atomic claim: only ONE worker can flip the row out of queued
+        // (or stay on processing for a retry that re-entered after a
+        // FaucetPayUnreachableException). ShouldBeUnique above is the
+        // primary mutex via the cache lock — this is the DB-level
+        // backstop for the cache-evicted edge case where two workers
+        // could both pass the precheck and both call FaucetPay.
+        $meta = (array) $w->meta;
+        $meta['attempts'] = (int) ($meta['attempts'] ?? 0) + 1;
+        $meta['last_attempted_at'] = Carbon::now()->toIso8601String();
+        $claimed = Withdrawal::where('id', $w->id)
+            ->whereIn('status', ['queued', 'processing'])
+            ->update(['status' => 'processing', 'meta' => $meta]);
+        if ($claimed === 0) {
+            // Another worker already settled this withdrawal. Bail
+            // silently — no FaucetPay call, no balance mutation.
+            Log::info('withdrawal claim lost; another worker holds it', [
+                'withdrawal_id' => $w->id,
+            ]);
+
+            return;
+        }
+        $w = $w->fresh();
 
         // Lets FaucetPayUnreachableException escape on purpose — Laravel's
-        // retry machinery picks it up and re-enqueues with backoff.
+        // retry machinery picks it up and re-enqueues with backoff. The
+        // request never reached the wire (ConnectionException at TCP/DNS),
+        // so a retry can safely re-claim and try again.
         $result = $client->send(
             faucetpayEmail: $w->faucetpay_email,
             amountSat: (int) $w->amount_sat,
@@ -109,14 +127,29 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
         $sent = false;
         DB::transaction(function () use ($w, $result, &$sent) {
             if ($result['ok']) {
-                $w->update([
-                    'status' => 'sent',
-                    'faucetpay_payout_id' => $result['payout_id'],
-                    'processed_at' => Carbon::now(),
-                    'meta' => array_merge((array) $w->meta, ['response' => $result['raw']]),
-                ]);
-                $w->user->increment('total_withdrawn_sat', $w->amount_sat);
-                $sent = true;
+                // Atomic settle: status MUST still be `processing` for
+                // this update to fire. If a parallel job (cache-lock
+                // failure edge case) somehow finished first, the row
+                // already says `sent` and the WHERE clause filters us
+                // out — affected_rows=0 → skip the total_withdrawn_sat
+                // increment so we don't double-count the payout.
+                $settled = Withdrawal::where('id', $w->id)
+                    ->where('status', 'processing')
+                    ->update([
+                        'status' => 'sent',
+                        'faucetpay_payout_id' => $result['payout_id'],
+                        'processed_at' => Carbon::now(),
+                        'meta' => array_merge((array) $w->meta, ['response' => $result['raw']]),
+                    ]);
+                if ($settled === 1) {
+                    $w->user->increment('total_withdrawn_sat', $w->amount_sat);
+                    $sent = true;
+                } else {
+                    Log::warning('withdrawal settle race: row already sent by another worker', [
+                        'withdrawal_id' => $w->id,
+                        'payout_id' => $result['payout_id'],
+                    ]);
+                }
             } else {
                 self::markFailedAndRefund($w, $result['message'], $result['raw']);
             }
@@ -154,15 +187,30 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
      * inside the caller's DB transaction. Pulled out so the success-path
      * settle and the dead-letter path go through identical accounting.
      *
+     * Idempotent: the atomic UPDATE filters on the in-flight statuses so
+     * a second invocation (from `failed()` after a retry-storm dead-
+     * letter, or a parallel worker losing the cache lock) sees
+     * affected_rows=0 and skips the refund. The
+     * `balance_ledgers (reason, reference_type, reference_id)` partial
+     * UNIQUE backstop is the second line of defence — even if the
+     * affected_rows check were ever bypassed, the ledger insert would
+     * fatal at the DB layer rather than silently double-refund.
+     *
      * @param  array<string, mixed>  $rawResponse
      */
     private static function markFailedAndRefund(Withdrawal $w, string $reason, array $rawResponse): void
     {
-        $w->update([
-            'status' => 'failed',
-            'failure_reason' => $reason,
-            'meta' => array_merge((array) $w->meta, ['response' => $rawResponse]),
-        ]);
+        $marked = Withdrawal::where('id', $w->id)
+            ->whereIn('status', ['queued', 'processing'])
+            ->update([
+                'status' => 'failed',
+                'failure_reason' => $reason,
+                'meta' => array_merge((array) $w->meta, ['response' => $rawResponse]),
+            ]);
+        if ($marked === 0) {
+            return;
+        }
+
         BalanceLedger::create([
             'user_id' => $w->user_id,
             'delta_sat' => $w->amount_sat,

@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Withdraw flow now applies the same atomic-claim pattern as
+  shortlinks / PTC / internal articles.** Previously
+  `ProcessWithdrawalJob` relied on `ShouldBeUnique`'s cache lock
+  alone to keep two workers from both calling FaucetPay for the
+  same withdrawal. The lock is strong but not invincible — a cache
+  eviction during the long backoff window could let a second cron
+  tick enqueue a duplicate. Now:
+  - The claim itself is an atomic
+    `UPDATE WHERE status IN (queued, processing)`. Losing workers
+    bail silently with a log line — no FaucetPay call, no balance
+    mutation.
+  - The success-path settle is `UPDATE WHERE status='processing'`
+    so a parallel worker landing first is detected and the second
+    worker skips the `total_withdrawn_sat` increment.
+  - The refund-path `markFailedAndRefund()` runs the same
+    status-predicated UPDATE so a double dead-letter / retry
+    storm can't double-credit. The
+    `balance_ledgers (reason, ref_type, ref_id)` partial UNIQUE
+    backstop is the second line of defence.
+  3 new tests pin: claim-loses-aborts-without-FaucetPay-call,
+  settle-race idempotency, and refund-path idempotency under
+  double invocation.
+
 ### Added
 
 - **Admin audit log.** New `admin_audit_log` table + `AdminAuditor`
