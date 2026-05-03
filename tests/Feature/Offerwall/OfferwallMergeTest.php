@@ -114,11 +114,6 @@ final class FakePerUserAdapter implements OfferwallAdapter, OfferwallPerUserAdap
         return [];
     }
 
-    public function fetchShortlinkOffers(): array
-    {
-        return [];
-    }
-
     public function startView(User $user, OfferDescriptor $offer): ViewSession
     {
         throw new LogicException('not used');
@@ -160,11 +155,6 @@ final class FakeZeroArgAdapter implements OfferwallAdapter
         return [];
     }
 
-    public function fetchShortlinkOffers(): array
-    {
-        return [];
-    }
-
     public function startView(User $user, OfferDescriptor $offer): ViewSession
     {
         throw new LogicException('not used');
@@ -187,11 +177,6 @@ final class ThrowingPerUserAdapter implements OfferwallAdapter, OfferwallPerUser
     }
 
     public function fetchPtcOffers(): array
-    {
-        return [];
-    }
-
-    public function fetchShortlinkOffers(): array
     {
         return [];
     }

@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\PtcAd;
-use App\Models\Shortlink;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\Contracts\OfferDescriptor;
 use Illuminate\Console\Command;
@@ -12,7 +11,7 @@ class SyncOfferwallsCommand extends Command
 {
     protected $signature = 'satpeek:sync-offerwalls';
 
-    protected $description = 'Pull PTC + shortlink offers from enabled offerwall adapters into local cache.';
+    protected $description = 'Pull PTC offers from enabled offerwall adapters into local PtcAd inventory.';
 
     public function handle(AdapterRegistry $registry): int
     {
@@ -26,13 +25,18 @@ class SyncOfferwallsCommand extends Command
             $name = $adapter->name();
             // Internal/admin-managed ads use source='internal' and are never
             // touched by sync. Only adapter-sourced rows get upserted here.
+            //
+            // Shortlinks are NOT synced here even though
+            // OfferwallAdapter::fetchShortlinkOffers() exists on the
+            // contract: post-v0.6.0 the /shortlinks surface reads from
+            // ShortlinkProviderCredential rows (operator-managed) and
+            // the partner-network section reads per-user from
+            // OfferwallPerUserAdapter::fetchShortlinkOffersFor() at
+            // page-render time. There is no consumer for upserted
+            // legacy `shortlinks` rows — they were dead writes before.
             $this->line("[{$name}] fetching ptc offers...");
             foreach ($adapter->fetchPtcOffers() as $offer) {
                 $this->upsertPtc($offer);
-            }
-            $this->line("[{$name}] fetching shortlink offers...");
-            foreach ($adapter->fetchShortlinkOffers() as $offer) {
-                $this->upsertShortlink($offer);
             }
         }
 
@@ -52,21 +56,6 @@ class SyncOfferwallsCommand extends Command
                 'daily_limit_per_user' => $o->dailyLimitPerUser,
                 'is_active' => true,
                 'meta' => $o->meta,
-            ]
-        );
-    }
-
-    private function upsertShortlink(OfferDescriptor $o): void
-    {
-        Shortlink::updateOrCreate(
-            ['source' => $o->source, 'external_id' => $o->externalId],
-            [
-                'title' => $o->title,
-                'target_url' => $o->targetUrl,
-                'reward_sat' => $o->rewardSat,
-                'hold_seconds' => $o->durationSec,
-                'daily_limit_per_user' => $o->dailyLimitPerUser,
-                'is_active' => true,
             ]
         );
     }

@@ -43,22 +43,6 @@ class MockAdapter implements OfferwallAdapter
         ];
     }
 
-    public function fetchShortlinkOffers(): array
-    {
-        return [
-            new OfferDescriptor(
-                source: 'mock',
-                externalId: 'mock-sl-1',
-                title: 'Mock Shortlink',
-                description: null,
-                targetUrl: 'https://example.com/mock-sl-1',
-                rewardSat: 3,
-                durationSec: 10,
-                dailyLimitPerUser: 5,
-            ),
-        ];
-    }
-
     public function startView(User $user, OfferDescriptor $offer): ViewSession
     {
         return new ViewSession(

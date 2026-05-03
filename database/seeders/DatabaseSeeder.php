@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\InternalArticle;
 use App\Models\PtcAd;
-use App\Models\Shortlink;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
@@ -57,14 +57,19 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        Shortlink::firstOrCreate(
-            ['source' => 'mock', 'external_id' => 'mock-sl-1'],
+        // Sample internal article so /read-articles has something to show
+        // on a fresh install. The legacy `Shortlink` row that used to
+        // live here was dead — post-v0.6.0 the /shortlinks surface reads
+        // from operator-managed ShortlinkProviderCredential rows that the
+        // operator pastes API tokens into via /admin/shortlink-provider-credentials.
+        InternalArticle::firstOrCreate(
+            ['title' => 'Welcome to SatPeek'],
             [
-                'title' => 'Local mock shortlink',
-                'target_url' => 'https://example.com/mock-sl-1',
-                'reward_sat' => 3,
-                'hold_seconds' => 10,
-                'daily_limit_per_user' => 5,
+                'body' => "## Welcome\n\nThis is a sample read-and-earn article seeded on install.\n\nReplace it from `/admin/internal-articles` once you log in. Articles render as Markdown — supported tags: headings, lists, **bold**, *italic*, [links](https://example.com), `code`, and > blockquotes.\n\nWhen the read-time countdown finishes, the captcha unlocks and the user can claim the reward.",
+                'source_attribution' => 'SatPeek team',
+                'reward_sat' => 5,
+                'read_seconds' => 30,
+                'daily_limit_per_user' => 3,
                 'is_active' => true,
             ]
         );

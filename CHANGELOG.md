@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- **Dead `fetchShortlinkOffers()` bulk-pull from the offerwall
+  surface.** Post-v0.6.0 the `/shortlinks` page reads operator-
+  managed `ShortlinkProviderCredential` rows for internal
+  inventory and per-user `OfferwallPerUserAdapter::fetchShortlinkOffersFor()`
+  for partner-network offers — no consumer was reading the
+  bulk-upserted legacy `shortlinks` rows. Dropped:
+  - `OfferwallAdapter::fetchShortlinkOffers()` from the contract
+  - The implementations on `MockAdapter` + `BitcoTaskAdapter`
+  - `SyncOfferwallsCommand`'s shortlink loop + `upsertShortlink()`
+    helper (was a dead write every cron tick)
+  - The `Shortlink::firstOrCreate(...)` mock seed in
+    `DatabaseSeeder` — replaced with a sample `InternalArticle`
+    so a fresh install has something to show on `/read-articles`
+  Test stubs realigned. `Shortlink` model + table stay for legacy
+  `shortlink_clicks.shortlink_id` rows pre-v0.6.0 (the
+  `effectiveRewardSat()` fallback still consults them).
+
 ### Added
 
 - **Three new captcha curve flavours: damped_sine, growing_sine,

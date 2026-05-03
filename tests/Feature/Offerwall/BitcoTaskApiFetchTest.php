@@ -296,8 +296,11 @@ class BitcoTaskApiFetchTest extends TestCase
         $http->fake();
         $adapter = new BitcoTaskAdapter($http);
 
+        // Only fetchPtcOffers remains on the OfferwallAdapter contract;
+        // the bulk-shortlink sibling was dropped in cleanup. The PTC
+        // bulk pull stays safe (no HTTP) so satpeek:sync-offerwalls
+        // doesn't accidentally hammer BitcoTask on every cron tick.
         $this->assertSame([], $adapter->fetchPtcOffers());
-        $this->assertSame([], $adapter->fetchShortlinkOffers());
         $http->assertNothingSent();
     }
 }

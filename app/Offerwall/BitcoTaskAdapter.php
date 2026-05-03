@@ -77,12 +77,6 @@ class BitcoTaskAdapter implements OfferwallAdapter, OfferwallPerUserAdapter
         return [];
     }
 
-    /** @return array<int, OfferDescriptor> */
-    public function fetchShortlinkOffers(): array
-    {
-        return [];
-    }
-
     public function startView(User $user, OfferDescriptor $offer): ViewSession
     {
         // Per-offer "start" is whatever the user-facing URL in the
