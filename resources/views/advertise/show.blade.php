@@ -17,6 +17,7 @@
     .adv__head h1 em { color: var(--amber-soft); font-style: italic; }
     .adv__head .meta { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .14em; }
     .alert--ok { padding: .875rem 1.125rem; border-radius: var(--radius-md); background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.3); color: var(--mint); font-size: var(--text-sm); }
+    .alert--warn { padding: .875rem 1.125rem; border-radius: var(--radius-md); background: rgba(252,211,77,.08); border: 1px solid rgba(252,211,77,.3); color: var(--amber-soft); font-size: var(--text-sm); }
 
     .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow: hidden; }
     @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } }
@@ -52,6 +53,7 @@
 @section('content')
 <section class="adv">
     @if (session('status')) <div class="alert--ok">{{ session('status') }}</div> @endif
+    @if (session('iframe_warning')) <div class="alert--warn">{{ session('iframe_warning') }}</div> @endif
 
     <header class="adv__head">
         <span class="meta">/ advertise · campaign #{{ $ad->id }}</span>

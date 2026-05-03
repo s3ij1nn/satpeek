@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\AdSubmittedEmail;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
+use App\Services\IframeEmbedProbe;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -65,6 +66,18 @@ class AdvertiseController extends Controller
                 ->withErrors(['balance' => 'Insufficient balance — campaign costs '.number_format($totalCost).' sat, you have '.number_format($user->balance_sat).' sat.']);
         }
 
+        // Iframe-mode preflight: probe the destination's response headers
+        // for X-Frame-Options / CSP frame-ancestors before letting the
+        // submission through. We don't HARD-block on a "blocked" verdict
+        // (the advertiser may be testing, or our probe could misread the
+        // CSP) — we surface a session warning so the next page tells them
+        // to switch to `window` mode if they actually want viewers to see
+        // anything. See IframeEmbedProbe for the detection rules.
+        $iframeProbe = null;
+        if (($validated['display_mode'] ?? 'window') === 'iframe') {
+            $iframeProbe = app(IframeEmbedProbe::class)->probe($validated['target_url']);
+        }
+
         $autoApprove = (bool) $cfg['auto_approve'];
         $status = $autoApprove ? 'approved' : 'pending_review';
         $isActive = $autoApprove;
@@ -115,7 +128,15 @@ class AdvertiseController extends Controller
             ? "Campaign live — {$ad->total_views_purchased} views budgeted at {$ad->reward_sat} sat each."
             : "Campaign submitted for review. We'll email you once it's approved (typically within 24 hours).";
 
-        return redirect()->route('advertise.show', ['id' => $ad->id])->with('status', $msg);
+        $redirect = redirect()->route('advertise.show', ['id' => $ad->id])->with('status', $msg);
+        if ($iframeProbe && ! $iframeProbe['embeddable']) {
+            $redirect->with('iframe_warning', sprintf(
+                'Heads up: your destination URL refuses iframe embedding (%s). Viewers in iframe mode will see a blank page. Switch the campaign\'s display mode to "Open in new tab" if you want them to see your content.',
+                $iframeProbe['detail'] ?? $iframeProbe['blocker'] ?? 'unknown',
+            ));
+        }
+
+        return $redirect;
     }
 
     public function show(Request $request, int $id): View
@@ -155,6 +176,14 @@ class AdvertiseController extends Controller
             'is_active' => ['nullable'],
         ]);
 
+        // Same iframe preflight as on create — fires only when the
+        // advertiser is *switching into* iframe mode (no point re-probing
+        // a campaign that's already in iframe and just changing copy).
+        $iframeProbe = null;
+        if ($validated['display_mode'] === 'iframe' && $ad->display_mode !== 'iframe') {
+            $iframeProbe = app(IframeEmbedProbe::class)->probe((string) $ad->target_url);
+        }
+
         $ad->update([
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
@@ -163,9 +192,17 @@ class AdvertiseController extends Controller
             'is_active' => filter_var($validated['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ]);
 
-        return redirect()
+        $redirect = redirect()
             ->route('advertise.show', ['id' => $ad->id])
             ->with('status', 'Campaign updated.');
+        if ($iframeProbe && ! $iframeProbe['embeddable']) {
+            $redirect->with('iframe_warning', sprintf(
+                'Heads up: your destination URL refuses iframe embedding (%s). Viewers in iframe mode will see a blank page.',
+                $iframeProbe['detail'] ?? $iframeProbe['blocker'] ?? 'unknown',
+            ));
+        }
+
+        return $redirect;
     }
 
     public static function computeCost(int $rewardSat): int

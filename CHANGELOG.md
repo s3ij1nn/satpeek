@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Iframe-mode preflight on advertiser submission.** When the
+  advertiser picks `display_mode=iframe` for a PTC campaign,
+  `IframeEmbedProbe` HEADs the destination URL and inspects
+  `X-Frame-Options` + CSP `frame-ancestors`. If the destination
+  refuses cross-origin embedding (DENY / SAMEORIGIN / restrictive
+  frame-ancestors), `/advertise/{id}/show` flashes a session
+  warning explaining what happened so the advertiser switches
+  back to "Open in new tab" before viewers see a blank page.
+  Probe failures (network, 4xx/5xx, malformed CSP) deliberately
+  return embeddable=true so a transient blip never blocks
+  submission. Edit flow re-probes only when the advertiser is
+  switching INTO iframe (no point re-probing a copy-only edit).
+  Window-mode submissions skip the probe entirely. 15 new tests
+  pin the verdict rules + controller wiring.
+
 ### Changed
 
 - **Withdraw flow now applies the same atomic-claim pattern as
