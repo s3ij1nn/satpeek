@@ -3,6 +3,7 @@
 namespace Tests\Unit\Captcha;
 
 use App\Captcha\TrajectoryTraceProvider;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class TrajectoryVerifierTest extends TestCase
@@ -158,7 +159,7 @@ class TrajectoryVerifierTest extends TestCase
      * or amplitude that the existing tolerance / jerk-entropy thresholds
      * can't handle.
      */
-    #[\PHPUnit\Framework\Attributes\DataProvider('curveProvider')]
+    #[DataProvider('curveProvider')]
     public function test_human_like_trace_passes_for_every_curve(string $curve): void
     {
         $shape = TrajectoryTraceProvider::sampleCurve($curve, 30, 120, 280, 120, 40, 2, 8000, 60);

@@ -41,6 +41,7 @@ use GuzzleHttp\Client;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -219,7 +220,7 @@ class AppServiceProvider extends ServiceProvider
                 || str_contains($msg, 'does not exist')                       // pgsql
                 || str_contains($msg, "doesn't exist");                       // mysql
             if (! $isSchemaMissing) {
-                \Illuminate\Support\Facades\Log::warning(
+                Log::warning(
                     'BotSignalWeight boot override skipped: '.$msg
                 );
             }

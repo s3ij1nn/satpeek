@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Models\BalanceLedger;
 use App\Models\BotScoreHistory;
 use App\Models\InternalArticleView;
 use App\Models\PtcView;

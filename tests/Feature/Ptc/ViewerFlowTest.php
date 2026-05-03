@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ptc;
 
 use App\Captcha\TrajectoryTraceProvider;
+use App\Models\BalanceLedger;
 use App\Models\CaptchaChallenge;
 use App\Models\PtcAd;
 use App\Models\PtcView;
@@ -203,7 +204,7 @@ class ViewerFlowTest extends TestCase
         }
 
         $this->assertSame(23, (int) $user->fresh()->balance_sat, 'balance must not double-credit');
-        $this->assertSame(1, \App\Models\BalanceLedger::where('reference_type', PtcView::class)
+        $this->assertSame(1, BalanceLedger::where('reference_type', PtcView::class)
             ->where('reference_id', $viewId)
             ->count(), 'exactly one ledger row per view');
     }

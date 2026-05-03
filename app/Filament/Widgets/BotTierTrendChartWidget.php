@@ -57,9 +57,16 @@ class BotTierTrendChartWidget extends ChartWidget
 
         // Pivot day,tier → cnt with zero-fill so each series is the same
         // length as $labels. Day key matches the pivot expression's output.
+        // Read aggregated columns via getAttribute() so PHPStan / Larastan
+        // doesn't trip on day / tier / cnt being absent from the model's
+        // declared property set (they're synthesised by the SELECT, not
+        // table columns).
         $byDay = [];
         foreach ($rows as $r) {
-            $byDay[(string) $r->day][(string) $r->tier] = (int) $r->cnt;
+            $day = (string) $r->getAttribute('day');
+            $tier = (string) $r->getAttribute('tier');
+            $cnt = (int) $r->getAttribute('cnt');
+            $byDay[$day][$tier] = $cnt;
         }
 
         $labels = [];

@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Services\AdminAuditor;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
  * Append-only operator action log row. See migration docblock for the
- * what / why. Always written via {@see \App\Services\AdminAuditor} so
+ * what / why. Always written via {@see AdminAuditor} so
  * payload normalisation and admin/IP attribution stay in one place.
  *
  * @property int $id

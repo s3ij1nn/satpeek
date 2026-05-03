@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Services\WeeklySummaryBuilder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -16,7 +17,7 @@ use Illuminate\Queue\SerializesModels;
  * habitually open `/admin` still get the signal they need to react to
  * spikes in tier escalations or payout anomalies.
  *
- * The summary payload is computed by {@see \App\Services\WeeklySummaryBuilder}.
+ * The summary payload is computed by {@see WeeklySummaryBuilder}.
  */
 class OperatorWeeklySummary extends Mailable implements ShouldQueue
 {

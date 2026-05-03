@@ -5,11 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\Models\BotScoreHistory;
-use App\Models\InternalArticle;
-use App\Models\InternalArticleView;
 use App\Models\PtcAd;
 use App\Models\PtcView;
-use App\Models\ShortlinkClick;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\WeeklySummaryBuilder;

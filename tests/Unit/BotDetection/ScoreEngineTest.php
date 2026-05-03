@@ -7,6 +7,7 @@ use App\BotDetection\Signals\Signal;
 use App\Models\BotScoreHistory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\DatabaseNotification;
 use Tests\TestCase;
 
 class ScoreEngineTest extends TestCase
@@ -88,14 +89,14 @@ class ScoreEngineTest extends TestCase
         // evaluation isn't a transition).
         $low = new ScoreEngine([$this->fakeSignal('a', 0.10)]);
         $low->evaluate($user);
-        $this->assertSame(0, \Illuminate\Notifications\DatabaseNotification::query()
+        $this->assertSame(0, DatabaseNotification::query()
             ->where('notifiable_id', $admin->id)->count());
 
         // Second evaluation pushes them to `suspect` (raw 0.40) → 1
         // notification fans out to the admin inbox.
         $mid = new ScoreEngine([$this->fakeSignal('a', 0.40)]);
         $mid->evaluate($user);
-        $notifications = \Illuminate\Notifications\DatabaseNotification::query()
+        $notifications = DatabaseNotification::query()
             ->where('notifiable_id', $admin->id)->get();
         $this->assertCount(1, $notifications, 'admin must receive one tier-escalation notification');
         $payload = $notifications->first()->data;
@@ -121,12 +122,12 @@ class ScoreEngineTest extends TestCase
         // first eval).
         (new ScoreEngine([$this->fakeSignal('a', 0.40)]))->evaluate($user);
         // Drop them back to trust — must produce zero new notifications.
-        \Illuminate\Notifications\DatabaseNotification::query()
+        DatabaseNotification::query()
             ->where('notifiable_id', $admin->id)->delete();
 
         (new ScoreEngine([$this->fakeSignal('a', 0.10)]))->evaluate($user);
 
-        $this->assertSame(0, \Illuminate\Notifications\DatabaseNotification::query()
+        $this->assertSame(0, DatabaseNotification::query()
             ->where('notifiable_id', $admin->id)->count());
     }
 
@@ -148,7 +149,7 @@ class ScoreEngineTest extends TestCase
         // notification must NOT bounce back to the subject.
         (new ScoreEngine([$this->fakeSignal('a', 0.40)]))->evaluate($admin);
 
-        $this->assertSame(0, \Illuminate\Notifications\DatabaseNotification::query()
+        $this->assertSame(0, DatabaseNotification::query()
             ->where('notifiable_id', $admin->id)->count());
     }
 

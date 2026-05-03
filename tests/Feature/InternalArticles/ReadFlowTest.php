@@ -270,7 +270,7 @@ class ReadFlowTest extends TestCase
     {
         return InternalArticle::create(array_merge([
             'title' => 'Test article',
-            'body' => "Some **markdown** body content.",
+            'body' => 'Some **markdown** body content.',
             'source_attribution' => null,
             'reward_sat' => 10,
             'read_seconds' => 30,

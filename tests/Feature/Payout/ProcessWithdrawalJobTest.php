@@ -6,6 +6,7 @@ namespace Tests\Feature\Payout;
 
 use App\Mail\WithdrawalRejectedEmail;
 use App\Mail\WithdrawalSentEmail;
+use App\Models\BalanceLedger;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Payout\FaucetPayClient;
@@ -334,7 +335,7 @@ class ProcessWithdrawalJobTest extends TestCase
         (new ProcessWithdrawalJob($w->id))->handle($client);
 
         $this->assertSame(3300, (int) $user->fresh()->balance_sat, 'must not double-refund');
-        $this->assertSame(1, \App\Models\BalanceLedger::where('reference_type', Withdrawal::class)
+        $this->assertSame(1, BalanceLedger::where('reference_type', Withdrawal::class)
             ->where('reference_id', $w->id)
             ->where('reason', 'withdraw_refund')
             ->count(), 'exactly one refund ledger row per withdrawal');

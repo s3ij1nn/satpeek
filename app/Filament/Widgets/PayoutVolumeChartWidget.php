@@ -51,7 +51,7 @@ class PayoutVolumeChartWidget extends ChartWidget
         // (Postgres) on the same query.
         $driver = DB::connection()->getDriverName();
         $dayExpr = $driver === 'sqlite'
-            ? "date(created_at)"
+            ? 'date(created_at)'
             : "to_char(created_at, 'YYYY-MM-DD')";
 
         $rows = BalanceLedger::query()
@@ -64,10 +64,15 @@ class PayoutVolumeChartWidget extends ChartWidget
             ->get();
 
         // Pivot into [day][reason] = sat, defaulting missing cells to 0
-        // so each series has the same x-axis length.
+        // so each series has the same x-axis length. day / sat are
+        // synthesised by the SELECT and not declared model properties,
+        // so go through getAttribute() to keep static analysis happy.
         $byDay = [];
         foreach ($rows as $r) {
-            $byDay[(string) $r->day][$r->reason] = (int) $r->sat;
+            $day = (string) $r->getAttribute('day');
+            $reason = (string) $r->getAttribute('reason');
+            $sat = (int) $r->getAttribute('sat');
+            $byDay[$day][$reason] = $sat;
         }
 
         $labels = [];

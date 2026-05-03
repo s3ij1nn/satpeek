@@ -6,6 +6,7 @@ namespace Tests\Feature\Shortlinks;
 
 use App\BotDetection\PolicyEnforcer;
 use App\Captcha\TrajectoryTraceProvider;
+use App\Models\BalanceLedger;
 use App\Models\BotScore;
 use App\Models\CaptchaChallenge;
 use App\Models\ShortlinkClick;
@@ -294,7 +295,7 @@ class ClickFlowTest extends TestCase
 
         // Balance MUST NOT have been credited a second time.
         $this->assertSame(13, (int) $user->fresh()->balance_sat);
-        $this->assertSame(1, \App\Models\BalanceLedger::where('reference_type', ShortlinkClick::class)
+        $this->assertSame(1, BalanceLedger::where('reference_type', ShortlinkClick::class)
             ->where('reference_id', $start['click_id'])
             ->count(), 'exactly one ledger row per click — no double credit');
     }

@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $started_at
  * @property Carbon|null $completed_at
  * @property-read User $user
- * @property-read InternalArticle $article
+ * @property-read InternalArticle|null $article  may be null mid-cascade if the parent row is deleted concurrently
  */
 class InternalArticleView extends Model
 {

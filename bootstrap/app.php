@@ -12,6 +12,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
@@ -42,11 +43,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // tunnel; tighten to a CIDR list in stricter deployments.
         $middleware->trustProxies(
             at: env('TRUSTED_PROXIES', '*'),
-            headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
-                | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
-                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
-                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO
-                | \Illuminate\Http\Request::HEADER_X_FORWARDED_AWS_ELB,
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_AWS_ELB,
         );
 
         // Normalise upstream JA4 TLS fingerprint headers (cf-ja4 / x-tls-ja4

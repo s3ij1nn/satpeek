@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\BotSignalWeightResource\Pages;
 use App\Models\BotSignalWeight;
+use App\Providers\AppServiceProvider;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
@@ -19,7 +20,7 @@ use UnitEnum;
  *
  * Defaults still ship in `config/satpeek.php`. A row here shadows
  * the config default at boot time
- * (see {@see \App\Providers\AppServiceProvider::applyBotSignalWeightOverrides()}).
+ * (see {@see AppServiceProvider::applyBotSignalWeightOverrides()}).
  *
  * Workflow: noisy signal flagging too many honest users → drop its
  * weight here without code change. New high-precision positive signal

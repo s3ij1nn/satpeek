@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\AdminAuditLogResource\Pages;
 use App\Models\AdminAuditLog;
+use App\Services\AdminAuditor;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -13,7 +14,7 @@ use UnitEnum;
 /**
  * Read-only operator-action timeline. Listing-only by design — touching
  * a row would defeat the audit purpose entirely. The recording side
- * lives in {@see \App\Services\AdminAuditor} and is invoked from each
+ * lives in {@see AdminAuditor} and is invoked from each
  * Filament action that should be tracked (user.rescore, ptc_ad.approve,
  * ptc_ad.reject, withdrawal.approve, withdrawal.reject…).
  */

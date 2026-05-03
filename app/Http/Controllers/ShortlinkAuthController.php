@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\ShortlinkClick;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
