@@ -4,8 +4,8 @@ PTC site (paid-to-click) + URL-shortener interstitial earnings, with intentional
 
 ## Stack
 
-- PHP 8.3 + Laravel 11
-- Filament 3 admin panel at `/admin`
+- PHP 8.3 + Laravel 13
+- Filament 4 admin panel at `/admin`
 - PostgreSQL 16 + Redis 7
 - Docker Compose for everything (no host PHP/composer needed)
 
@@ -64,7 +64,7 @@ Triage: the read-only `PtcView` + `ShortlinkClick` Filament resources (Operation
 
 ## Bot detection — `app/BotDetection/`
 
-10 weighted signals → unit-interval risk score → tier policy:
+12 weighted signals → unit-interval risk score → tier policy. Operator can override per-signal weights via Filament (`/admin/bot-signal-weights`):
 
 | Signal | Source | Weight |
 |---|---|---|
@@ -77,6 +77,8 @@ Triage: the read-only `PtcView` + `ShortlinkClick` Filament resources (Operation
 | `heartbeat_gap` | PTC heartbeat cadence outliers | 0.10 |
 | `asn_datacenter` | live IpReputation composite (datacenter / vpn / proxy) | 0.10 |
 | `asn_static_list` | operator-curated `DATACENTER_ASNS` env list | 0.05 |
+| `registration_burst` | account creation cadence from same IP | 0.10 |
+| `payout_burst` | withdrawal request cadence anomaly | 0.10 |
 
 ScoreEngine renormalises by total weight, so adding signals doesn't mute the others.
 
@@ -103,6 +105,10 @@ When `ScoreEngine::evaluate()` writes `tier = banned`, it also sets `User.is_ban
 ### SharedIpSignal allowlist
 
 Operator escape hatch for known shared NATs (campus / mobile / household / corporate proxy). `BOTSCORE_SHARED_IP_ALLOWLIST` accepts comma-separated CIDR or single-IP entries (IPv4 + IPv6). Allowlisted IPs are excluded from the cross-account count entirely. Workflow: roll out, browse `/admin/user-ip-observations`, paste the noisy shared prefixes into env. See `App\BotDetection\IpAllowlist`.
+
+### Bot score tracking — `app/Models/BotScoreHistory`
+
+Every `ScoreEngine::evaluate()` call writes a row with the full snapshot (all 12 signal values, final tier, timestamp, user_id). Operators can browse the evaluation trail at `/admin/bot-score-history` to understand tier transitions. The `/up` health check probes 24-h evaluation count to detect if the scoring pipeline has stalled.
 
 ### JA4 capture — `app/Http/Middleware/Ja4Capture.php`
 
@@ -195,6 +201,16 @@ Postback contract (form-encoded, lowercase fields):
 
 Receiver enforces, in order: `s2s_secret` configured → IP in `BITCOTASK_IP_ALLOWLIST` (default `45.14.135.48`) → MD5 signature match → unique `(reason, external_ref)` insert. Returns the literal lowercase string `ok` on success (not JSON — BitcoTasks treats anything else as failure and retries).
 
+## Internal read-and-earn — `app/Models/InternalArticle`, `InternalArticleView`
+
+Operator-authored articles published directly on SatPeek (not Offerwall). Users visit `/read-articles`, see active articles, read + close to earn. Page routes to `InternalArticleAuthController` which (like PTC/shortlinks) mints per-click auth tokens. Reward writes happen server-side on completion.
+
+Models:
+- `InternalArticle` — canonical content (title, body, reward_sat, hold_seconds, is_active, display_mode)
+- `InternalArticleView` — completion ledger (user_id, article_id, status, started_at, completed_at)
+
+Admin triage: `/admin/internal-articles`, `/admin/internal-article-views` (read-only, like PtcView). API: `/api/internal-articles` (paginated), `/api/internal-articles/auth/{token}/complete`.
+
 ## Payout — `app/Payout/FaucetPayClient.php`
 
 Calls `POST {FAUCETPAY_API_BASE}/send`. Withdrawals enter `withdrawals` table → `ProcessWithdrawalJob` runs from the queue, with `requires_review` for `suspect+` tiers held for admin approval in Filament.
@@ -203,11 +219,25 @@ Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPa
 
 ## Operations
 
-- **`/up`** — structured JSON health check (DB / Redis / MaxMind / shortlink_providers / ip_reputation_providers). Returns 503 on critical down (DB / Redis), 200 with `status: degraded` on non-critical degradation. Stable detail codes (`unconfigured`, `file_missing`, `no_token_set`, …) for dashboards. See `App\Http\Controllers\HealthController`.
-- **Admin debug resources** (Operations group):
-  - `/admin/ptc-views` — read-only PtcView listing with status filter + Auth URL action.
-  - `/admin/shortlink-clicks` — symmetric for ShortlinkClick.
-  - Both forbid create/edit/delete to prevent admins from bypassing reward guards.
+- **`/up`** — structured JSON health check. Returns 503 on critical down (DB / Redis), 200 with `status: degraded` on non-critical degradation. Probes:
+  - **Critical**: DB, Redis
+  - **Non-critical**: MaxMind file, shortlink provider config, IP reputation sources, FaucetPay config + queue backlog, bot-detection signal liveness (BotScoreHistory row count in last 24h), earning inventory liveness (PtcAd + ShortlinkProviderCredential + InternalArticle active counts)
+  
+- **Admin debug resources** (Operations group, read-only to prevent bypassing reward guards):
+  - `/admin/ptc-views` — PtcView listing with Auth URL action, copyable token
+  - `/admin/shortlink-clicks` — ShortlinkClick listing with Auth URL action
+  - `/admin/internal-article-views` — InternalArticleView listing
+  - `/admin/bot-score-history` — tier evaluation trail, sortable by created_at / tier / user_id
+  - `/admin/bot-signal-weights` — operator-tunable per-signal weights (overrides env defaults via AppServiceProvider boot)
+  
+- **Filament analytics widgets** (Dashboard):
+  - `EarningActivityWidget` — earning event volume (PTC / shortlink / article / referral)
+  - `PayoutVolumeChartWidget` — withdrawal volume / FaucetPay status
+  - `BotTierTrendChartWidget`, `BotTierDistributionWidget` — ban/suspect/trust distribution and tier transition timeline
+  
+- **Admin action trail** — `AdminAuditLog` model + read-only Filament resource (`/admin/admin-audit-logs`) logs all resource mutations (create/update/delete) by admin user + timestamp + old/new values.
+  
+- **Operator weekly summary** — `SendOperatorWeeklySummaryCommand` (scheduled nightly) builds a HTML email via `WeeklySummaryBuilder` with earning KPIs, bot activity, payout status, new user cohort. See `config('satpeek.admin_email')` for recipient.
 - **Cloudflare orange-cloud** (`TRUST_CLOUDFLARE_PROXY=true`): `App\Http\Middleware\CloudflareClientIp` promotes `CF-Connecting-IP` → `REMOTE_ADDR` so every IP-consuming code path (bot detection, captcha trace, BitcoTask URL, webhook allow-list) sees the real visitor. Without this flag the platform sees Cloudflare edge IPs and silently mis-classifies. Uses `CF-Connecting-IP` (overwritten by Cloudflare on every request) instead of `X-Forwarded-For` (Cloudflare appends, leaving the leftmost slot spoofable). **The origin firewall MUST restrict inbound to Cloudflare's published IP ranges (https://www.cloudflare.com/ips/)** when this flag is on; otherwise an attacker reaching the origin directly can spoof CF-Connecting-IP and bypass bot detection / IP reputation / captcha fingerprint locking.
 
 ## Tests

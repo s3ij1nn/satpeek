@@ -28,35 +28,42 @@ Stack: PHP 8.3 + Laravel 13 + Filament 4, **PostgreSQL 16**, **Redis 7**, all wi
 User-facing:
 - `/` Public landing
 - `/login`, `/register` Auth (Laravel default + custom captcha gate)
-- `/dashboard`, `/ptc`, `/shortlinks`, `/withdraw`, `/referral`
-- `/ptc/auth/{token}`, `/shortlinks/auth/{token}` — per-click rotating
-  landing URLs (28-char random slug, owner-scoped, single-use)
+- `/dashboard`, `/ptc`, `/shortlinks`, `/read-articles`, `/withdraw`, `/referral`
+- `/ptc/auth/{token}`, `/shortlinks/auth/{token}`, `/read-articles/internal/{token}` 
+  — per-click rotating landing URLs (28-char random slug, owner-scoped, single-use)
 - `/advertise`, `/advertise/create`, `/advertise/{id}`, `/advertise/{id}/edit`
   — self-serve advertising (display_mode iframe vs new-tab toggle, post-launch edit)
 
 Admin (`/admin`, Filament):
-- User / BotScore / Withdrawal review / PtcAd / Shortlink
+- User / BotScore / Withdrawal review / PtcAd / Shortlink / InternalArticle
 - Shortener APIs — paste API tokens for btcut.io / cuty.io / exe.io / shrtfly.com / ouo.io without touching `.env`
-- Read-only PtcView + ShortlinkClick triage views with copyable auth tokens
+- Read-only triage views (PtcView, ShortlinkClick, InternalArticleView, BotScoreHistory) with copyable auth tokens
+- BotSignalWeight tuning (operator override per-signal weights)
+- AdminAuditLog for compliance (all resource mutations by operator)
+- Dashboard widgets: earning activity, payout volume, bot tier trends
 
 API:
-- `/api/captcha/issue`, `/api/captcha/verify`
-- `/api/ptc/*`, `/api/shortlinks/*` — both legacy by-ID + new auth/{token} variants
+- `/api/captcha/issue` (60/min), `/api/captcha/verify` (30/min)
+- `/api/ptc/*`, `/api/shortlinks/*`, `/api/internal-articles/*` — both legacy by-ID + new auth/{token} variants
+- `/api/earning/start` (30/min per user/IP), `/api/withdraw` (5/min per user)
 - `/up` — structured JSON health (DB / Redis / MaxMind / shortlink + IP-reputation provider status)
 - `/webhooks/bitcotask/{token}` — BitcoTask S2S callback
+- 6 named rate limiters: captcha-issue, captcha-verify, beacon, earning-start, withdraw, adblock-report
 
 ## Architecture highlights
 
-- **Captcha** — `app/Captcha/TrajectoryTraceProvider.php` — moving-target trajectory trace, validated against shape (Frechet distance), Δt jitter, jerk entropy, completion dwell, fingerprint binding, and a hard `[800 ms, 60 s]` solve-time window. The 60 s ceiling rules out human-relay services (typical round-trip 30–90 s) while leaving headroom for an honest user to type credentials before dragging.
+- **Captcha** — `app/Captcha/TrajectoryTraceProvider.php` — moving-target trajectory trace with 6 curve flavours (linear, sine, lissajous, damped_sine, growing_sine, triangle), validated against shape (Frechet distance), Δt jitter, jerk entropy, completion dwell, fingerprint binding, and a hard `[800 ms, 60 s]` solve-time window. The 60 s ceiling rules out human-relay services (typical round-trip 30–90 s) while leaving headroom for an honest user to type credentials before dragging.
 - **Per-click rotating URLs** — every PTC watch / shortlink click navigates to `/{ptc|shortlinks}/auth/{epoch_token}` where `epoch_token` is a fresh 28-char random. Owner-scoped (404 cross-user), single-use (410 once resolved). Token-keyed API endpoints share validation with the legacy by-numeric-id paths.
 - **Shortlink rotation** — `app/Http/Controllers/Api/ShortlinkController.php` — every click re-shortens the canonical destination through the configured publisher API with a `?_r=…` cache-buster so providers (btcut/cuty/exe/shrtfly) that de-dup server-side mint a distinct slug per rotation. Failure degrades to the cached `target_url` rather than 500ing the click.
-- **Bot scoring** — `app/BotDetection/ScoreEngine.php` — 9 weighted signals → tier (`trust` → `suspect` → `likely_bot` → `banned`). Includes JA4 family check (`Ja4Capture` middleware normalises `cf-ja4` / `x-tls-ja4` / `x-ja4` / `x-sp-ja4` into a canonical header) and a static `DATACENTER_ASNS` defence-in-depth signal alongside the live IPHub / ProxyCheck composite.
+- **Bot scoring** — `app/BotDetection/ScoreEngine.php` — 12 weighted signals → tier (`trust` → `suspect` → `likely_bot` → `banned`), with operator-tunable per-signal weights (`BotSignalWeight` table). New signals include registration burst (signup cadence) + payout burst (withdrawal cadence anomaly). Every evaluation lands in `BotScoreHistory` for audit trail. Includes JA4 family check (`Ja4Capture` middleware normalises `cf-ja4` / `x-tls-ja4` / `x-ja4` / `x-sp-ja4` into a canonical header) and a static `DATACENTER_ASNS` defence-in-depth signal alongside the live IPHub / ProxyCheck composite.
 - **IP reputation** — `app/IpReputation/` — three providers behind `CompositeProvider` + `CachedProvider`: `MaxMindAsnProvider` (offline GeoLite2-ASN .mmdb lookup), `IpHubProvider`, `ProxyCheckProvider`. MaxMind queried first because it's local + sub-millisecond.
-- **Offerwall integration** — `app/Offerwall/` — adapter pattern; `BitcoTaskAdapter` ships out of the box.
+- **Internal inventory** — `app/Models/InternalArticle`, `InternalArticleView` — operator-authored articles directly on the platform (not Offerwall). Per-click auth tokens, server-side completion tracking.
+- **Offerwall integration** — `app/Offerwall/` — adapter pattern; `BitcoTaskAdapter` ships out of the box. Per-(user, IP) offer scope for BitcoTasks REST API.
 - **Shortener integration** — `app/Shortlinks/Providers/` — `GenericShortenerClient` (query-token, btcut/cuty/exe/shrtfly) and `OuoShortenerClient` (path-token, ouo). Adding a new query-family provider is one config entry.
 - **Admin credential UI** — `app/Filament/Resources/ShortlinkProviderCredentialResource.php` — encrypted-at-rest tokens, "Test" action that probes the live API.
 - **Payout** — `app/Payout/FaucetPayClient.php` — `POST /api/v1/send`, `requires_review` gate for `suspect+` tiers.
-- **Health** — `app/Http/Controllers/HealthController.php` — `/up` returns 503 on critical down (DB / Redis), 200 + `status: degraded` on optional component issues, with stable detail codes for dashboards.
+- **Health** — `app/Http/Controllers/HealthController.php` — `/up` returns 503 on critical down (DB / Redis), 200 + `status: degraded` on non-critical issues (MaxMind, shortlinks, IP reputation, FaucetPay queue backlog, bot-detection pipeline, earning inventory liveness), with stable detail codes for dashboards.
+- **Audit & analytics** — `AdminAuditLog` for admin action tracking, `BotScoreHistory` for evaluation trail, Filament dashboard widgets (earning activity, payout volume, bot tier trends), weekly operator email summary via `SendOperatorWeeklySummaryCommand`.
 
 ## Testing & Quality Gates
 
