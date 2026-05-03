@@ -8,6 +8,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`Test embed` operator action on `/admin/ptc-ads`.** Same
+  IframeEmbedProbe used by the advertiser flow now surfaces as a
+  one-click row action visible only on iframe-mode ads with a
+  non-empty target_url. Probe verdict toasts as a Filament
+  Notification (success/danger). Lets the operator spot-check an
+  in-flight campaign without waiting for the advertiser-side
+  warning to land.
+
+### Fixed
+
+- ScoreEngine tier-escalation notifications were using
+  `Filament\Notifications\Actions\Action`, which does not exist
+  in Filament 4 (the notification action class is
+  `Filament\Actions\Action`). The outer try/catch silently
+  swallowed the resulting class-not-found so notifications never
+  reached the `notifications` table. Switching the import
+  resurrects the feature; the unit test now exercises the full
+  path. AdminPanelProvider also gains `default()` so URL helpers
+  like `Resource::getUrl()` resolve from worker / CLI contexts.
+
+### Added
+
 - **Iframe-mode preflight on advertiser submission.** When the
   advertiser picks `display_mode=iframe` for a PTC campaign,
   `IframeEmbedProbe` HEADs the destination URL and inspects

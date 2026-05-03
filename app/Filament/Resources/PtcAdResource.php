@@ -9,9 +9,11 @@ use App\Models\BalanceLedger;
 use App\Models\PtcAd;
 use App\Models\PtcView;
 use App\Services\AdminAuditor;
+use App\Services\IframeEmbedProbe;
 use BackedEnum;
 use Filament\Actions;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas;
 use Filament\Schemas\Schema;
@@ -254,6 +256,46 @@ class PtcAdResource extends Resource
                         try {
                             Mail::to($r->advertiser->email)->queue(new AdRejectedEmail($r->fresh()));
                         } catch (\Throwable $e) {
+                        }
+                    }),
+                // Operator-side iframe preflight. Mirrors the advertiser-
+                // facing probe in AdvertiseController but lives on the
+                // table so the operator can spot-check an existing ad
+                // (e.g. when an advertiser complains "my campaign isn't
+                // showing"). Only surfaces for iframe-mode rows because
+                // window-mode embedding is unconditional.
+                Actions\Action::make('test_iframe')
+                    ->label('Test embed')
+                    ->icon('heroicon-o-window')
+                    ->color('warning')
+                    ->visible(fn (PtcAd $r) => $r->display_mode === 'iframe' && filled($r->target_url))
+                    ->action(function (PtcAd $r): void {
+                        try {
+                            $verdict = app(IframeEmbedProbe::class)->probe((string) $r->target_url);
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('Probe error')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        if ($verdict['embeddable']) {
+                            Notification::make()
+                                ->title('Embeddable')
+                                ->body($verdict['blocker'] === 'probe_failed'
+                                    ? ($verdict['detail'] ?? 'Probe inconclusive — defaulting to embeddable.')
+                                    : 'No iframe-blocking headers detected.')
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title('Not embeddable')
+                                ->body($verdict['detail'] ?? $verdict['blocker'] ?? 'unknown')
+                                ->danger()
+                                ->send();
                         }
                     }),
                 Actions\EditAction::make(),

@@ -7,7 +7,7 @@ use App\Filament\Resources\UserResource;
 use App\Models\BotScore;
 use App\Models\BotScoreHistory;
 use App\Models\User;
-use Filament\Notifications\Actions\Action;
+use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Carbon;
 
