@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Operator-tunable bot signal weights via Filament.** New
+  `bot_signal_weights` table + `BotSignalWeight` model + Filament
+  resource at `/admin/bot-signal-weights` (Inventory group). DB
+  rows shadow the `satpeek.bot_score.weights` config defaults at
+  boot time so noisy signals can be dialled down (or new
+  high-precision signals dialled up) without a redeploy.
+  `is_enabled=false` is the kill switch — the signal still
+  evaluates for transparency in `BotScore.signals` JSON but
+  contributes 0 to the composite score. Mirrors the merge
+  pattern already used for `OfferwallProviderSetting` /
+  `ShortlinkProviderCredential`. 3 new tests pin override,
+  disable-zeroes, and config-passthrough cases.
+
 ## [0.7.0] — 2026-05-04
 
 Theme: operator visibility + invariant hardening across the

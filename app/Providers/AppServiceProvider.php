@@ -27,6 +27,7 @@ use App\IpReputation\Adapters\MaxMindAsnProvider;
 use App\IpReputation\Adapters\NullProvider;
 use App\IpReputation\Adapters\ProxyCheckProvider;
 use App\IpReputation\Contracts\IpReputationProvider;
+use App\Models\BotSignalWeight;
 use App\Models\OfferwallProviderSetting;
 use App\Models\ShortlinkProviderCredential;
 use App\Offerwall\AdapterRegistry;
@@ -177,7 +178,41 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        self::applyBotSignalWeightOverrides();
         $this->registerRateLimiters();
+    }
+
+    /**
+     * Merge `BotSignalWeight` DB rows over the env-driven defaults and
+     * write the result back to `config('satpeek.bot_score.weights')`
+     * so the rest of the app keeps reading a single source.
+     *
+     * - DB row `is_enabled = false` → weight forced to 0 (signal still
+     *   evaluated for transparency in the BotScore.signals JSON, but
+     *   contributes nothing to the composite score).
+     * - Schema-missing environments (early-boot console, fresh test DB
+     *   before migrations) silently degrade to the config defaults,
+     *   mirroring the offerwall + shortlink-credential resolvers.
+     */
+    private static function applyBotSignalWeightOverrides(): void
+    {
+        try {
+            $rows = BotSignalWeight::all();
+        } catch (\Throwable) {
+            return;
+        }
+
+        $weights = (array) config('satpeek.bot_score.weights', []);
+        foreach ($rows as $row) {
+            $name = (string) $row->name;
+            if (! (bool) $row->is_enabled) {
+                $weights[$name] = 0.0;
+
+                continue;
+            }
+            $weights[$name] = (float) $row->weight;
+        }
+        config()->set('satpeek.bot_score.weights', $weights);
     }
 
     /**
