@@ -35,7 +35,13 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [LoginController::class, 'store'])->name('login.store');
 
     Route::get('/forgot-password', [PasswordResetController::class, 'showRequest'])->name('password.request');
-    Route::post('/forgot-password', [PasswordResetController::class, 'sendLink'])->name('password.email');
+    // Without throttling, an attacker can hammer this endpoint to
+    // bomb a target inbox or enumerate valid email addresses through
+    // queue-job timing differences. 5/min/IP matches the email-
+    // verification resend rate.
+    Route::post('/forgot-password', [PasswordResetController::class, 'sendLink'])
+        ->middleware('throttle:5,1')
+        ->name('password.email');
     Route::get('/reset-password/{token}', [PasswordResetController::class, 'showReset'])->name('password.reset');
     Route::post('/reset-password', [PasswordResetController::class, 'reset'])->name('password.update');
 });

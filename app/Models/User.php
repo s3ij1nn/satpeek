@@ -54,6 +54,18 @@ class User extends Authenticatable implements FilamentUser, HasName, MustVerifyE
         return $panel->getId() !== 'admin' || (bool) $this->is_admin;
     }
 
+    /**
+     * Includes admin-only fields (`balance_sat`, `is_admin`, `is_banned`,
+     * `ban_reason`) so the Filament UserResource form can save them
+     * via the framework's standard `fill()` path. Non-admin code MUST
+     * NOT mass-assign these from request input — every controller in
+     * `app/Http/Controllers` builds the create/update payload from
+     * validated explicit fields, never from `$request->all()`. A grep
+     * for `$request->all()` is intentionally zero hits across `app/`.
+     * If you add a new code path that mass-assigns from a request,
+     * either swap to an explicit field map or guard the admin-only
+     * fields with `$guarded = [...]` instead.
+     */
     protected $fillable = [
         'username',
         'email',
@@ -62,8 +74,7 @@ class User extends Authenticatable implements FilamentUser, HasName, MustVerifyE
         'referrer_id',
         'referral_code',
         'registration_ip',
-        // The following are admin-only — exposed via Filament UserResource.
-        // The trajectory captcha + signup form do NOT mass-assign these.
+        // Admin-only — see class docblock above.
         'balance_sat',
         'is_admin',
         'is_banned',

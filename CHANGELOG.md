@@ -6,6 +6,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Captcha-bypass at /complete closed (CRITICAL).** All three
+  earn-complete endpoints (`/api/ptc/{id}/complete`,
+  `/api/shortlinks/{id}/complete`,
+  `/api/internal-articles/auth/{token}/complete`) used to validate
+  `captcha_challenge_id` as `required|string` but never read the
+  value. A bot bypassing the captcha widget could claim the
+  reward by POSTing any string. New `App\Captcha\CaptchaConsumer`
+  service atomically consumes the row inside a `lockForUpdate()`
+  transaction, requiring `status='verified'`, user-binding match,
+  and single-use semantics (verified→consumed flip prevents
+  cross-claim reuse). 4 regression tests pin: unverified-id
+  rejected, fake-id rejected, consumed-id rejected on second
+  use, cross-user theft rejected.
+
+- **Login IP-only floor + /forgot-password throttle.** Login was
+  throttled per `(email, IP)` only — credential stuffing across
+  rotating addresses from one IP was uncapped. Added a parallel
+  IP-only bucket (20/min) ticked on every attempt regardless of
+  per-email outcome, so total login load from one source has a
+  hard ceiling. `POST /forgot-password` had no throttle at all,
+  enabling mail-bombing + timing-based account enumeration. Added
+  `throttle:5,1` matching the email-verification resend rate.
+
+- **`User` model `$fillable` defense-in-depth note.** Documented
+  the maintainer-facing constraint that admin-only fields
+  (`balance_sat`, `is_admin`, `is_banned`, `ban_reason`) stay
+  in `$fillable` only because Filament's standard save path uses
+  `fill()`. Verified that no controller in `app/Http/Controllers`
+  uses `$request->all()` (zero greps in tree) so mass-assign
+  promotion-to-admin is structurally impossible today. Future
+  call-site additions must build payload from explicit validated
+  fields.
+
 ### Fixed
 
 - **Code-review pass on the post-v0.7.0 work.** Three issues

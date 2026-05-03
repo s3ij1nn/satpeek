@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\BotDetection\PolicyEnforcer;
+use App\Captcha\CaptchaConsumer;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\ShortlinkClick;
@@ -190,6 +191,16 @@ class ShortlinkController extends Controller
         ]);
         if (! hash_equals($click->epoch_token, (string) $request->input('epoch_token'))) {
             return response()->json(['error' => 'token_mismatch'], 422);
+        }
+        // Atomically consume the captcha challenge the frontend solved
+        // before posting /complete. Without this, the field would be
+        // accepted but unverified — a bot bypassing the captcha widget
+        // could claim the reward by POSTing any string. Single-use:
+        // the consumer flips the row from `verified` to `consumed`
+        // inside its own transaction so the same challenge_id can't
+        // be reused across two different click claims.
+        if (! CaptchaConsumer::consume((string) $request->input('captcha_challenge_id'), $user)) {
+            return response()->json(['error' => 'captcha_required'], 422);
         }
         // Minimum round-trip floor: from the moment /start was called to
         // the claim, at least N seconds must have elapsed. This is the

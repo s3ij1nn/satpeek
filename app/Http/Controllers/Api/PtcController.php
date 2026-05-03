@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\BotDetection\PolicyEnforcer;
+use App\Captcha\CaptchaConsumer;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
@@ -162,6 +163,14 @@ class PtcController extends Controller
         ]);
         if (! hash_equals($view->epoch_token, (string) $request->input('epoch_token'))) {
             return response()->json(['error' => 'token_mismatch'], 422);
+        }
+        // Atomically consume the captcha challenge the frontend solved
+        // before posting /complete. See CaptchaConsumer for the
+        // single-use semantics. Without this the field would be
+        // accepted but unverified — a bot could claim by POSTing any
+        // string for `captcha_challenge_id`.
+        if (! CaptchaConsumer::consume((string) $request->input('captcha_challenge_id'), $user)) {
+            return response()->json(['error' => 'captcha_required'], 422);
         }
 
         $minHeartbeats = (int) ceil($view->heartbeats_expected * 0.7);

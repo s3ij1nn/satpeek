@@ -37,11 +37,28 @@ class LoginController extends Controller
         ]);
 
         $throttleKey = Str::lower($validated['email']).'|'.$request->ip();
+        // IP-only floor: caps total login attempts from one source
+        // regardless of which email is targeted, blocking credential-
+        // stuffing rotation that would otherwise pass the per-(email,IP)
+        // limit by switching usernames. 20/min is loose enough that a
+        // shared NAT (campus / mobile) doesn't trip on legitimate
+        // simultaneous sign-ins.
+        $ipFloorKey = 'login-ip|'.$request->ip();
+        if (RateLimiter::tooManyAttempts($ipFloorKey, 20)) {
+            $seconds = RateLimiter::availableIn($ipFloorKey);
+
+            return $this->fail($isAjax, 'rate_limited', "Too many attempts. Try again in {$seconds}s.", 429);
+        }
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);
 
             return $this->fail($isAjax, 'rate_limited', "Too many attempts. Try again in {$seconds}s.", 429);
         }
+        // Increment the IP floor on EVERY attempt (not just failures) so
+        // an attacker can't pad their IP budget with successful logins
+        // to other accounts they control. Per-(email,IP) `hit()` calls
+        // below stay failure-only since legitimate users do succeed.
+        RateLimiter::hit($ipFloorKey, 60);
 
         $points = json_decode($validated['captcha_points'], true);
         if (! is_array($points) || empty($points)) {

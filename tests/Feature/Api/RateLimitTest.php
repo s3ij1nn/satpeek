@@ -130,4 +130,17 @@ class RateLimitTest extends TestCase
         $blocked = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
         $blocked->assertStatus(429);
     }
+
+    public function test_forgot_password_endpoint_is_throttled(): void
+    {
+        // Without the route-level `throttle:5,1`, an attacker can bomb
+        // a target inbox / enumerate addresses via mail-job timing.
+        // 5 requests must be allowed; the 6th must 429.
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/forgot-password', ['email' => 'spam@example.com']);
+        }
+
+        $blocked = $this->postJson('/forgot-password', ['email' => 'spam@example.com']);
+        $blocked->assertStatus(429);
+    }
 }
