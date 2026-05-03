@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-05-04
+
+Theme: operator visibility + invariant hardening across the
+earning surfaces. Adds the internal "read & earn" article
+inventory as a third earning track alongside PTC + shortlinks,
+notifies admins on bot tier escalations, plots the trail with
+new dashboard widgets, ships a centralised operator audit log,
+and applies the same atomic-claim single-credit guarantee from
+shortlinks/PTC to withdraw flow + internal articles. API surface
+gains six named per-user / per-IP rate limiters and the
+advertiser flow gains an iframe-embeddability preflight so
+campaigns with iframe-hostile destinations get caught before
+viewers see a blank page.
+
 ### Added
 
 - **`Test embed` operator action on `/admin/ptc-ads`.** Same
@@ -1055,7 +1069,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/s3ij1nn/satpeek/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/s3ij1nn/satpeek/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/s3ij1nn/satpeek/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/s3ij1nn/satpeek/compare/v0.4.2...v0.4.3
