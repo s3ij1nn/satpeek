@@ -2,6 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BotScoreHistory;
+use App\Models\InternalArticle;
+use App\Models\PtcAd;
+use App\Models\ShortlinkProviderCredential;
+use App\Models\User;
 use App\Models\Withdrawal;
 use App\Offerwall\AdapterRegistry;
 use App\Shortlinks\ShortlinkProviderRegistry;
@@ -34,6 +39,8 @@ class HealthController extends Controller
             'ip_reputation_providers' => $this->checkIpReputation(),
             'offerwall_providers' => $this->checkOfferwallProviders(),
             'faucetpay' => $this->checkFaucetPay(),
+            'bot_detection' => $this->checkBotDetection(),
+            'earning_inventory' => $this->checkEarningInventory(),
         ];
 
         $hasCriticalDown = false;
@@ -240,6 +247,94 @@ class HealthController extends Controller
         }
 
         return ['status' => 'ok', 'critical' => false];
+    }
+
+    /**
+     * Did ScoreEngine actually run in the last 24 h? `bot_score_history`
+     * appends one row per evaluate(), so a 24-h gap on a non-empty user
+     * base means the signal pipeline has stalled — captcha verifies
+     * stopped firing, the cron is dead, or a new framework upgrade
+     * silently regressed the auto-trigger paths.
+     *
+     * `quiet_acceptable` (degraded → ok) when there are 0 users yet:
+     * a fresh install before its first signup shouldn't false-positive.
+     *
+     * @return array{status: string, critical: bool, detail?: string, evaluations_24h?: int}
+     */
+    private function checkBotDetection(): array
+    {
+        try {
+            $userCount = (int) User::query()->count();
+            if ($userCount === 0) {
+                return ['status' => 'ok', 'critical' => false, 'detail' => 'no_users_yet'];
+            }
+            $recent = (int) BotScoreHistory::query()
+                ->where('created_at', '>=', now()->subDay())
+                ->count();
+        } catch (Throwable) {
+            return ['status' => 'down', 'critical' => false, 'detail' => 'probe_failed'];
+        }
+
+        if ($recent === 0) {
+            return [
+                'status' => 'degraded',
+                'critical' => false,
+                'detail' => 'no_evaluations_24h',
+                'evaluations_24h' => 0,
+            ];
+        }
+
+        return ['status' => 'ok', 'critical' => false, 'evaluations_24h' => $recent];
+    }
+
+    /**
+     * Does the platform have ANYTHING for users to earn against right now?
+     * Counts active rows across the three earning surfaces:
+     *   - PtcAd: status=approved AND is_active=true
+     *   - ShortlinkProviderCredential: is_active=true AND api_token set
+     *   - InternalArticle: is_active=true
+     *
+     * If all three buckets are zero we flag `no_inventory_active` so a
+     * silent state where users hit /ptc /shortlinks /read-articles to
+     * find empty pages doesn't go undetected. Pure structural — counts
+     * only, no probe of upstream availability.
+     *
+     * @return array{status: string, critical: bool, detail?: string, ptc_ads?: int, shortlink_providers?: int, internal_articles?: int}
+     */
+    private function checkEarningInventory(): array
+    {
+        try {
+            $ptc = (int) PtcAd::query()
+                ->where('is_active', true)
+                ->where('status', 'approved')
+                ->count();
+            $shortlink = (int) ShortlinkProviderCredential::query()
+                ->where('is_active', true)
+                ->whereNotNull('api_token')
+                ->count();
+            $articles = (int) InternalArticle::query()
+                ->where('is_active', true)
+                ->count();
+        } catch (Throwable) {
+            return ['status' => 'down', 'critical' => false, 'detail' => 'probe_failed'];
+        }
+
+        $totalActive = $ptc + $shortlink + $articles;
+        $payload = [
+            'ptc_ads' => $ptc,
+            'shortlink_providers' => $shortlink,
+            'internal_articles' => $articles,
+        ];
+
+        if ($totalActive === 0) {
+            return array_merge([
+                'status' => 'degraded',
+                'critical' => false,
+                'detail' => 'no_inventory_active',
+            ], $payload);
+        }
+
+        return array_merge(['status' => 'ok', 'critical' => false], $payload);
     }
 
     /** @return array{status: string, critical: bool, detail?: string, sources?: array<int, string>} */

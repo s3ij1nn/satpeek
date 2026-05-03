@@ -2,6 +2,10 @@
 
 namespace Tests\Feature\Health;
 
+use App\Models\BotScoreHistory;
+use App\Models\InternalArticle;
+use App\Models\PtcAd;
+use App\Models\ShortlinkProviderCredential;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Shortlinks\ShortlinkProviderRegistry;
@@ -39,6 +43,8 @@ class HealthEndpointTest extends TestCase
                 'ip_reputation_providers' => ['status', 'critical'],
                 'offerwall_providers' => ['status', 'critical'],
                 'faucetpay' => ['status', 'critical'],
+                'bot_detection' => ['status', 'critical'],
+                'earning_inventory' => ['status', 'critical'],
             ],
         ]);
         $this->assertContains($response->json('status'), ['ok', 'degraded', 'down']);
@@ -58,6 +64,13 @@ class HealthEndpointTest extends TestCase
         config()->set('satpeek.bitcotask.s2s_secret', 'SECRET');
         config()->set('satpeek.faucetpay.api_key', 'FP-KEY');
         $this->app->forgetInstance(ShortlinkProviderRegistry::class);
+        // Seed minimal earning inventory so the new earning_inventory check
+        // doesn't drag the overall status to `degraded` here.
+        InternalArticle::create([
+            'title' => 'Smoke', 'body' => 'b',
+            'reward_sat' => 1, 'read_seconds' => 30, 'daily_limit_per_user' => 3,
+            'is_active' => true,
+        ]);
 
         $response = $this->getJson('/up');
 
@@ -269,5 +282,121 @@ class HealthEndpointTest extends TestCase
             ['bitcotask:bearer_token', 'bitcotask:s2s_secret'],
             $response->json('checks.offerwall_providers.missing'),
         );
+    }
+
+    public function test_bot_detection_no_users_yet_reports_ok(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('ok', $response->json('checks.bot_detection.status'));
+        $this->assertSame('no_users_yet', $response->json('checks.bot_detection.detail'));
+    }
+
+    public function test_bot_detection_users_present_but_no_recent_evaluations_reports_degraded(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        User::factory()->create();
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('degraded', $response->json('checks.bot_detection.status'));
+        $this->assertSame('no_evaluations_24h', $response->json('checks.bot_detection.detail'));
+        $this->assertSame(0, $response->json('checks.bot_detection.evaluations_24h'));
+    }
+
+    public function test_bot_detection_recent_evaluation_present_reports_ok(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        $u = User::factory()->create();
+        BotScoreHistory::create([
+            'user_id' => $u->id, 'score' => 0.10, 'tier' => 'trust', 'signals' => [],
+            'created_at' => now()->subHours(2),
+        ]);
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('ok', $response->json('checks.bot_detection.status'));
+        $this->assertSame(1, $response->json('checks.bot_detection.evaluations_24h'));
+    }
+
+    public function test_earning_inventory_zero_active_reports_degraded(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('degraded', $response->json('checks.earning_inventory.status'));
+        $this->assertSame('no_inventory_active', $response->json('checks.earning_inventory.detail'));
+        $this->assertSame(0, $response->json('checks.earning_inventory.ptc_ads'));
+        $this->assertSame(0, $response->json('checks.earning_inventory.shortlink_providers'));
+        $this->assertSame(0, $response->json('checks.earning_inventory.internal_articles'));
+    }
+
+    public function test_earning_inventory_with_active_ptc_ad_reports_ok(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        PtcAd::create([
+            'source' => 'mock', 'external_id' => 'ad-'.uniqid(),
+            'title' => 'x', 'target_url' => 'https://e.x', 'reward_sat' => 1,
+            'duration_sec' => 5, 'daily_limit_per_user' => 5,
+            'is_active' => true, 'status' => 'approved',
+        ]);
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('ok', $response->json('checks.earning_inventory.status'));
+        $this->assertSame(1, $response->json('checks.earning_inventory.ptc_ads'));
+    }
+
+    public function test_earning_inventory_counts_active_only(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+        // Inactive — must NOT count.
+        PtcAd::create([
+            'source' => 'mock', 'external_id' => 'ad-off-'.uniqid(),
+            'title' => 'off', 'target_url' => 'https://e.x', 'reward_sat' => 1,
+            'duration_sec' => 5, 'daily_limit_per_user' => 5,
+            'is_active' => false, 'status' => 'approved',
+        ]);
+        // Active but pending — must NOT count (only `approved`).
+        PtcAd::create([
+            'source' => 'user', 'external_id' => 'ad-pending-'.uniqid(),
+            'title' => 'pending', 'target_url' => 'https://e.x', 'reward_sat' => 1,
+            'duration_sec' => 5, 'daily_limit_per_user' => 5,
+            'is_active' => true, 'status' => 'pending_review',
+        ]);
+        InternalArticle::create([
+            'title' => 'live article', 'body' => 'b',
+            'reward_sat' => 1, 'read_seconds' => 30, 'daily_limit_per_user' => 3,
+            'is_active' => true,
+        ]);
+        // Inactive shortlink credential (token set but is_active=false) must NOT count.
+        ShortlinkProviderCredential::create([
+            'name' => 'mock', 'label' => 'mock', 'transport' => 'query',
+            'api_base' => 'https://m', 'api_token' => 'tk',
+            'is_active' => false,
+            'reward_sat' => 5, 'hold_seconds' => 5, 'daily_limit_per_user' => 5,
+        ]);
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame(0, $response->json('checks.earning_inventory.ptc_ads'));
+        $this->assertSame(1, $response->json('checks.earning_inventory.internal_articles'));
+        $this->assertSame(0, $response->json('checks.earning_inventory.shortlink_providers'));
+        // 1 active overall → status ok
+        $this->assertSame('ok', $response->json('checks.earning_inventory.status'));
     }
 }

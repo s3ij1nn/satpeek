@@ -8,6 +8,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Two new `/up` health checks.** Pull-side counterpart to the
+  weekly summary's push:
+  - `bot_detection`: counts ScoreEngine evaluations in the last 24 h
+    via `bot_score_history`. Zero on a non-empty user base means
+    the signal pipeline stalled (captcha auto-trigger regressed,
+    cron dead, etc) — flagged degraded with detail
+    `no_evaluations_24h`. A fresh install with zero users skips
+    the check (`no_users_yet`) so a brand-new deploy doesn't
+    false-positive.
+  - `earning_inventory`: counts active rows across the three
+    earning surfaces (PtcAd approved+active, ShortlinkProviderCredential
+    active+token-set, InternalArticle active). Zero across all
+    three flags `no_inventory_active` — silent state where users
+    land on /ptc, /shortlinks, /read-articles to find empty pages
+    goes undetected without this. Per-surface counts surface in
+    the response so dashboards can graph each.
+
 - **Weekly operator summary email.** New
   `satpeek:weekly-summary` Artisan command + `OperatorWeeklySummary`
   Mailable + `WeeklySummaryBuilder` service. Builds last-7-days
