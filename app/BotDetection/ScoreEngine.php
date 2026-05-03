@@ -10,6 +10,7 @@ use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ScoreEngine
 {
@@ -70,21 +71,41 @@ class ScoreEngine
 
         $tier = self::scoreToTier($score);
 
-        // Capture the previous tier BEFORE updateOrCreate overwrites it,
-        // so we can detect transitions and notify on escalations.
-        $previousTier = BotScore::query()
-            ->where('user_id', $user->id)
-            ->value('tier');
+        // Wrap the previous-tier read + updateOrCreate in a single
+        // transaction with a row lock so two concurrent evaluators
+        // (e.g. captcha verify racing the Re-score row action that
+        // bypasses the throttle) don't both observe `previousTier =
+        // 'trust'`, both flip to `banned`, and both fan-out duplicate
+        // admin notifications. The lock holds for the few-ms write
+        // window — same shape as the atomic-claim pattern we use on
+        // the earning-surface complete paths.
+        [$row, $previousTier] = DB::transaction(function () use ($user, $score, $tier, $detail) {
+            $existing = BotScore::query()
+                ->where('user_id', $user->id)
+                ->lockForUpdate()
+                ->first();
+            $previousTier = $existing?->tier;
 
-        $row = BotScore::updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'score' => $score,
-                'tier' => $tier,
-                'signals' => $detail,
-                'last_evaluated_at' => Carbon::now(),
-            ]
-        );
+            if ($existing) {
+                $existing->forceFill([
+                    'score' => $score,
+                    'tier' => $tier,
+                    'signals' => $detail,
+                    'last_evaluated_at' => Carbon::now(),
+                ])->save();
+                $row = $existing;
+            } else {
+                $row = BotScore::create([
+                    'user_id' => $user->id,
+                    'score' => $score,
+                    'tier' => $tier,
+                    'signals' => $detail,
+                    'last_evaluated_at' => Carbon::now(),
+                ]);
+            }
+
+            return [$row, $previousTier];
+        });
 
         // Append to the trail so the dashboard's tier-trend widget has data
         // to plot. updateOrCreate above only keeps the latest evaluation;

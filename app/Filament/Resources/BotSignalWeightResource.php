@@ -41,7 +41,12 @@ class BotSignalWeightResource extends Resource
 
     public static function form(Schema $schema): Schema
     {
-        $defaults = (array) config('satpeek.bot_score.weights', []);
+        // Pre-override snapshot captured by AppServiceProvider boot.
+        // Reading `bot_score.weights` directly here would surface the
+        // post-override values (the operator's own saved row) as the
+        // "default", losing visibility into the original config ship
+        // value the moment the first override is saved.
+        $defaults = (array) config('satpeek.bot_score.default_weights', config('satpeek.bot_score.weights', []));
         $names = array_keys($defaults);
 
         return $schema->components([
@@ -75,7 +80,12 @@ class BotSignalWeightResource extends Resource
 
     public static function table(Table $table): Table
     {
-        $defaults = (array) config('satpeek.bot_score.weights', []);
+        // Pre-override snapshot captured by AppServiceProvider boot.
+        // Reading `bot_score.weights` directly here would surface the
+        // post-override values (the operator's own saved row) as the
+        // "default", losing visibility into the original config ship
+        // value the moment the first override is saved.
+        $defaults = (array) config('satpeek.bot_score.default_weights', config('satpeek.bot_score.weights', []));
 
         return $table
             ->columns([

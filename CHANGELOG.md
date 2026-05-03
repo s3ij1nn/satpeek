@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Code-review pass on the post-v0.7.0 work.** Three issues
+  caught + closed:
+  - `ScoreEngine::evaluate()` had a TOCTOU window between the
+    previous-tier read and the `updateOrCreate`. Two concurrent
+    evaluators (e.g. captcha verify racing the Re-score row
+    action that bypasses the throttle) could both observe
+    `previousTier='trust'`, both flip to `banned`, and both
+    fan-out duplicate admin notifications. Wrapped the
+    read+write in a single transaction with `lockForUpdate()`
+    so only one transition fires per evaluation race.
+  - `AppServiceProvider::applyBotSignalWeightOverrides()` had a
+    catch-all `\Throwable` swallow with no log. A misconfigured
+    `DB_HOST` would silently regress every operator-saved weight
+    override. Now distinguishes "schema-missing" (legit
+    pre-migration / fresh test DB → silent skip) from any other
+    error (PDO connect, container resolution → `Log::warning()`).
+  - `BotSignalWeightResource` form + table read
+    `config('satpeek.bot_score.weights')` for the "Default"
+    column. After the boot merge, that key reflects the
+    post-override values — so the operator's first saved row
+    would shadow the file default the next time they viewed it.
+    Fixed by snapshotting the pre-override file weights into
+    `satpeek.bot_score.default_weights` at boot and reading from
+    that key for the "default" surface.
+
 ### Removed
 
 - **Dead `fetchShortlinkOffers()` bulk-pull from the offerwall

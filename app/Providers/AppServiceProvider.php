@@ -196,13 +196,38 @@ class AppServiceProvider extends ServiceProvider
      */
     private static function applyBotSignalWeightOverrides(): void
     {
+        // Snapshot the FILE defaults BEFORE we overwrite them so the
+        // operator-facing Filament resource can show "default" vs
+        // "current override" side-by-side. Without this snapshot the
+        // BotSignalWeightResource's "Default" column would shadow the
+        // first-saved override and confuse the operator next time
+        // they view the row.
+        $defaults = (array) config('satpeek.bot_score.weights', []);
+        config()->set('satpeek.bot_score.default_weights', $defaults);
+
         try {
             $rows = BotSignalWeight::all();
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            // Schema-missing is the legit pre-migration case (artisan
+            // migrate, fresh test DB before RefreshDatabase has run)
+            // and not worth logging — every test-suite run would emit
+            // noise. ANY OTHER error (PDO connect issue, container
+            // resolution error) is interesting because it silently
+            // regresses every override the operator has saved.
+            $msg = $e->getMessage();
+            $isSchemaMissing = str_contains($msg, 'no such table')           // sqlite
+                || str_contains($msg, 'does not exist')                       // pgsql
+                || str_contains($msg, "doesn't exist");                       // mysql
+            if (! $isSchemaMissing) {
+                \Illuminate\Support\Facades\Log::warning(
+                    'BotSignalWeight boot override skipped: '.$msg
+                );
+            }
+
             return;
         }
 
-        $weights = (array) config('satpeek.bot_score.weights', []);
+        $weights = $defaults;
         foreach ($rows as $row) {
             $name = (string) $row->name;
             if (! (bool) $row->is_enabled) {
