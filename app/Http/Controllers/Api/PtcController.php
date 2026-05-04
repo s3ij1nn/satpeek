@@ -219,10 +219,14 @@ class PtcController extends Controller
 
             // Decrement the advertiser's view budget. User-submitted ads only;
             // admin-created rows (user_id = null) have no budget to decrement.
+            // The atomic UPDATE ... SET views_remaining = views_remaining - 1
+            // on the row already gives us the new value via in-memory mutation
+            // (Eloquent's decrement() refreshes the attribute) so we don't
+            // need a second SELECT to learn the post-decrement count.
             $ad = $view->ad;
             if ($ad->user_id !== null) {
                 $ad->decrement('views_remaining');
-                if ((int) $ad->fresh()->views_remaining <= 0) {
+                if ((int) $ad->views_remaining <= 0) {
                     $ad->update(['status' => 'completed', 'is_active' => false]);
                 }
             }

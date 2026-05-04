@@ -23,6 +23,55 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `(status, created_at)` index. 2 new tests pin the
   status-bucket pivot + zero-state shape.
 
+- **Composite index on `shortlink_clicks` for the per-(user,
+  provider) daily-limit guard.** Every
+  `/api/shortlinks/start/{provider}` call asks "how many
+  verified clicks has this user already burned on this
+  provider today?". The existing `(user_id, created_at)` index
+  forced Postgres to filter the matched range by
+  `provider_name + status` in the heap; the new
+  `(user_id, provider_name, status, created_at)` covering
+  index lets the planner walk one index range. Same shape
+  on SQLite (covering index, no heap). Migration is
+  index-only — no schema change.
+
+### Changed
+
+- **Filament list resources eager-load their listed
+  relations.** `/admin/users` now eager-loads `botScore` (was
+  one extra SELECT per row to render the tier + score
+  columns), `/admin/ptc-views` eager-loads `user` + `ad` (two
+  extras per row), `/admin/shortlink-clicks` eager-loads
+  `user`. With default page size 25 that drops the worst
+  case from ~75 queries per page render to 4. Each
+  `getEloquentQuery()` selects only `id` + the column the
+  table renders, so the eager load itself stays small.
+
+- **`UserResource` "Recent IP history" panel: 1+N → 2 queries.**
+  The form previously rendered 10 IP rows and ran one
+  `count(distinct user_id)` per row to compute siblings (other
+  users seen on the same IP). Replaced with a single grouped
+  `SELECT ip, count(distinct user_id) ... GROUP BY ip` keyed
+  by the 10 IPs already in hand, then pivoted to a map. Same
+  output, one round-trip instead of ten.
+
+- **`ReferralPayout::settle()`: two UPDATEs collapsed into
+  one.** The referrer-credit path was issuing
+  `users.balance_sat += commission` and
+  `users.total_earned_sat += commission` as two separate
+  `DB::table('users')->increment()` calls — one round-trip
+  per counter against the same row. Collapsed to a single
+  `UPDATE` with both columns in one `SET`, halving the write
+  cost on every credited earning event with a referrer.
+
+- **`PtcController::finishView()`: redundant `$ad->fresh()` dropped.**
+  After `$ad->decrement('views_remaining')` Eloquent already
+  refreshes the in-memory attribute, so the immediate
+  `$ad->fresh()->views_remaining` was an extra `SELECT` that
+  re-fetched the same row inside the credit transaction.
+  Now reads `$ad->views_remaining` directly. Saves one query
+  per completed PTC view that hits the budget-exhaust branch.
+
 ## [0.9.0] — 2026-05-04
 
 Theme: security follow-through + operator triage + landing-page

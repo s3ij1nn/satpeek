@@ -9,6 +9,7 @@ use Filament\Actions;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 /**
@@ -87,6 +88,15 @@ class ShortlinkClickResource extends Resource
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);
+    }
+
+    /**
+     * Eager-load the user relation so the listing's "Clicker" column
+     * doesn't fire one query per row (the column reads `user.username`).
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with('user:id,username');
     }
 
     public static function canCreate(): bool

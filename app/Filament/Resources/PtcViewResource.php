@@ -9,6 +9,7 @@ use Filament\Actions;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use UnitEnum;
 
 /**
@@ -96,6 +97,18 @@ class PtcViewResource extends Resource
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);
+    }
+
+    /**
+     * Eager-load the user + ad relations so the listing's `user.username`
+     * and `ad.title` columns don't fire two queries per row.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with([
+            'user:id,username',
+            'ad:id,title',
+        ]);
     }
 
     public static function canCreate(): bool

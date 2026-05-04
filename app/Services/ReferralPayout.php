@@ -82,8 +82,15 @@ class ReferralPayout
                 'reference_type' => $refType,
                 'reference_id' => $refId,
             ]);
-            DB::table('users')->where('id', $user->referrer_id)->increment('balance_sat', $commission);
-            DB::table('users')->where('id', $user->referrer_id)->increment('total_earned_sat', $commission);
+            // Single UPDATE for both counters — two separate increment()
+            // calls would issue two UPDATEs against the same row, doubling
+            // the write cost on the referrer record on every credited event.
+            DB::table('users')
+                ->where('id', $user->referrer_id)
+                ->update([
+                    'balance_sat' => DB::raw('balance_sat + '.$commission),
+                    'total_earned_sat' => DB::raw('total_earned_sat + '.$commission),
+                ]);
             Referral::query()
                 ->where('referrer_id', $user->referrer_id)
                 ->where('referred_id', $user->id)

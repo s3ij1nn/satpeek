@@ -16,6 +16,7 @@ use Filament\Schemas;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 use UnitEnum;
 
@@ -119,6 +120,19 @@ class UserResource extends Resource
                         if ($rows->isEmpty()) {
                             return new HtmlString('<em style="color:#888">No auth observations yet.</em>');
                         }
+
+                        // One grouped query for all 10 IPs instead of 10
+                        // separate count(distinct user_id) round-trips. Pivots
+                        // to ip => sibling_count map; missing entries mean
+                        // zero siblings.
+                        $ips = $rows->pluck('ip')->unique()->values()->all();
+                        $siblingCounts = UserIpObservation::query()
+                            ->whereIn('ip', $ips)
+                            ->where('user_id', '!=', $record->id)
+                            ->selectRaw('ip, count(distinct user_id) as sibling_count')
+                            ->groupBy('ip')
+                            ->pluck('sibling_count', 'ip');
+
                         $html = '<table style="border-collapse:collapse;font-size:0.875rem;width:100%">'.
                             '<thead><tr>'.
                             '<th style="text-align:left;padding-right:1rem">IP</th>'.
@@ -128,11 +142,7 @@ class UserResource extends Resource
                             '<th style="text-align:left">Last seen</th>'.
                             '</tr></thead><tbody>';
                         foreach ($rows as $row) {
-                            $siblings = (int) UserIpObservation::query()
-                                ->where('ip', $row->ip)
-                                ->where('user_id', '!=', $record->id)
-                                ->distinct()
-                                ->count('user_id');
+                            $siblings = (int) ($siblingCounts[$row->ip] ?? 0);
                             $color = $siblings === 0 ? '#22c55e' : ($siblings >= 3 ? '#ef4444' : '#eab308');
                             $html .= sprintf(
                                 '<tr><td style="font-family:monospace;padding-right:1rem">%s</td><td style="padding-right:1rem">%s</td><td style="padding-right:1rem">%d</td><td style="color:%s;padding-right:1rem">%d</td><td>%s</td></tr>',
@@ -205,6 +215,15 @@ class UserResource extends Resource
                 Actions\EditAction::make(),
             ])
             ->defaultSort('created_at', 'desc');
+    }
+
+    /**
+     * Eager-load botScore so the listing's tier + score columns don't fire
+     * one botScore lookup per row when paginating /admin/users.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with('botScore');
     }
 
     public static function getPages(): array
