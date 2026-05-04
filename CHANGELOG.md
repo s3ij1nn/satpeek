@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-05-04
+
+Theme: independent security review pass + operator visibility
+deepening. Closes one CRITICAL (captcha-bypass at /complete) and
+two HIGH issues (SSRF on iframe preflight, unauthenticated
+faucetpay placeholder), while landing operator-tunable bot
+signal weights, weekly operator summary email, two more `/up`
+health checks, three new captcha curve flavours, and a fix-pass
+on the prior release's TOCTOU + silent-failure findings.
+
 ### Security
 
 - **SSRF guard on `IframeEmbedProbe` (HIGH).** The advertiser-side
@@ -1245,7 +1255,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/s3ij1nn/satpeek/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/s3ij1nn/satpeek/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/s3ij1nn/satpeek/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/s3ij1nn/satpeek/compare/v0.4.3...v0.5.0
