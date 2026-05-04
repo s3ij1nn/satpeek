@@ -38,17 +38,29 @@ return Application::configure(basePath: dirname(__DIR__))
         // local dev, etc). Without this, Laravel sees the proxy→app hop as
         // plain HTTP and route()/url() generate http:// links — those then
         // get blocked as mixed content when the page itself is loaded over
-        // HTTPS through the proxy. `TRUSTED_PROXIES=*` is the right default
-        // when the origin firewall already restricts inbound to your CDN /
-        // tunnel; tighten to a CIDR list in stricter deployments.
-        $middleware->trustProxies(
-            at: env('TRUSTED_PROXIES', '*'),
-            headers: Request::HEADER_X_FORWARDED_FOR
-                | Request::HEADER_X_FORWARDED_HOST
-                | Request::HEADER_X_FORWARDED_PORT
-                | Request::HEADER_X_FORWARDED_PROTO
-                | Request::HEADER_X_FORWARDED_AWS_ELB,
-        );
+        // HTTPS through the proxy.
+        //
+        // SECURITY: default is `null` (trust nothing). Setting
+        // `TRUSTED_PROXIES=*` accepts X-Forwarded-* from ANY source — every
+        // BitcoTask-style IP-allowlisted webhook, the IpReputationGate,
+        // SharedIpSignal, and rate-limit-per-IP buckets all see the spoofed
+        // value. Use `*` only when an upstream firewall already restricts
+        // inbound traffic to your CDN / tunnel ranges; otherwise specify
+        // `TRUSTED_PROXIES=<comma-separated CIDR list>` (e.g. Cloudflare's
+        // published IP ranges). Local Docker without a proxy works fine
+        // with the null default — Laravel reads REMOTE_ADDR directly and
+        // never engages the trusted-proxy code path.
+        $trustedProxies = env('TRUSTED_PROXIES');
+        if (! is_null($trustedProxies) && $trustedProxies !== '') {
+            $middleware->trustProxies(
+                at: $trustedProxies,
+                headers: Request::HEADER_X_FORWARDED_FOR
+                    | Request::HEADER_X_FORWARDED_HOST
+                    | Request::HEADER_X_FORWARDED_PORT
+                    | Request::HEADER_X_FORWARDED_PROTO
+                    | Request::HEADER_X_FORWARDED_AWS_ELB,
+            );
+        }
 
         // Normalise upstream JA4 TLS fingerprint headers (cf-ja4 / x-tls-ja4
         // / x-ja4 / x-sp-ja4) into the canonical X-SP-JA4 before any app code

@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **`TRUSTED_PROXIES` default flipped from `*` to empty (CRITICAL).**
+  The previous default trusted X-Forwarded-* from any source. An
+  attacker reaching the origin directly could spoof the visitor IP
+  and bypass every IP-keyed signal: BitcoTask webhook IP allowlist,
+  IpReputationGate, SharedIpSignal, per-IP rate-limit buckets.
+  Now the default is to trust nothing — operators behind a real
+  proxy MUST set `TRUSTED_PROXIES` to a comma-separated CIDR list
+  (Cloudflare's published ranges, ALB CIDRs, etc) or to `*` if
+  they accept the spoofing risk and have an upstream firewall
+  restricting inbound. `.env.example` documents the three forms
+  with their security implications. Local Docker without a proxy
+  in front works unchanged with the empty default — Laravel reads
+  REMOTE_ADDR directly when trustedProxies isn't engaged.
+  Local dev `.env` adds `TRUSTED_PROXIES=*` so ngrok testing
+  keeps working without per-deploy guesswork.
+
 ## [0.8.0] — 2026-05-04
 
 Theme: independent security review pass + operator visibility
