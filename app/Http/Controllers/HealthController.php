@@ -12,6 +12,7 @@ use App\Offerwall\AdapterRegistry;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
@@ -266,13 +267,20 @@ class HealthController extends Controller
     private function checkBotDetection(): array
     {
         try {
-            $userCount = (int) User::query()->count();
+            // Two count queries cached together for HEALTH_PROBE_CACHE_SECONDS
+            // (default 30 s). /up is hit every few seconds by load balancers
+            // and uptime probes; the user count + 24-h evaluation count
+            // change on a much slower cadence than that, so re-issuing the
+            // queries on every request is pure DB load.
+            [$userCount, $recent] = self::probeCached('health:bot_detection', fn (): array => [
+                (int) User::query()->count(),
+                (int) BotScoreHistory::query()
+                    ->where('created_at', '>=', now()->subDay())
+                    ->count(),
+            ]);
             if ($userCount === 0) {
                 return ['status' => 'ok', 'critical' => false, 'detail' => 'no_users_yet'];
             }
-            $recent = (int) BotScoreHistory::query()
-                ->where('created_at', '>=', now()->subDay())
-                ->count();
         } catch (Throwable) {
             return ['status' => 'down', 'critical' => false, 'detail' => 'probe_failed'];
         }
@@ -306,17 +314,23 @@ class HealthController extends Controller
     private function checkEarningInventory(): array
     {
         try {
-            $ptc = (int) PtcAd::query()
-                ->where('is_active', true)
-                ->where('status', 'approved')
-                ->count();
-            $shortlink = (int) ShortlinkProviderCredential::query()
-                ->where('is_active', true)
-                ->whereNotNull('api_token')
-                ->count();
-            $articles = (int) InternalArticle::query()
-                ->where('is_active', true)
-                ->count();
+            // Three count queries cached together for HEALTH_PROBE_CACHE_SECONDS
+            // (default 30 s). Inventory turnover is admin-driven and minutes-
+            // scale at fastest; the cached snapshot is plenty fresh for a
+            // health endpoint. Bypassed in tests via TTL=0 — see config/satpeek.
+            [$ptc, $shortlink, $articles] = self::probeCached('health:earning_inventory', fn (): array => [
+                (int) PtcAd::query()
+                    ->where('is_active', true)
+                    ->where('status', 'approved')
+                    ->count(),
+                (int) ShortlinkProviderCredential::query()
+                    ->where('is_active', true)
+                    ->whereNotNull('api_token')
+                    ->count(),
+                (int) InternalArticle::query()
+                    ->where('is_active', true)
+                    ->count(),
+            ]);
         } catch (Throwable) {
             return ['status' => 'down', 'critical' => false, 'detail' => 'probe_failed'];
         }
@@ -376,6 +390,36 @@ class HealthController extends Controller
         }
 
         return ['status' => 'ok', 'critical' => false];
+    }
+
+    /**
+     * TTL for probe-result caching. Reads from config so tests can pin it
+     * to 0 (bypass cache, every probe re-queries) while production stays
+     * at a few-tens-of-seconds default.
+     */
+    private static function probeCacheTtl(): int
+    {
+        return max(0, (int) config('satpeek.health.probe_cache_seconds', 30));
+    }
+
+    /**
+     * Wraps a probe callback in cache when TTL > 0; otherwise invokes
+     * directly. Used to keep tests deterministic (TTL pinned to 0 in
+     * phpunit.xml) without forcing them to flush cache between probes.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $probe
+     * @return T
+     */
+    private static function probeCached(string $key, callable $probe): mixed
+    {
+        $ttl = self::probeCacheTtl();
+        if ($ttl <= 0) {
+            return $probe();
+        }
+
+        return Cache::remember($key, $ttl, $probe);
     }
 
     /** @return array{status: string, critical: bool, detail?: string, sources?: array<int, string>} */

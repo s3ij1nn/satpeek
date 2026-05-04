@@ -30,5 +30,6 @@
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="HEALTH_PROBE_CACHE_SECONDS" value="0" force="true"/>
     </php>
 </phpunit>

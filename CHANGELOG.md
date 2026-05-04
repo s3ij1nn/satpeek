@@ -72,6 +72,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Now reads `$ad->views_remaining` directly. Saves one query
   per completed PTC view that hits the budget-exhaust branch.
 
+- **`WeeklySummaryBuilder::payoutBuckets()`: 3 queries → 1.**
+  The operator weekly summary was issuing one `SELECT` per
+  withdrawal status (`sent` / `failed` / `hold`) plus a fourth
+  for the sent total. Collapsed to a single
+  `GROUP BY status, count(*), sum(amount_sat)` and pivoted to
+  the by-status map. Same payload, one round-trip.
+
+- **`/up` health probes for `bot_detection` + `earning_inventory`
+  cached for 30 s.** Load balancers and uptime monitors hit
+  `/up` every few seconds; the user count + 24-h evaluation
+  count + active inventory counts (5 queries total) were
+  re-executing every call. New `HEALTH_PROBE_CACHE_SECONDS`
+  config (default 30 s, pinned to 0 in tests via
+  `phpunit.xml`) wraps both probes in `Cache::remember`. With
+  `CACHE_STORE=array` in tests the cached path is bypassed
+  entirely so each test still sees fresh DB state. Drops
+  steady-state /up DB load by ~5 queries every 30 s.
+
+### Added
+
+- **`satpeek:prune-bot-score-history` retention command.**
+  ScoreEngine appends to `bot_score_history` on every login,
+  register, and captcha-success path — a moderately active
+  platform mints rows continuously and the JSON `signals`
+  blob isn't tiny. Default retention 90 days (well past the
+  widest dashboard window) with `--days` / `--dry-run` /
+  `--chunk` options. Chunked delete avoids long-held
+  Postgres locks under concurrent inserts (the table is on
+  the auth + captcha hot path). Scheduled at 03:15 UTC,
+  staggered 15 min after the captcha cleanup so the two
+  sweeps don't share an IO window. 5 new tests pin the
+  retention contract (window boundary, dry-run, custom days,
+  chunked drain, zero-state).
+
 ## [0.9.0] — 2026-05-04
 
 Theme: security follow-through + operator triage + landing-page

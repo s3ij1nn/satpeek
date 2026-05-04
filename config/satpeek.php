@@ -306,4 +306,14 @@ return [
             'asn_db' => env('MAXMIND_ASN_DB', ''),
         ],
     ],
+
+    'health' => [
+        // /up gets hammered by load balancers and uptime probes (sub-second
+        // cadence is normal). The earning-inventory + bot-detection counts
+        // change on a much slower clock — admin actions, batch evaluations
+        // — so caching the probe results for ~30 s drops query load on the
+        // public hot path without losing meaningful signal. Set to 0 to
+        // force every probe to re-query (used in tests).
+        'probe_cache_seconds' => (int) env('HEALTH_PROBE_CACHE_SECONDS', 30),
+    ],
 ];

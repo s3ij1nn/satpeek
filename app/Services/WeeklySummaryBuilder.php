@@ -87,30 +87,27 @@ class WeeklySummaryBuilder
      * at `failed`. Approximated here as any failed withdraw row in
      * the window.
      *
+     * Single GROUP BY status, sum(amount_sat) — sum is meaningful only
+     * for the `sent` row but cheap enough to compute everywhere.
+     *
      * @return array{sent_count: int, sent_total_sat: int, failed_count: int, hold_count: int}
      */
     private function payoutBuckets(Carbon $thisStart, Carbon $end): array
     {
-        $sent = Withdrawal::query()
-            ->where('status', 'sent')
+        $rows = Withdrawal::query()
+            ->whereIn('status', ['sent', 'failed', 'hold'])
             ->where('created_at', '>=', $thisStart)
             ->where('created_at', '<', $end)
-            ->selectRaw('count(*) as cnt, coalesce(sum(amount_sat), 0) as total_sat')
-            ->first();
+            ->selectRaw('status, count(*) as cnt, coalesce(sum(amount_sat), 0) as total_sat')
+            ->groupBy('status')
+            ->get()
+            ->keyBy(fn ($r) => (string) $r->getAttribute('status'));
 
         return [
-            'sent_count' => (int) ($sent->cnt ?? 0),
-            'sent_total_sat' => (int) ($sent->total_sat ?? 0),
-            'failed_count' => (int) Withdrawal::query()
-                ->where('status', 'failed')
-                ->where('created_at', '>=', $thisStart)
-                ->where('created_at', '<', $end)
-                ->count(),
-            'hold_count' => (int) Withdrawal::query()
-                ->where('status', 'hold')
-                ->where('created_at', '>=', $thisStart)
-                ->where('created_at', '<', $end)
-                ->count(),
+            'sent_count' => (int) ($rows->get('sent')?->getAttribute('cnt') ?? 0),
+            'sent_total_sat' => (int) ($rows->get('sent')?->getAttribute('total_sat') ?? 0),
+            'failed_count' => (int) ($rows->get('failed')?->getAttribute('cnt') ?? 0),
+            'hold_count' => (int) ($rows->get('hold')?->getAttribute('cnt') ?? 0),
         ];
     }
 
