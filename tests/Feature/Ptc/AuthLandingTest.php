@@ -118,7 +118,7 @@ class AuthLandingTest extends TestCase
             'heartbeats_expected' => 3,
             'heartbeats_received' => 3,
         ]);
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson(
@@ -186,14 +186,14 @@ class AuthLandingTest extends TestCase
         return PtcView::create(array_merge($defaults, $overrides));
     }
 
-    private function seedChallenge(): CaptchaChallenge
+    private function seedChallenge(?User $user = null): CaptchaChallenge
     {
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
         $issuedAt = Carbon::now()->subSeconds(3);
 
         return CaptchaChallenge::create([
             'challenge_id' => 'cc_test_'.uniqid(),
-            'user_id' => null,
+            'user_id' => $user?->id,
             'session_id' => 'test',
             'provider' => 'trajectory_trace',
             'seed' => 'test-seed',

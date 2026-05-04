@@ -141,7 +141,7 @@ class AuthLandingTest extends TestCase
             'started_at' => Carbon::now()->subSeconds(7),
         ]);
 
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson(
@@ -159,7 +159,10 @@ class AuthLandingTest extends TestCase
         $owner = User::factory()->create();
         $stranger = User::factory()->create();
         $click = $this->seedClick(['user_id' => $owner->id]);
-        $challenge = $this->seedChallenge();
+        // Bind to the stranger so they CAN consume their own captcha —
+        // the rejection here is from the click's owner-scoped lookup,
+        // not the captcha consumer.
+        $challenge = $this->seedChallenge($stranger);
         $challenge->update(['status' => 'verified']);
 
         $this->actingAs($stranger)->postJson(
@@ -205,14 +208,14 @@ class AuthLandingTest extends TestCase
         );
     }
 
-    private function seedChallenge(): CaptchaChallenge
+    private function seedChallenge(?User $user = null): CaptchaChallenge
     {
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
         $issuedAt = Carbon::now()->subSeconds(3);
 
         return CaptchaChallenge::create([
             'challenge_id' => 'cc_test_'.uniqid(),
-            'user_id' => null,
+            'user_id' => $user?->id,
             'session_id' => 'test',
             'provider' => 'trajectory_trace',
             'seed' => 'test-seed',

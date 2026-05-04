@@ -191,7 +191,7 @@ class ReadFlowTest extends TestCase
             'started_at' => Carbon::now()->subSeconds(35),
         ]);
 
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson(
@@ -216,7 +216,7 @@ class ReadFlowTest extends TestCase
         $start = $this->actingAs($user)->postJson("/api/internal-articles/start/{$a->id}")->json();
         // started_at = now → elapsed ~ 0 << read_seconds.
 
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson(
@@ -236,7 +236,7 @@ class ReadFlowTest extends TestCase
         InternalArticleView::where('epoch_token', $start['epoch_token'])->update([
             'started_at' => Carbon::now()->subSeconds(15),
         ]);
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $first = $this->actingAs($user)->postJson(
@@ -279,14 +279,14 @@ class ReadFlowTest extends TestCase
         ], $overrides));
     }
 
-    private function seedChallenge(): CaptchaChallenge
+    private function seedChallenge(?User $user = null): CaptchaChallenge
     {
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
         $issuedAt = Carbon::now()->subSeconds(3);
 
         return CaptchaChallenge::create([
             'challenge_id' => 'cc_ia_'.uniqid(),
-            'user_id' => null,
+            'user_id' => $user?->id,
             'session_id' => 'test',
             'provider' => 'trajectory_trace',
             'seed' => 'test-seed',

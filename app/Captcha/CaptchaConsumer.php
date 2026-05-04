@@ -59,11 +59,17 @@ class CaptchaConsumer
             if ($row->status !== 'verified') {
                 return false;
             }
-            // Bind to the user: a verified challenge issued anonymously
-            // (login / register form) carries user_id=null and CAN be
-            // consumed by the caller. A challenge issued during an
-            // authenticated session MUST match.
-            if ($row->user_id !== null && $user !== null && (int) $row->user_id !== (int) $user->id) {
+            // Strict user binding. The /complete endpoints that call this
+            // consumer are all `auth` middleware-gated, so $user is never
+            // null here in practice — but defence-in-depth requires the
+            // row's user_id to match exactly. The previous "null on
+            // either side passes" rule let an attacker solve a real
+            // captcha at the login form (where ChallengeBuilder issues
+            // user_id=null), capture the challenge_id from the verify
+            // response, then POST it to /api/ptc/{view}/complete from a
+            // separate authenticated session — one solve, one free
+            // reward. Now the row user_id MUST be set AND must match.
+            if ($user === null || $row->user_id === null || (int) $row->user_id !== (int) $user->id) {
                 return false;
             }
 

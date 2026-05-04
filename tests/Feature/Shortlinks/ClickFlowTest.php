@@ -182,7 +182,7 @@ class ClickFlowTest extends TestCase
             'started_at' => Carbon::now()->subSeconds(7),
         ]);
 
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson("/api/shortlinks/{$start['click_id']}/complete", [
@@ -209,7 +209,7 @@ class ClickFlowTest extends TestCase
 
         $start = $this->actingAs($user)->postJson('/api/shortlinks/start/mock')->json();
         // started_at left at "now" → elapsed ~ 0 << hold_seconds.
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson("/api/shortlinks/{$start['click_id']}/complete", [
@@ -232,7 +232,7 @@ class ClickFlowTest extends TestCase
         ShortlinkClick::where('id', $start['click_id'])->update([
             'started_at' => Carbon::now()->subSeconds(7),
         ]);
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson("/api/shortlinks/{$start['click_id']}/complete", [
@@ -262,7 +262,7 @@ class ClickFlowTest extends TestCase
         ShortlinkClick::where('id', $start['click_id'])->update([
             'started_at' => Carbon::now()->subSeconds(7),
         ]);
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         // First (genuine) claim wins.
@@ -309,7 +309,7 @@ class ClickFlowTest extends TestCase
         ShortlinkClick::where('id', $start['click_id'])->update([
             'started_at' => Carbon::now()->subSeconds(7),
         ]);
-        $challenge = $this->seedChallenge();
+        $challenge = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $first = $this->actingAs($user)->postJson("/api/shortlinks/{$start['click_id']}/complete", [
@@ -352,14 +352,14 @@ class ClickFlowTest extends TestCase
         );
     }
 
-    private function seedChallenge(): CaptchaChallenge
+    private function seedChallenge(?User $user = null): CaptchaChallenge
     {
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
         $issuedAt = Carbon::now()->subSeconds(3);
 
         return CaptchaChallenge::create([
             'challenge_id' => 'cc_test_'.uniqid(),
-            'user_id' => null,
+            'user_id' => $user?->id,
             'session_id' => 'test',
             'provider' => 'trajectory_trace',
             'seed' => 'test-seed',

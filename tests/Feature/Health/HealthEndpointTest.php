@@ -45,6 +45,7 @@ class HealthEndpointTest extends TestCase
                 'faucetpay' => ['status', 'critical'],
                 'bot_detection' => ['status', 'critical'],
                 'earning_inventory' => ['status', 'critical'],
+                'trusted_proxies' => ['status', 'critical'],
             ],
         ]);
         $this->assertContains($response->json('status'), ['ok', 'degraded', 'down']);
@@ -398,5 +399,45 @@ class HealthEndpointTest extends TestCase
         $this->assertSame(0, $response->json('checks.earning_inventory.shortlink_providers'));
         // 1 active overall → status ok
         $this->assertSame('ok', $response->json('checks.earning_inventory.status'));
+    }
+
+    public function test_trusted_proxies_unset_with_xff_header_present_reports_degraded(): void
+    {
+        // The silent-misconfiguration class: a CDN deployment forgets
+        // to set TRUSTED_PROXIES, the framework discards X-Forwarded-*,
+        // and every IP-keyed signal sees the CDN edge IP. The probe
+        // catches the moment by detecting "XFF arriving but env empty".
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        // Force the env to empty even when local .env sets it.
+        config(['app.env' => 'production']);
+        $_ENV['TRUSTED_PROXIES'] = '';
+        putenv('TRUSTED_PROXIES=');
+
+        $response = $this->getJson('/up', ['X-Forwarded-For' => '203.0.113.10']);
+
+        $this->assertSame('degraded', $response->json('checks.trusted_proxies.status'));
+        $this->assertSame('proxy_unconfigured', $response->json('checks.trusted_proxies.detail'));
+    }
+
+    public function test_trusted_proxies_set_or_no_xff_reports_ok(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        // No XFF on the inbound request → probe stays ok regardless of
+        // env (single-tenant Docker without a proxy).
+        $_ENV['TRUSTED_PROXIES'] = '';
+        putenv('TRUSTED_PROXIES=');
+        $response = $this->getJson('/up');
+        $this->assertSame('ok', $response->json('checks.trusted_proxies.status'));
+
+        // XFF present but env populated → operator wired the trust
+        // correctly, no warning needed.
+        $_ENV['TRUSTED_PROXIES'] = '*';
+        putenv('TRUSTED_PROXIES=*');
+        $response = $this->getJson('/up', ['X-Forwarded-For' => '203.0.113.10']);
+        $this->assertSame('ok', $response->json('checks.trusted_proxies.status'));
     }
 }

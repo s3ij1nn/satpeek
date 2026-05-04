@@ -131,7 +131,7 @@ class ViewerFlowTest extends TestCase
             'started_at' => Carbon::now()->subSeconds($ad->duration_sec + 2),
         ]);
 
-        [$challenge, $shape] = $this->seedChallenge();
+        [$challenge, $shape] = $this->seedChallenge($user);
         $points = $this->humanLikeTrace($shape);
 
         // Pre-verify the captcha (the viewer JS does this via /api/captcha/verify
@@ -180,7 +180,7 @@ class ViewerFlowTest extends TestCase
             'started_at' => Carbon::now()->subSeconds($ad->duration_sec + 2),
         ]);
 
-        [$challenge] = $this->seedChallenge();
+        [$challenge] = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $first = $this->actingAs($user)->postJson("/api/ptc/{$viewId}/complete", [
@@ -220,7 +220,7 @@ class ViewerFlowTest extends TestCase
             'started_at' => Carbon::now()->subSeconds($ad->duration_sec + 2),
         ]);
 
-        [$challenge] = $this->seedChallenge();
+        [$challenge] = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson("/api/ptc/{$start['view_id']}/complete", [
@@ -248,7 +248,7 @@ class ViewerFlowTest extends TestCase
         }
         // started_at left untouched (just now) so elapsed ≈ 0 << duration_sec.
 
-        [$challenge] = $this->seedChallenge();
+        [$challenge] = $this->seedChallenge($user);
         $challenge->update(['status' => 'verified']);
 
         $response = $this->actingAs($user)->postJson("/api/ptc/{$start['view_id']}/complete", [
@@ -294,13 +294,13 @@ class ViewerFlowTest extends TestCase
     }
 
     /** @return array{0: CaptchaChallenge, 1: array<int, array{x: float, y: float, t: float}>} */
-    private function seedChallenge(): array
+    private function seedChallenge(?User $user = null): array
     {
         $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
         $issuedAt = Carbon::now()->subSeconds(3);
         $challenge = CaptchaChallenge::create([
             'challenge_id' => 'cc_test_'.uniqid(),
-            'user_id' => null,
+            'user_id' => $user?->id,
             'session_id' => 'test',
             'provider' => 'trajectory_trace',
             'seed' => 'test-seed',

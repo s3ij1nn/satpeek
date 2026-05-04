@@ -173,6 +173,44 @@ class CaptchaRequiredAtCompleteTest extends TestCase
             'stolen challenge must NOT be consumed — owner can still legitimately use it');
     }
 
+    public function test_consumer_rejects_anonymous_challenge_consumed_from_authenticated_session(): void
+    {
+        // Threat: an attacker solves a real captcha at the login form
+        // (where ChallengeBuilder issues user_id=null), captures the
+        // resulting challenge_id from the verify response, then POSTs
+        // it to /api/shortlinks/{id}/complete from a separate
+        // authenticated session — one solve, one free reward. The
+        // strict user-binding fix (consumer requires row.user_id ===
+        // caller.id) closes this. A null user_id on the row must be
+        // rejected when the caller is authenticated.
+        $user = $this->user();
+        ShortlinkProviderCredential::create([
+            'name' => 'mock', 'label' => 'mock', 'transport' => 'query',
+            'api_base' => 'https://m', 'api_token' => 'tk',
+            'is_active' => true, 'reward_sat' => 5, 'hold_seconds' => 5,
+            'daily_limit_per_user' => 10,
+        ]);
+        $click = ShortlinkClick::create([
+            'user_id' => $user->id,
+            'provider_name' => 'mock',
+            'reward_sat' => 5, 'hold_seconds' => 5,
+            'epoch_token' => 'sc_'.bin2hex(random_bytes(14)),
+            'status' => 'pending',
+            'started_at' => Carbon::now()->subSeconds(7),
+        ]);
+        // Anonymous-issued, verified at login form. user_id stays null.
+        $anonChallenge = $this->seedChallenge('verified', user: null);
+
+        $r = $this->actingAs($user)->postJson("/api/shortlinks/{$click->id}/complete", [
+            'epoch_token' => $click->epoch_token,
+            'captcha_challenge_id' => $anonChallenge->challenge_id,
+        ]);
+
+        $r->assertStatus(422)->assertJson(['error' => 'captcha_required']);
+        $this->assertSame('verified', CaptchaChallenge::find($anonChallenge->id)->status,
+            'unbound challenge must stay verified — only matching-user consumes succeed');
+    }
+
     private function user(array $overrides = []): User
     {
         return User::factory()->create($overrides);

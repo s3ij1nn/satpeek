@@ -11,6 +11,7 @@ use App\Models\Withdrawal;
 use App\Offerwall\AdapterRegistry;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
@@ -29,7 +30,7 @@ use Throwable;
  */
 class HealthController extends Controller
 {
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
         $checks = [
             'database' => $this->checkDatabase(),
@@ -41,6 +42,7 @@ class HealthController extends Controller
             'faucetpay' => $this->checkFaucetPay(),
             'bot_detection' => $this->checkBotDetection(),
             'earning_inventory' => $this->checkEarningInventory(),
+            'trusted_proxies' => $this->checkTrustedProxies($request),
         ];
 
         $hasCriticalDown = false;
@@ -335,6 +337,45 @@ class HealthController extends Controller
         }
 
         return array_merge(['status' => 'ok', 'critical' => false], $payload);
+    }
+
+    /**
+     * Detects the silent-misconfiguration class where a CDN deployment
+     * forgets to set TRUSTED_PROXIES. The symptom is severe but
+     * invisible: every IP-keyed signal (SharedIpSignal, per-IP rate
+     * limits, BitcoTask webhook IP allowlist, IpReputationGate) sees
+     * the CDN edge IP rather than the visitor's real address — the
+     * whole bot-detection stack quietly falls over.
+     *
+     * Heuristic: if the request hitting /up carries an
+     * `X-Forwarded-For` header AND `TRUSTED_PROXIES` is unset/empty,
+     * we're definitely behind a proxy that's writing the header but
+     * the framework will discard it. Flag degraded with detail
+     * `proxy_unconfigured` so the operator's monitoring catches the
+     * gap before it spreads through the rest of the platform.
+     *
+     * @return array{status: string, critical: bool, detail?: string}
+     */
+    private function checkTrustedProxies(Request $request): array
+    {
+        // env() is the right tool here despite Larastan's nudge: the
+        // Laravel framework reads the same env at boot to decide
+        // whether to engage trustProxies (see bootstrap/app.php).
+        // Mirroring it via env() keeps the probe truthful — a
+        // config-cached value would lie about the live behaviour.
+        // @phpstan-ignore-next-line larastan.noEnvCallsOutsideOfConfig
+        $envValue = (string) env('TRUSTED_PROXIES', '');
+        $hasXff = $request->headers->has('X-Forwarded-For');
+
+        if ($envValue === '' && $hasXff) {
+            return [
+                'status' => 'degraded',
+                'critical' => false,
+                'detail' => 'proxy_unconfigured',
+            ];
+        }
+
+        return ['status' => 'ok', 'critical' => false];
     }
 
     /** @return array{status: string, critical: bool, detail?: string, sources?: array<int, string>} */

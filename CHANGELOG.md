@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **CaptchaConsumer strict user binding (MEDIUM).** The previous
+  `(row.user_id !== null && user !== null && mismatch)` check
+  allowed null-on-either-side to slide. An attacker could solve
+  a real captcha at the login form (where ChallengeBuilder issues
+  `user_id=null`), capture the `challenge_id` from the verify
+  response, then POST it to /api/{ptc,shortlinks,internal-articles}/.../complete
+  from a separate authenticated session — one solve, one free
+  reward. Tightened to require row.user_id matches caller.id
+  exactly (caller is always non-null on the auth-gated /complete
+  paths). 1 new regression test pins the cross-user anonymous
+  redemption case. Test helpers across 5 files updated to bind
+  user_id to the test actor; `seedChallenge(?User $user = null)`
+  now stores the user when passed.
+
+- **/up `trusted_proxies` health probe (MEDIUM).** A CDN
+  deployment forgetting to set TRUSTED_PROXIES would silently
+  neuter the entire bot-detection stack — every IP-keyed signal
+  (SharedIpSignal, per-IP rate limits, BitcoTask webhook
+  allowlist, IpReputationGate) would see the CDN edge IP. New
+  probe: if the request hitting /up carries `X-Forwarded-For`
+  AND `TRUSTED_PROXIES` is empty, flag `degraded` with detail
+  `proxy_unconfigured`. Catches the silent misconfiguration
+  before it spreads. 2 new tests pin: degraded when XFF +
+  empty env, ok when either XFF absent or env populated.
+
 ### Added
 
 - **`/admin/captcha-challenges` triage surface.** Read-only
