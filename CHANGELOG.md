@@ -8,6 +8,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+- **SSRF guard on `IframeEmbedProbe` (HIGH).** The advertiser-side
+  iframe preflight HEADs an attacker-controlled URL with no
+  scheme allowlist or private-IP block. An authenticated user
+  could point it at `file:///etc/passwd`, `gopher://internal:6379/_INFO`,
+  or `http://169.254.169.254/latest/meta-data/` (AWS IMDS) and
+  reach the internal target server-side. Added a pre-flight guard
+  that rejects:
+  - non-http/https schemes (file / gopher / dict / ftp / etc)
+  - URLs with no host
+  - hosts that resolve to RFC-1918 / loopback / link-local /
+    cloud-metadata / multicast / unspecified addresses (covers
+    127.0.0.1, ::1, 10/8, 172.16/12, 192.168/16, 169.254/16,
+    fe80::/10, fc00::/7)
+  Strict-mode resolution: if ANY A or AAAA record for the host
+  is non-public, the URL is rejected. Catches the dual-stack
+  dodge of pairing a public A record with a private AAAA record.
+  Also restricted Guzzle redirect protocols to http+https as a
+  belt-and-suspenders catch on 30x-into-file:// pivots.
+  Connection-error messages are no longer echoed back to the
+  caller — internal-service banners would otherwise leak through
+  the `detail` field. 8 new tests pin: file/gopher/loopback/RFC1918/
+  IPv6-loopback/AWS-metadata/malformed all rejected without HTTP,
+  and the connection-error detail-leak is closed.
+
+- **Removed unauthenticated `/webhooks/faucetpay` placeholder
+  (HIGH).** The route returned `{"ok":true}` to every POST with
+  no signature / IP allowlist. FaucetPay does not provide outbound
+  webhooks today so the placeholder served no purpose; if a future
+  integration adds them, re-add the route AND a controller that
+  verifies the signature + restricts the source IP.
+
 - **Captcha-bypass at /complete closed (CRITICAL).** All three
   earn-complete endpoints (`/api/ptc/{id}/complete`,
   `/api/shortlinks/{id}/complete`,

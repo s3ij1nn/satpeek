@@ -141,4 +141,104 @@ class IframeEmbedProbeTest extends TestCase
         $this->assertTrue($result['embeddable']);
         $this->assertSame('probe_failed', $result['blocker']);
     }
+
+    public function test_file_scheme_is_rejected_without_hitting_the_network(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        $result = (new IframeEmbedProbe($http))->probe('file:///etc/passwd');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $this->assertStringContainsString('http(s)', (string) $result['detail']);
+        $http->assertNothingSent();
+    }
+
+    public function test_gopher_scheme_is_rejected_without_hitting_the_network(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        $result = (new IframeEmbedProbe($http))->probe('gopher://internal.service:6379/_INFO');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $http->assertNothingSent();
+    }
+
+    public function test_loopback_literal_is_rejected_without_hitting_the_network(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        $result = (new IframeEmbedProbe($http))->probe('http://127.0.0.1:6379/');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $this->assertStringContainsString('non-public', (string) $result['detail']);
+        $http->assertNothingSent();
+    }
+
+    public function test_aws_metadata_address_is_rejected(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        $result = (new IframeEmbedProbe($http))->probe('http://169.254.169.254/latest/meta-data/');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $this->assertStringContainsString('non-public', (string) $result['detail']);
+        $http->assertNothingSent();
+    }
+
+    public function test_rfc1918_literal_is_rejected(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        foreach (['http://10.0.0.1/', 'http://192.168.1.1/', 'http://172.16.0.1/'] as $url) {
+            $r = (new IframeEmbedProbe($http))->probe($url);
+            $this->assertSame('probe_failed', $r['blocker'], "expected {$url} to be rejected");
+        }
+        $http->assertNothingSent();
+    }
+
+    public function test_ipv6_loopback_is_rejected(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        $result = (new IframeEmbedProbe($http))->probe('http://[::1]/');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $http->assertNothingSent();
+    }
+
+    public function test_malformed_url_is_rejected_cleanly(): void
+    {
+        $http = new HttpFactory;
+        $http->fake();
+
+        $result = (new IframeEmbedProbe($http))->probe('not a url at all');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $http->assertNothingSent();
+    }
+
+    public function test_connection_error_does_not_leak_remote_response_in_detail(): void
+    {
+        // Previously the probe echoed $e->getMessage() back to the
+        // caller — when the probe accidentally reached an internal
+        // service the connection-error string leaked the remote
+        // banner. Detail must now be a generic operator-friendly
+        // string with no internal hostnames or ports.
+        $http = new HttpFactory;
+        $http->fake(function (): void {
+            throw new ConnectionException('cURL error 7: Failed to connect to internal-redis port 6379: Connection refused');
+        });
+
+        $result = (new IframeEmbedProbe($http))->probe('https://example.com');
+
+        $this->assertSame('probe_failed', $result['blocker']);
+        $this->assertStringNotContainsString('redis', (string) $result['detail']);
+        $this->assertStringNotContainsString('6379', (string) $result['detail']);
+    }
 }
