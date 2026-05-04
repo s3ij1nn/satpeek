@@ -524,7 +524,12 @@
                 <a href="#demo" class="cta cta--ghost">Try the captcha demo</a>
             </div>
 
-            {{-- Above-the-fold value strip — 4 numbers a affiliate visitor scans in 2-3s --}}
+            {{-- Above-the-fold value strip — 4 numbers a visitor scans in 2-3s.
+                 Two are config-driven trust pillars (min payout / referral cut).
+                 Two are LIVE platform stats from PublicStatsBuilder so the
+                 numbers reflect real activity rather than marketing claims —
+                 they fall back to the static "what we are" labels on a fresh
+                 install before there's enough data to be meaningful. --}}
             <div class="value-strip" aria-label="At a glance">
                 <div class="value-strip__cell">
                     <span class="value-strip__num">{{ number_format(config('satpeek.faucetpay.min_withdraw_sat')) }}<small>sat</small></span>
@@ -534,13 +539,23 @@
                     <span class="value-strip__num">{{ (int) config('satpeek.referral.commission_pct') }}<small>%</small></span>
                     <span class="value-strip__label">Referral cut</span>
                 </div>
-                <div class="value-strip__cell">
-                    <span class="value-strip__num">PTC<small>+ shortlinks</small></span>
-                    <span class="value-strip__label">Daily inventory</span>
+                <div class="value-strip__cell" data-stat="total-sat-paid">
+                    @if (($stats['total_sat_paid'] ?? 0) > 0)
+                        <span class="value-strip__num">{{ number_format($stats['total_sat_paid']) }}<small>sat</small></span>
+                        <span class="value-strip__label">Paid to users</span>
+                    @else
+                        <span class="value-strip__num">BTC<small>· DOGE · LTC</small></span>
+                        <span class="value-strip__label">Withdraw via FaucetPay</span>
+                    @endif
                 </div>
-                <div class="value-strip__cell">
-                    <span class="value-strip__num">BTC<small>· DOGE · LTC</small></span>
-                    <span class="value-strip__label">Withdraw via FaucetPay</span>
+                <div class="value-strip__cell" data-stat="bot-rejection">
+                    @if (($stats['captcha_attempts_30d'] ?? 0) >= 100)
+                        <span class="value-strip__num">{{ round(($stats['bot_rejection_rate'] ?? 0) * 100) }}<small>%</small></span>
+                        <span class="value-strip__label">Bots rejected (30d)</span>
+                    @else
+                        <span class="value-strip__num">PTC<small>+ shortlinks · reads</small></span>
+                        <span class="value-strip__label">Daily inventory</span>
+                    @endif
                 </div>
             </div>
 
@@ -594,7 +609,7 @@
         </div>
         <div class="how__step">
             <h4>View</h4>
-            <p>PTC ads from BitcoTask and shortlinks pay out in sats. A heartbeat protocol confirms you actually watched.</p>
+            <p>PTC ads, URL-shortener visits, and read-and-earn articles pay out in sats. A heartbeat protocol confirms you actually watched.</p>
         </div>
         <div class="how__step">
             <h4>Cash out</h4>
@@ -616,7 +631,7 @@
         <article class="bento__card bento__card--earn bento__earn">
             <span class="bento__num">A · earn</span>
             <h3 class="bento__title">View ads, <em>collect sats</em>.</h3>
-            <p class="bento__body">Curated PTC inventory from BitcoTask plus our own offer wall. Each ad ships with a server-bound timer — visibility-spoofing tricks get rejected before reward credit.</p>
+            <p class="bento__body">PTC ads, shortener interstitials (btcut · ouo · earnow · cuty et al), and read-and-earn articles. Every claim ships with a server-bound timer — visibility-spoofing tricks get rejected before reward credit.</p>
         </article>
         <article class="bento__card bento__card--defend bento__defend">
             <span class="bento__num">B · defend</span>

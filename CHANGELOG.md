@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Public landing surfaces live platform stats.** New
+  `PublicStatsBuilder` service (cached 10 min) computes three
+  trust signals: lifetime sat shipped via FaucetPay, current
+  active earning inventory across PTC + shortlinks + internal
+  articles, and the 30-day bot-rejection rate. Two of the hero
+  value-strip cells now adopt the live numbers when there's
+  enough data to be meaningful, falling back to the static
+  "what we are" labels on a fresh install (a brand-new deploy
+  shouldn't show "0 sat paid to users" — that would actively
+  discourage signup). `Route::view` swapped for a thin
+  `HomeController` to thread the stats array through. Refreshed
+  the inline copy on the "View" how-it-works step + the bento
+  "earn" card to mention shortener interstitials + read-and-earn
+  articles alongside PTC, matching the v0.7.0 three-track surface
+  area. 8 new tests pin builder semantics + view fallback
+  behaviour.
+
 ### Security
 
 - **CaptchaConsumer strict user binding (MEDIUM).** The previous

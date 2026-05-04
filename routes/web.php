@@ -7,14 +7,17 @@ use App\Http\Controllers\Auth\LogoutController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InternalArticleAuthController;
 use App\Http\Controllers\PtcAuthController;
 use App\Http\Controllers\ReadArticlesController;
 use App\Http\Controllers\ShortlinkAuthController;
 use Illuminate\Support\Facades\Route;
 
-// Public landing
-Route::view('/', 'home')->name('home');
+// Public landing — controller (not Route::view) so the page can show
+// live stats from PublicStatsBuilder (sat paid out, active inventory,
+// 30d bot-rejection rate). Cached 10 min in the service.
+Route::get('/', HomeController::class)->name('home');
 
 // Operations health endpoint — JSON payload reporting DB / Redis / MaxMind /
 // shortlink provider / IP-reputation provider status. Public so a load balancer
