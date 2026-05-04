@@ -6,6 +6,7 @@ namespace Tests\Feature\Admin;
 
 use App\Filament\Widgets\BotTierDistributionWidget;
 use App\Filament\Widgets\BotTierTrendChartWidget;
+use App\Filament\Widgets\CaptchaOutcomeChartWidget;
 use App\Filament\Widgets\EarningActivityWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
 use App\Filament\Widgets\PayoutVolumeChartWidget;
@@ -13,6 +14,7 @@ use App\Filament\Widgets\SharedIpDetectionsWidget;
 use App\Models\BalanceLedger;
 use App\Models\BotScore;
 use App\Models\BotScoreHistory;
+use App\Models\CaptchaChallenge;
 use App\Models\InternalArticle;
 use App\Models\InternalArticleView;
 use App\Models\PtcAd;
@@ -363,6 +365,72 @@ class DashboardWidgetTest extends TestCase
             $this->assertCount(14, $ds['data']);
             $this->assertSame(0, array_sum($ds['data']));
         }
+    }
+
+    public function test_captcha_outcome_chart_buckets_resolved_attempts_by_status(): void
+    {
+        // Today: 2 verified, 1 consumed (rolls into verified bucket),
+        // 3 rejected, 1 expired. Issued (still in flight) must NOT
+        // count anywhere — the chart is about resolved outcomes only.
+        $now = Carbon::now();
+        $this->seedCaptcha('verified', $now->copy()->subHour());
+        $this->seedCaptcha('verified', $now->copy()->subHour());
+        $this->seedCaptcha('consumed', $now->copy()->subHour());
+        $this->seedCaptcha('rejected', $now->copy()->subHour());
+        $this->seedCaptcha('rejected', $now->copy()->subHour());
+        $this->seedCaptcha('rejected', $now->copy()->subHour());
+        $this->seedCaptcha('expired', $now->copy()->subHour());
+        $this->seedCaptcha('issued', $now->copy()->subHour());
+        // Out-of-window verified — must not contaminate today's bucket.
+        $this->seedCaptcha('verified', $now->copy()->subDays(20));
+
+        $data = $this->extractChartData(new CaptchaOutcomeChartWidget);
+
+        $this->assertCount(14, $data['labels']);
+        $this->assertCount(3, $data['datasets']);
+
+        $verified = $data['datasets'][0]['data'];
+        $rejected = $data['datasets'][1]['data'];
+        $expired = $data['datasets'][2]['data'];
+
+        // Today is the LAST bucket. consumed rolls into verified → 3.
+        $this->assertSame(3, end($verified));
+        $this->assertSame(3, end($rejected));
+        $this->assertSame(1, end($expired));
+        // Out-of-window row excluded.
+        $this->assertSame(3, array_sum($verified));
+    }
+
+    public function test_captcha_outcome_chart_zero_state_returns_14_zero_filled_buckets(): void
+    {
+        $data = $this->extractChartData(new CaptchaOutcomeChartWidget);
+
+        $this->assertCount(14, $data['labels']);
+        foreach ($data['datasets'] as $ds) {
+            $this->assertCount(14, $ds['data']);
+            $this->assertSame(0, array_sum($ds['data']));
+        }
+    }
+
+    private function seedCaptcha(string $status, Carbon $when): void
+    {
+        $row = CaptchaChallenge::create([
+            'challenge_id' => 'cc_w_'.uniqid(),
+            'user_id' => null,
+            'session_id' => 'test',
+            'provider' => 'trajectory_trace',
+            'seed' => 'seed',
+            'expected_shape' => [],
+            'fingerprint_hash' => null,
+            'client_ip' => '127.0.0.1',
+            'ja4' => null,
+            'user_agent' => 'phpunit',
+            'status' => $status,
+            'issued_at' => $when->copy()->subSeconds(5),
+            'expires_at' => $when->copy()->addSeconds(55),
+            'resolved_at' => $status === 'issued' ? null : $when,
+        ]);
+        $row->forceFill(['created_at' => $when, 'updated_at' => $when])->save();
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Widgets\BotTierDistributionWidget;
 use App\Filament\Widgets\BotTierTrendChartWidget;
+use App\Filament\Widgets\CaptchaOutcomeChartWidget;
 use App\Filament\Widgets\EarningActivityWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
 use App\Filament\Widgets\PayoutVolumeChartWidget;
@@ -49,6 +50,7 @@ class AdminPanelProvider extends PanelProvider
                 SharedIpDetectionsWidget::class,
                 PayoutVolumeChartWidget::class,
                 BotTierTrendChartWidget::class,
+                CaptchaOutcomeChartWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,

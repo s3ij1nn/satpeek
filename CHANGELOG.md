@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **CaptchaOutcomeChartWidget on the admin dashboard.** 14-day
+  stacked-bar chart of resolved captcha attempts by outcome
+  (verified+consumed roll up as a single mint bucket; rejected
+  is rose; expired is gray). Pairs with the per-row triage
+  table at `/admin/captcha-challenges` shipped in v0.9.0 — the
+  table answers "why was this attempt rejected?", the widget
+  answers "what's the rejection trend across the platform?".
+  Three operator-actionable signals: rising reject rate (tune
+  tolerance or new bot wave), rising expired rate (UX abandon),
+  flat-line on all three (cross-check the existing /up
+  `bot_detection` probe — pipeline likely stalled). Single
+  GROUP BY day,status query against the existing
+  `(status, created_at)` index. 2 new tests pin the
+  status-bucket pivot + zero-state shape.
+
 ## [0.9.0] — 2026-05-04
 
 Theme: security follow-through + operator triage + landing-page
