@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-05
+
+Theme: performance sweep + operator-trend visibility + retention
+discipline. The platform's hot paths — login + register + captcha
+submit + every PTC view + every shortlink start + the load-balancer-
+hammered `/up` endpoint — all shed redundant queries; the dashboard
+gains a captcha-trend widget pairing with the per-row triage
+introduced in v0.9.0; `bot_score_history` (which grows on every
+auth + captcha path) gets a retention sweep so a year-old install
+isn't sitting on millions of dead JSON blobs. No schema changes
+beyond a single index migration; no behaviour changes user-visible.
+
+Released after a `performance-optimizer` agent pass surfaced 7
+discrete N+1 / duplicate-write / missing-cache findings. All 7
+shipped here; CI green; 405 tests (5 new for the prune command,
+2 for the chart widget); 1 new index migration.
+
 ### Added
 
 - **CaptchaOutcomeChartWidget on the admin dashboard.** 14-day
@@ -22,6 +39,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   GROUP BY day,status query against the existing
   `(status, created_at)` index. 2 new tests pin the
   status-bucket pivot + zero-state shape.
+
+- **`satpeek:prune-bot-score-history` retention command.**
+  ScoreEngine appends to `bot_score_history` on every login,
+  register, and captcha-success path — a moderately active
+  platform mints rows continuously and the JSON `signals`
+  blob isn't tiny. Default retention 90 days (well past the
+  widest dashboard window) with `--days` / `--dry-run` /
+  `--chunk` options. Chunked delete avoids long-held
+  Postgres locks under concurrent inserts (the table is on
+  the auth + captcha hot path). Scheduled at 03:15 UTC,
+  staggered 15 min after the captcha cleanup so the two
+  sweeps don't share an IO window. 5 new tests pin the
+  retention contract (window boundary, dry-run, custom days,
+  chunked drain, zero-state).
 
 - **Composite index on `shortlink_clicks` for the per-(user,
   provider) daily-limit guard.** Every
@@ -89,22 +120,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `CACHE_STORE=array` in tests the cached path is bypassed
   entirely so each test still sees fresh DB state. Drops
   steady-state /up DB load by ~5 queries every 30 s.
-
-### Added
-
-- **`satpeek:prune-bot-score-history` retention command.**
-  ScoreEngine appends to `bot_score_history` on every login,
-  register, and captcha-success path — a moderately active
-  platform mints rows continuously and the JSON `signals`
-  blob isn't tiny. Default retention 90 days (well past the
-  widest dashboard window) with `--days` / `--dry-run` /
-  `--chunk` options. Chunked delete avoids long-held
-  Postgres locks under concurrent inserts (the table is on
-  the auth + captcha hot path). Scheduled at 03:15 UTC,
-  staggered 15 min after the captcha cleanup so the two
-  sweeps don't share an IO window. 5 new tests pin the
-  retention contract (window boundary, dry-run, custom days,
-  chunked drain, zero-state).
 
 ## [0.9.0] — 2026-05-04
 
