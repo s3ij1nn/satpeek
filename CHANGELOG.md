@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-05-04
+
+Theme: security follow-through + operator triage + landing-page
+honesty. Closes the second CRITICAL from the v0.8.0 review
+(TRUSTED_PROXIES default), tightens the captcha consumer's
+user-binding rule against cross-session redemption, adds a /up
+probe for the silent-misconfiguration class, lands a captcha-
+attempt triage surface in /admin, and makes the public landing
+hero show live platform stats instead of marketing claims.
+
 ### Added
 
 - **Public landing surfaces live platform stats.** New
@@ -1334,7 +1344,8 @@ static analysis green and 130 tests / 393 assertions passing.
   the published LICENSE file (consistency, not a security concern, but
   prevents SPDX-tooling confusion).
 
-[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/s3ij1nn/satpeek/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/s3ij1nn/satpeek/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/s3ij1nn/satpeek/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/s3ij1nn/satpeek/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/s3ij1nn/satpeek/compare/v0.5.0...v0.6.0
