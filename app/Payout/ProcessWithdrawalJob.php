@@ -214,7 +214,7 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
         BalanceLedger::create([
             'user_id' => $w->user_id,
             'delta_sat' => $w->amount_sat,
-            'reason' => 'withdraw_refund',
+            'reason' => BalanceLedger::REASON_WITHDRAW_REFUND,
             'reference_type' => Withdrawal::class,
             'reference_id' => $w->id,
         ]);

@@ -167,7 +167,7 @@ class WithdrawalResource extends Resource
                             BalanceLedger::create([
                                 'user_id' => $r->user_id,
                                 'delta_sat' => (int) $r->amount_sat,
-                                'reason' => 'withdraw_rejected',
+                                'reason' => BalanceLedger::REASON_WITHDRAW_REJECTED,
                                 'reference_type' => Withdrawal::class,
                                 'reference_id' => $r->id,
                             ]);

@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\BotDetection\PolicyEnforcer;
-use App\Captcha\CaptchaConsumer;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
 use App\Models\PtcView;
-use App\Services\ReferralPayout;
+use App\Services\EarnSessionClaimService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,7 +18,7 @@ class PtcController extends Controller
 {
     public function __construct(
         private readonly PolicyEnforcer $policy,
-        private readonly ReferralPayout $referralPayout,
+        private readonly EarnSessionClaimService $claimService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -153,92 +152,55 @@ class PtcController extends Controller
 
     private function finishView(Request $request, PtcView $view): JsonResponse
     {
-        $user = $request->user();
-        if ($view->status !== 'pending') {
-            return response()->json(['error' => 'view_not_pending'], 422);
-        }
         $request->validate([
             'epoch_token' => ['required', 'string'],
             'captcha_challenge_id' => ['required', 'string'],
         ]);
-        if (! hash_equals($view->epoch_token, (string) $request->input('epoch_token'))) {
-            return response()->json(['error' => 'token_mismatch'], 422);
-        }
-        // Atomically consume the captcha challenge the frontend solved
-        // before posting /complete. See CaptchaConsumer for the
-        // single-use semantics. Without this the field would be
-        // accepted but unverified — a bot could claim by POSTing any
-        // string for `captcha_challenge_id`.
-        if (! CaptchaConsumer::consume((string) $request->input('captcha_challenge_id'), $user)) {
-            return response()->json(['error' => 'captcha_required'], 422);
-        }
 
+        $reward = (int) $view->ad->reward_sat;
         $minHeartbeats = (int) ceil($view->heartbeats_expected * 0.7);
-        if ($view->heartbeats_received < $minHeartbeats) {
-            $view->update(['status' => 'rejected', 'rejection_reason' => 'heartbeat_deficit', 'completed_at' => Carbon::now()]);
 
-            return response()->json(['error' => 'heartbeat_deficit'], 422);
-        }
-
-        // started_at is non-nullable on the schema (set in start()) so the
-        // bare diff is safe — no ?-> guard needed.
-        $elapsed = (int) abs($view->started_at->diffInSeconds(Carbon::now()));
-        if ($elapsed < $view->ad->duration_sec - 1) {
-            $view->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
-
-            return response()->json(['error' => 'too_fast'], 422);
-        }
-
-        $credited = DB::transaction(function () use ($user, $view) {
-            // Atomic claim mirrored from ShortlinkController::finishClick():
-            // only one concurrent /complete can flip the row out of pending.
-            // Without this the precheck up at line ~156 has a TOCTOU window
-            // and two parallel posts both increment balance even though the
-            // balance_ledgers UNIQUE index would later block one of the
-            // ledger inserts. Failing fast at the claim is cheaper than a
-            // QueryException-rollback round-trip.
-            $claimed = PtcView::where('id', $view->id)
-                ->where('status', 'pending')
-                ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
-            if ($claimed === 0) {
-                return false;
-            }
-
-            $reward = (int) $view->ad->reward_sat;
-            BalanceLedger::create([
-                'user_id' => $user->id,
-                'delta_sat' => $reward,
-                'reason' => 'ptc_view',
-                'reference_type' => PtcView::class,
-                'reference_id' => $view->id,
-            ]);
-            $user->increment('balance_sat', $reward);
-            $user->increment('total_earned_sat', $reward);
-
-            $this->referralPayout->settle($user, $reward, PtcView::class, $view->id);
-
-            // Decrement the advertiser's view budget. User-submitted ads only;
-            // admin-created rows (user_id = null) have no budget to decrement.
-            // The atomic UPDATE ... SET views_remaining = views_remaining - 1
-            // on the row already gives us the new value via in-memory mutation
-            // (Eloquent's decrement() refreshes the attribute) so we don't
-            // need a second SELECT to learn the post-decrement count.
-            $ad = $view->ad;
-            if ($ad->user_id !== null) {
-                $ad->decrement('views_remaining');
-                if ((int) $ad->views_remaining <= 0) {
-                    $ad->update(['status' => 'completed', 'is_active' => false]);
+        $result = $this->claimService->claim(
+            session: $view,
+            user: $request->user(),
+            providedToken: (string) $request->input('epoch_token'),
+            captchaId: (string) $request->input('captcha_challenge_id'),
+            notPendingError: 'view_not_pending',
+            minElapsedSeconds: $view->ad->duration_sec - 1,
+            reason: BalanceLedger::REASON_PTC_VIEW,
+            referenceType: PtcView::class,
+            rewardSat: $reward,
+            // PTC-specific gate: at least 70% of expected heartbeats must
+            // have arrived. Lower means the user opened the tab in the
+            // background or scripted past the timer; reject the row with
+            // an explicit reason so triage can tell heartbeat fraud apart
+            // from too_fast.
+            preClaim: function () use ($view, $minHeartbeats): ?string {
+                return $view->heartbeats_received < $minHeartbeats
+                    ? 'heartbeat_deficit'
+                    : null;
+            },
+            // PTC-specific post-credit hook: decrement the advertiser's
+            // view budget for user-submitted ads (admin rows carry no
+            // budget). Eloquent's decrement() refreshes the in-memory
+            // attribute so a second SELECT isn't needed to detect
+            // exhaustion.
+            postCredit: function () use ($view): void {
+                $ad = $view->ad;
+                if ($ad->user_id !== null) {
+                    $ad->decrement('views_remaining');
+                    if ((int) $ad->views_remaining <= 0) {
+                        $ad->update(['status' => 'completed', 'is_active' => false]);
+                    }
                 }
-            }
+            },
+        );
 
-            return true;
-        });
-
-        if (! $credited) {
-            return response()->json(['error' => 'view_not_pending'], 422);
+        if (! $result->ok) {
+            return response()->json(['error' => $result->errorCode], $result->httpStatus);
         }
 
-        return response()->json(['ok' => true, 'reward_sat' => $view->ad->reward_sat]);
+        return response()->json(['ok' => true, 'reward_sat' => $result->rewardSat]);
     }
 
     /**

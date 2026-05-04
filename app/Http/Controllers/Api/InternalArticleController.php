@@ -3,17 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\BotDetection\PolicyEnforcer;
-use App\Captcha\CaptchaConsumer;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\InternalArticle;
 use App\Models\InternalArticleView;
-use App\Services\ReferralPayout;
+use App\Services\EarnSessionClaimService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -34,7 +32,7 @@ class InternalArticleController extends Controller
 {
     public function __construct(
         private readonly PolicyEnforcer $policy,
-        private readonly ReferralPayout $referralPayout,
+        private readonly EarnSessionClaimService $claimService,
     ) {}
 
     /**
@@ -122,70 +120,32 @@ class InternalArticleController extends Controller
 
     private function finishView(Request $request, InternalArticleView $view): JsonResponse
     {
-        $user = $request->user();
-        if ($view->status !== 'pending') {
-            return response()->json(['error' => 'view_not_pending'], 422);
-        }
         $request->validate([
             'epoch_token' => ['required', 'string'],
             'captcha_challenge_id' => ['required', 'string'],
         ]);
-        if (! hash_equals($view->epoch_token, (string) $request->input('epoch_token'))) {
-            return response()->json(['error' => 'token_mismatch'], 422);
-        }
-        // Atomically consume the captcha challenge the frontend solved
-        // before posting /complete. See CaptchaConsumer for the
-        // single-use semantics. Without this the field would be
-        // accepted but unverified — a bot could claim by POSTing any
-        // string for `captcha_challenge_id`.
-        if (! CaptchaConsumer::consume((string) $request->input('captcha_challenge_id'), $user)) {
-            return response()->json(['error' => 'captcha_required'], 422);
-        }
-
-        // Read-time floor: the user must have spent at least
-        // read_seconds-1 on the page since /start. The auth view's JS
-        // disables the claim button until the timer expires; the server
-        // check is the backstop for a tampered client.
-        $elapsed = (int) abs($view->started_at->diffInSeconds(Carbon::now()));
-        $minRead = $view->read_seconds - 1;
-        if ($elapsed < $minRead) {
-            $view->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
-
-            return response()->json(['error' => 'too_fast'], 422);
-        }
 
         $reward = (int) $view->reward_sat;
-        $credited = DB::transaction(function () use ($user, $view, $reward) {
-            // Atomic claim mirrors shortlink + PTC: only one concurrent
-            // /complete flips the row out of pending. Losing requests
-            // see affected_rows=0 and bail without crediting. The
-            // partial UNIQUE on balance_ledgers covers the DB-layer
-            // double-credit invariant for this reason+ref_type triple.
-            $claimed = InternalArticleView::where('id', $view->id)
-                ->where('status', 'pending')
-                ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
-            if ($claimed === 0) {
-                return false;
-            }
+        // Read-time floor: the user must have spent at least
+        // read_seconds-1 on the page since /start. The auth view's JS
+        // disables the claim button until the timer expires; the
+        // server check is the backstop for a tampered client.
+        $result = $this->claimService->claim(
+            session: $view,
+            user: $request->user(),
+            providedToken: (string) $request->input('epoch_token'),
+            captchaId: (string) $request->input('captcha_challenge_id'),
+            notPendingError: 'view_not_pending',
+            minElapsedSeconds: $view->read_seconds - 1,
+            reason: BalanceLedger::REASON_INTERNAL_ARTICLE,
+            referenceType: InternalArticleView::class,
+            rewardSat: $reward,
+        );
 
-            BalanceLedger::create([
-                'user_id' => $user->id,
-                'delta_sat' => $reward,
-                'reason' => 'internal_article',
-                'reference_type' => InternalArticleView::class,
-                'reference_id' => $view->id,
-            ]);
-            $user->increment('balance_sat', $reward);
-            $user->increment('total_earned_sat', $reward);
-            $this->referralPayout->settle($user, $reward, InternalArticleView::class, $view->id);
-
-            return true;
-        });
-
-        if (! $credited) {
-            return response()->json(['error' => 'view_not_pending'], 422);
+        if (! $result->ok) {
+            return response()->json(['error' => $result->errorCode], $result->httpStatus);
         }
 
-        return response()->json(['ok' => true, 'reward_sat' => $reward]);
+        return response()->json(['ok' => true, 'reward_sat' => $result->rewardSat]);
     }
 }

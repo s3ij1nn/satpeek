@@ -109,7 +109,7 @@ class AdvertiseController extends Controller
             BalanceLedger::create([
                 'user_id' => $user->id,
                 'delta_sat' => -1 * $totalCost,
-                'reason' => 'ad_funding',
+                'reason' => BalanceLedger::REASON_AD_FUNDING,
                 'reference_type' => PtcAd::class,
                 'reference_id' => $ad->id,
             ]);

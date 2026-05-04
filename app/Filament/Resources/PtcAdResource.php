@@ -235,7 +235,7 @@ class PtcAdResource extends Resource
                                 BalanceLedger::create([
                                     'user_id' => $r->user_id,
                                     'delta_sat' => $refund,
-                                    'reason' => 'ad_refund',
+                                    'reason' => BalanceLedger::REASON_AD_REFUND,
                                     'reference_type' => PtcAd::class,
                                     'reference_id' => $r->id,
                                 ]);

@@ -3,19 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\BotDetection\PolicyEnforcer;
-use App\Captcha\CaptchaConsumer;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\ShortlinkClick;
 use App\Models\ShortlinkProviderCredential;
-use App\Services\ReferralPayout;
+use App\Services\EarnSessionClaimService;
 use App\Shortlinks\Providers\ShortenerException;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -37,7 +35,7 @@ class ShortlinkController extends Controller
 {
     public function __construct(
         private readonly PolicyEnforcer $policy,
-        private readonly ReferralPayout $referralPayout,
+        private readonly EarnSessionClaimService $claimService,
     ) {}
 
     /**
@@ -181,80 +179,34 @@ class ShortlinkController extends Controller
 
     private function finishClick(Request $request, ShortlinkClick $click): JsonResponse
     {
-        $user = $request->user();
-        if ($click->status !== 'pending') {
-            return response()->json(['error' => 'click_not_pending'], 422);
-        }
         $request->validate([
             'epoch_token' => ['required', 'string'],
             'captcha_challenge_id' => ['required', 'string'],
         ]);
-        if (! hash_equals($click->epoch_token, (string) $request->input('epoch_token'))) {
-            return response()->json(['error' => 'token_mismatch'], 422);
-        }
-        // Atomically consume the captcha challenge the frontend solved
-        // before posting /complete. Without this, the field would be
-        // accepted but unverified — a bot bypassing the captcha widget
-        // could claim the reward by POSTing any string. Single-use:
-        // the consumer flips the row from `verified` to `consumed`
-        // inside its own transaction so the same challenge_id can't
-        // be reused across two different click claims.
-        if (! CaptchaConsumer::consume((string) $request->input('captcha_challenge_id'), $user)) {
-            return response()->json(['error' => 'captcha_required'], 422);
-        }
-        // Minimum round-trip floor: from the moment /start was called to
-        // the claim, at least N seconds must have elapsed. This is the
-        // anti-skip-the-shortener gate — the publisher's interstitial
-        // takes 5–15 s, so a return faster than that means the user
-        // bypassed it (or never opened it). The frontend already forces
-        // same-tab navigation to the shortener, but defence-in-depth on
-        // the server keeps the invariant if the frontend is replaced /
-        // bypassed by a script.
-        $elapsed = (int) abs($click->started_at->diffInSeconds(Carbon::now()));
-        $minRoundTrip = $click->effectiveHoldSeconds() - 1;
-        if ($elapsed < $minRoundTrip) {
-            $click->update(['status' => 'rejected', 'rejection_reason' => 'too_fast', 'completed_at' => Carbon::now()]);
-
-            return response()->json(['error' => 'too_fast'], 422);
-        }
 
         $reward = $click->effectiveRewardSat();
-        $credited = DB::transaction(function () use ($user, $click, $reward) {
-            // Atomic claim: only ONE concurrent request can flip the row
-            // out of `pending`. The next request sees affected_rows=0 and
-            // bails without crediting, so a double-tap on the claim button
-            // (or two parallel /complete posts) can't double-pay. The
-            // earlier `$click->status !== 'pending'` check up the stack
-            // catches sequential replays cheaply; this is the
-            // race-condition backstop for true concurrency.
-            $claimed = ShortlinkClick::where('id', $click->id)
-                ->where('status', 'pending')
-                ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
-            if ($claimed === 0) {
-                return false;
-            }
+        // Minimum round-trip floor: at least hold_seconds−1 must have
+        // elapsed since /start. Anti-skip-the-shortener gate — the
+        // publisher's interstitial takes 5–15 s, so a return faster
+        // than that means the user bypassed it. The atomic claim,
+        // captcha consumption, balance writes and referral payout all
+        // ride through the shared service.
+        $result = $this->claimService->claim(
+            session: $click,
+            user: $request->user(),
+            providedToken: (string) $request->input('epoch_token'),
+            captchaId: (string) $request->input('captcha_challenge_id'),
+            notPendingError: 'click_not_pending',
+            minElapsedSeconds: $click->effectiveHoldSeconds() - 1,
+            reason: BalanceLedger::REASON_SHORTLINK,
+            referenceType: ShortlinkClick::class,
+            rewardSat: $reward,
+        );
 
-            BalanceLedger::create([
-                'user_id' => $user->id,
-                'delta_sat' => $reward,
-                'reason' => 'shortlink',
-                'reference_type' => ShortlinkClick::class,
-                'reference_id' => $click->id,
-            ]);
-            $user->increment('balance_sat', $reward);
-            $user->increment('total_earned_sat', $reward);
-            // Affiliate share — funded from the platform's commission pool,
-            // never deducted from the viewer's reward. See ReferralPayout
-            // for the funding invariant.
-            $this->referralPayout->settle($user, $reward, ShortlinkClick::class, $click->id);
-
-            return true;
-        });
-
-        if (! $credited) {
-            return response()->json(['error' => 'click_not_pending'], 422);
+        if (! $result->ok) {
+            return response()->json(['error' => $result->errorCode], $result->httpStatus);
         }
 
-        return response()->json(['ok' => true, 'reward_sat' => $reward]);
+        return response()->json(['ok' => true, 'reward_sat' => $result->rewardSat]);
     }
 }

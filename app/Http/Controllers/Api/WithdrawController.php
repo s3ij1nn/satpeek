@@ -45,7 +45,7 @@ class WithdrawController extends Controller
             BalanceLedger::create([
                 'user_id' => $user->id,
                 'delta_sat' => -1 * (int) $validated['amount_sat'],
-                'reason' => 'withdraw_request',
+                'reason' => BalanceLedger::REASON_WITHDRAW_REQUEST,
                 'reference_type' => Withdrawal::class,
                 'reference_id' => $w->id,
             ]);

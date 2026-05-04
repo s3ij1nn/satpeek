@@ -46,22 +46,13 @@ class BalanceLedgerResource extends Resource
 
     public static function table(Table $table): Table
     {
-        // Reasons grow over time as new earning surfaces ship — keep the
-        // list aligned with the grep `BalanceLedger::create` set in the
-        // codebase. The dropdown also accepts custom text via the
-        // searchable input so historical reasons stay queryable even
-        // when this list lags.
-        $reasons = [
-            'ptc_view' => 'PTC view',
-            'shortlink' => 'Shortlink click',
-            'bitcotask_postback' => 'BitcoTask postback',
-            'referral_commission' => 'Referral commission',
-            'withdraw_request' => 'Withdrawal request (debit)',
-            'withdraw_refund' => 'Withdrawal refund',
-            'withdraw_rejected' => 'Withdrawal rejected (refund)',
-            'manual_credit' => 'Manual credit (admin)',
-            'manual_debit' => 'Manual debit (admin)',
-        ];
+        // Single source of truth lives on the model — BalanceLedger::REASON_LABELS
+        // is canonical for every reason ever written into the ledger. Adding a
+        // new earning surface adds a constant + label there and this filter
+        // picks it up on the next page render. Previously this list was
+        // copy-pasted and silently went stale (internal_article + ad_funding
+        // + ad_refund were missing as of v0.10.0).
+        $reasons = BalanceLedger::REASON_LABELS;
 
         return $table
             ->columns([

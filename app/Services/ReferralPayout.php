@@ -78,7 +78,7 @@ class ReferralPayout
             BalanceLedger::create([
                 'user_id' => $user->referrer_id,
                 'delta_sat' => $commission,
-                'reason' => 'referral_commission',
+                'reason' => BalanceLedger::REASON_REFERRAL_COMMISSION,
                 'reference_type' => $refType,
                 'reference_id' => $refId,
             ]);

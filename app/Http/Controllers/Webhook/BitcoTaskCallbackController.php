@@ -104,7 +104,7 @@ class BitcoTaskCallbackController extends Controller
                 BalanceLedger::create([
                     'user_id' => $user->id,
                     'delta_sat' => $delta,
-                    'reason' => 'bitcotask_postback',
+                    'reason' => BalanceLedger::REASON_BITCOTASK_POSTBACK,
                     // Idempotency key — composite UNIQUE on
                     // (reason, external_ref) makes a duplicate transId
                     // throw QueryException, caught below.
@@ -121,7 +121,7 @@ class BitcoTaskCallbackController extends Controller
                     // the affiliate side. ReferralPayout records its own
                     // ledger row keyed by reference_id = ledger row id.
                     $ledgerId = (int) BalanceLedger::query()
-                        ->where('reason', 'bitcotask_postback')
+                        ->where('reason', BalanceLedger::REASON_BITCOTASK_POSTBACK)
                         ->where('external_ref', $result->externalId)
                         ->value('id');
                     if ($ledgerId > 0) {

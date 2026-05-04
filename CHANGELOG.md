@@ -6,6 +6,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`EarnSessionClaimService` — single source of truth for the credit
+  pipeline.** PtcController, ShortlinkController, and InternalArticleController
+  used to carry near-identical 70-line transactions for the
+  status guard → token equality → captcha consumption → elapsed-time
+  floor → atomic UPDATE WHERE pending → BalanceLedger row → balance
+  bumps → referral payout pipeline. The shape is now expressed once on
+  the service; surface-specific behaviour rides through `preClaim`
+  (PTC's heartbeat-deficit gate) and `postCredit` (PTC's ad-budget
+  decrement) callbacks. Net diff: ~140 lines of duplicated transaction
+  logic deleted, three controllers now ~10 lines each at the credit
+  step, one place to audit when the financial invariant changes. 7
+  new tests pin the contract end-to-end (atomic single-credit, replay
+  rejection on already-verified row, token mismatch, missing captcha,
+  too_fast row marking, preClaim hook, postCredit hook).
+
+- **`BalanceLedger::REASON_*` constants + `REASON_LABELS` map.** The
+  ledger's `reason` column was being written from 12 magic-string
+  literals scattered across 9 files; the Filament filter dropdown was
+  copy-pasted and already 3 entries stale (`internal_article`,
+  `ad_funding`, `ad_refund` were missing as of v0.10.0). All write
+  sites now reference the constants on `BalanceLedger`; the Filament
+  resource reads `REASON_LABELS` directly. Adding a new earning
+  surface is now a one-place edit on the model class — typos at
+  write time fail PHPStan rather than silently routing credits to
+  an "unknown" bucket.
+
 ## [0.10.0] — 2026-05-05
 
 Theme: performance sweep + operator-trend visibility + retention
