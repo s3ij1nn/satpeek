@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`/admin/captcha-challenges` triage surface.** Read-only
+  Filament resource exposing the captcha verifier's per-signal
+  detail (solve_ms, shape_distance_px, dt_jitter_ratio,
+  jerk_entropy, completion_dwell_ms, confidence) directly as
+  table columns. The verifier already persisted these into
+  `captcha_challenges.meta` JSON; the operator was reading them
+  via psql / tinker for "why was my submission rejected?"
+  triage tickets. Now a single deep-link from the Operations
+  group answers the question. Mirror of PtcViewResource /
+  ShortlinkClickResource — read-only by design (mutating a row
+  would invalidate the audit trail). Status filter + colour-
+  coded badge for issued/verified/rejected/expired/consumed.
+
 ### Security
 
 - **`TRUSTED_PROXIES` default flipped from `*` to empty (CRITICAL).**

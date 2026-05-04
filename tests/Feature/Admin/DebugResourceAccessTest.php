@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Filament\Resources\CaptchaChallengeResource;
 use App\Filament\Resources\PtcViewResource;
 use App\Filament\Resources\ShortlinkClickResource;
+use App\Models\CaptchaChallenge;
 use App\Models\PtcAd;
 use App\Models\PtcView;
 use App\Models\ShortlinkClick;
@@ -68,6 +70,60 @@ class DebugResourceAccessTest extends TestCase
         $response->assertSee($click->provider_name, false);
     }
 
+    public function test_non_admin_cannot_access_captcha_challenges_resource(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+
+        $response = $this->actingAs($user)->get('/admin/captcha-challenges');
+
+        $this->assertContains($response->getStatusCode(), [302, 403, 404]);
+    }
+
+    public function test_admin_can_list_captcha_challenges_resource_with_signal_columns(): void
+    {
+        $admin = User::factory()->create(['is_admin' => true, 'email_verified_at' => now()]);
+        // Persist a rejected challenge with the per-signal meta the
+        // verifier writes — the resource MUST surface those values
+        // out of meta.signals so the operator can triage without
+        // pawing through raw JSON.
+        $challenge = CaptchaChallenge::create([
+            'challenge_id' => 'cc_triage_'.uniqid(),
+            'user_id' => null,
+            'session_id' => 'sess-triage',
+            'provider' => 'trajectory_trace',
+            'seed' => 'seed',
+            'expected_shape' => [],
+            'fingerprint_hash' => null,
+            'client_ip' => '127.0.0.1',
+            'ja4' => null,
+            'user_agent' => 'phpunit',
+            'status' => 'rejected',
+            'rejection_reason' => 'jerk_too_smooth',
+            'issued_at' => Carbon::now()->subSeconds(15),
+            'expires_at' => Carbon::now()->addSeconds(45),
+            'resolved_at' => Carbon::now(),
+            'meta' => [
+                'confidence' => 0.0,
+                'signals' => [
+                    'solve_ms' => 6234,
+                    'shape_distance_px' => 18.42,
+                    'dt_jitter_ratio' => 0.05,
+                    'jerk_entropy' => 0.30,
+                    'completion_dwell_ms' => 220,
+                ],
+            ],
+        ]);
+
+        $response = $this->actingAs($admin)->get('/admin/captcha-challenges');
+
+        $response->assertOk();
+        $response->assertSee('jerk_too_smooth', false);
+        // The verifier's per-signal numerics surface formatted into the
+        // table cells — operator triage hinges on these being readable.
+        $response->assertSee('6234', false);     // solve_ms
+        $response->assertSee('18.42', false);    // shape_distance_px
+    }
+
     public function test_resources_forbid_create_edit_delete_via_filament_helpers(): void
     {
         // Defence-in-depth at the Filament Resource layer — the canCreate /
@@ -83,6 +139,10 @@ class DebugResourceAccessTest extends TestCase
         $this->assertFalse(ShortlinkClickResource::canCreate());
         $this->assertFalse(ShortlinkClickResource::canEdit(new ShortlinkClick));
         $this->assertFalse(ShortlinkClickResource::canDelete(new ShortlinkClick));
+
+        $this->assertFalse(CaptchaChallengeResource::canCreate());
+        $this->assertFalse(CaptchaChallengeResource::canEdit(new CaptchaChallenge));
+        $this->assertFalse(CaptchaChallengeResource::canDelete(new CaptchaChallenge));
     }
 
     private function seedPtcView(): PtcView
