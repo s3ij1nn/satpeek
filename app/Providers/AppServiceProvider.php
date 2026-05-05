@@ -303,6 +303,24 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(30)->by('adblock-report:'.$key);
         });
+
+        // Email verification resend keys on the AUTHENTICATED user,
+        // not the IP — the attacker has the session by definition
+        // (you can't resend without being logged in), so an IP-keyed
+        // throttle invites botnet bypass. 1/min + 6/hour gives a
+        // legit user space to retry after a typo or slow inbox while
+        // ruling out the inbox-bombing pattern (bot floods
+        // /email/verification-notification to spam the target's
+        // mailbox). The captcha gate on the same endpoint is
+        // defence-in-depth; this limiter is the primary guard.
+        RateLimiter::for('verification-send', function (Request $r) {
+            $key = optional($r->user())->id ?: $r->ip();
+
+            return [
+                Limit::perMinute(1)->by('verification-send:min:'.$key),
+                Limit::perHour(6)->by('verification-send:hr:'.$key),
+            ];
+        });
     }
 
     private static function buildShortenerClient(HttpFactory $http, string $name, array $cfg): ShortenerClient

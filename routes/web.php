@@ -61,7 +61,7 @@ Route::middleware('auth')->group(function () {
         ->middleware(['signed', 'throttle:6,1'])
         ->name('verification.verify');
     Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:verification-send')
         ->name('verification.send');
 });
 

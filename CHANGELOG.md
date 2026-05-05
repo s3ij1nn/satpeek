@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Captcha gate + per-user rate limit on email-verification resend.**
+  `POST /email/verification-notification` was protected only by a
+  per-IP `throttle:6,1` — a botnet trivially bypassed it by rotating
+  IPs while reusing one stolen authenticated session, so the
+  inbox-bombing pattern (bot creates account, scripts resend to
+  spam target's mailbox or burn the operator's SMTP budget) was
+  open. Two layers go in front of the resend now: a named limiter
+  `verification-send` keyed by user id (1/min, 6/hr) replaces the
+  per-IP throttle, and the same trajectory-captcha widget the
+  register + login forms use must be solved on every submit.
+  Ruling out botnet-rotation makes per-user the right key; the
+  captcha is defence-in-depth that makes each automated attempt
+  expensive (compute or 2captcha-credit cost). 5 new tests pin
+  the contract: missing captcha rejects, synthetic uniform-Δt
+  trace rejects, humanoid trace sends, second resend within the
+  same minute returns 429, already-verified user short-circuits
+  to dashboard without consuming a captcha.
+
 ## [0.11.0] — 2026-05-06
 
 Theme: structural debt sweep + framework currency. After the v0.10.0
