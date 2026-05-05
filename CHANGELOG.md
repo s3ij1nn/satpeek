@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-05-06
+
+Theme: structural debt sweep + framework currency. After the v0.10.0
+performance pass, a `code-explorer` agent surveyed the codebase for
+the next layer of pressure points and surfaced 9 items; this release
+ships the 6 HIGH + MEDIUM ones. The triplicated 70-line credit
+transaction across the three earning surfaces collapses into one
+tested service, the ledger's `reason` column is no longer 12 scattered
+magic strings, and earn-session `status` is now a backed enum the
+type checker can verify. The Laravel framework is bumped to 13.7.0
+along the way (replacing dependabot PR #7) so the structural changes
+land on a current dependency baseline.
+
+No user-visible behaviour change; no schema changes. The wire format
+of every JSON endpoint is byte-identical to v0.10.0. Filament admin
+gains nothing new but the ledger filter dropdown is no longer 3
+entries stale (`internal_article`, `ad_funding`, `ad_refund` were
+missing as of v0.10.0 — the post-refactor dropdown reads the canonical
+constant map so it can't drift again).
+
 ### Added
 
 - **`EarnSessionClaimService` — single source of truth for the credit
@@ -60,6 +80,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shortlink, article) with the same `likely_bot`/`banned` rule,
   but the name implied PTC-only and tripped readers up. Direct
   rename, no shim — the only callers are inside this repo.
+
+### Dependencies
+
+- **`laravel/framework` v13.6.0 → v13.7.0** (minor bump within the
+  Laravel 13.x line — bug fixes + opt-in enum support across various
+  managers, no breaking behaviour). Brought along by the framework
+  bump: `symfony/polyfill-php86 v1.37.0` (new transitive),
+  `symfony/translation-contracts v2.0.12 → v2.0.13`,
+  `symfony/yaml v7.4.8 → v7.4.9`. Replaces dependabot PR #7;
+  applied directly after verifying 415 tests + pint + phpstan pass
+  on top of the structural-debt batch.
 
 ## [0.10.0] — 2026-05-05
 
