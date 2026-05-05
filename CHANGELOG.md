@@ -34,6 +34,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   write time fail PHPStan rather than silently routing credits to
   an "unknown" bucket.
 
+- **`App\Enums\EarnSessionStatus` backed enum.** PtcView,
+  ShortlinkClick, and InternalArticleView now cast their `status`
+  column to a shared backed enum instead of storing bare
+  `pending|verified|rejected|expired` strings. Equality checks
+  through the codebase are now PHPStan-verifiable
+  (`$session->status === EarnSessionStatus::Pending` instead of
+  string compare). The underlying column stays a lowercase string
+  so WHERE clauses, JSON output, and existing data are unchanged.
+
+- **`MockAdapter` implements `OfferwallPerUserAdapter`.** The
+  local-dev mock previously implemented only the global
+  `OfferwallAdapter` contract, so `OfferwallMerge`'s per-render
+  code path silently skipped it — a developer running locally
+  with `OFFERWALLS_ENABLED=mock` saw an empty per-user offer list
+  while production BitcoTaskAdapter populated it. Mock now
+  surfaces the same PTC inventory through both code paths plus
+  fresh fixtures for shortlink + read-article surfaces. 3 new
+  unit tests pin the dual-contract guarantee.
+
+### Changed
+
+- **`PolicyEnforcer::canStartPtcView` → `canStartEarningSession`.**
+  The method has always guarded all three earning surfaces (PTC,
+  shortlink, article) with the same `likely_bot`/`banned` rule,
+  but the name implied PTC-only and tripped readers up. Direct
+  rename, no shim — the only callers are inside this repo.
+
 ## [0.10.0] — 2026-05-05
 
 Theme: performance sweep + operator-trend visibility + retention

@@ -71,7 +71,7 @@ class PolicyEnforcerIntegrationTest extends TestCase
 
     public function test_likely_bot_tier_user_can_still_load_shortlinks_index_but_cannot_start_one(): void
     {
-        // PolicyEnforcer::canStartPtcView is named for PTC but is also the
+        // PolicyEnforcer::canStartEarningSession is named for PTC but is also the
         // gate the shortlink controller uses (same likely_bot/banned
         // exclusion list). Confirms the share-ban-list invariant holds.
         $user = $this->userAtTier('likely_bot');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\EarnSessionStatus;
 use App\Models\PtcView;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -37,7 +38,7 @@ class PtcAuthController extends Controller
         // Single-use: once a view leaves `pending`, the URL is dead. A
         // verified click can't be replayed for a second reward, and a
         // rejected one shouldn't be revisited (re-start from /ptc list).
-        if ($view->status !== 'pending') {
+        if ($view->status !== EarnSessionStatus::Pending) {
             throw new HttpException(410, 'This watch session has already been resolved.');
         }
 

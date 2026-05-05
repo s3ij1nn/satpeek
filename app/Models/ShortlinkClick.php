@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EarnSessionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -22,7 +23,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $reward_sat snapshotted from provider at start
  * @property int|null $hold_seconds snapshotted from provider at start
  * @property string $epoch_token
- * @property string $status
+ * @property EarnSessionStatus $status
  * @property string|null $rejection_reason
  * @property Carbon $started_at
  * @property Carbon|null $completed_at
@@ -47,6 +48,7 @@ class ShortlinkClick extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'status' => EarnSessionStatus::class,
         'reward_sat' => 'integer',
         'hold_seconds' => 'integer',
     ];

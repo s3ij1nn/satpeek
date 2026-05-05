@@ -76,7 +76,7 @@ class ShortlinkController extends Controller
     public function start(Request $request, string $provider): JsonResponse
     {
         $user = $request->user();
-        if (! $this->policy->canStartPtcView($user)) {
+        if (! $this->policy->canStartEarningSession($user)) {
             return response()->json(['error' => 'tier_blocked'], 403);
         }
 

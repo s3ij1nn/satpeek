@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Security;
 
 use App\Captcha\TrajectoryTraceProvider;
+use App\Enums\EarnSessionStatus;
 use App\Models\CaptchaChallenge;
 use App\Models\InternalArticle;
 use App\Models\InternalArticleView;
@@ -69,7 +70,7 @@ class CaptchaRequiredAtCompleteTest extends TestCase
         ]);
 
         $r->assertStatus(422)->assertJson(['error' => 'captcha_required']);
-        $this->assertSame('pending', ShortlinkClick::find($click->id)->status,
+        $this->assertSame(EarnSessionStatus::Pending, ShortlinkClick::find($click->id)->status,
             'click must remain pending so the legitimate user can still claim');
     }
 

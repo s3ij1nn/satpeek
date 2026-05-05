@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\EarnSessionStatus;
 use App\Filament\Resources\PtcViewResource\Pages;
 use App\Models\PtcView;
 use BackedEnum;
@@ -93,7 +94,7 @@ class PtcViewResource extends Resource
                     ->color('info')
                     ->url(fn (PtcView $r) => route('ptc.auth', ['token' => $r->epoch_token]))
                     ->openUrlInNewTab()
-                    ->visible(fn (PtcView $r) => $r->status === 'pending'),
+                    ->visible(fn (PtcView $r) => $r->status === EarnSessionStatus::Pending),
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\EarnSessionStatus;
 use App\Filament\Resources\InternalArticleViewResource\Pages;
 use App\Models\InternalArticleView;
 use BackedEnum;
@@ -85,7 +86,7 @@ class InternalArticleViewResource extends Resource
                     ->color('info')
                     ->url(fn (InternalArticleView $r) => route('internal_articles.read', ['token' => $r->epoch_token]))
                     ->openUrlInNewTab()
-                    ->visible(fn (InternalArticleView $r) => $r->status === 'pending'),
+                    ->visible(fn (InternalArticleView $r) => $r->status === EarnSessionStatus::Pending),
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);

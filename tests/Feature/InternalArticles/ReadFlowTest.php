@@ -90,7 +90,7 @@ class ReadFlowTest extends TestCase
             'tier' => 'likely_bot',
             'signals' => [],
         ]);
-        $this->assertFalse(app(PolicyEnforcer::class)->canStartPtcView($user->fresh()));
+        $this->assertFalse(app(PolicyEnforcer::class)->canStartEarningSession($user->fresh()));
         $a = $this->seedArticle();
 
         $this->actingAs($user)->postJson("/api/internal-articles/start/{$a->id}")

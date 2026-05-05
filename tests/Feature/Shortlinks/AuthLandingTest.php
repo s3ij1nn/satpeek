@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Shortlinks;
 
 use App\Captcha\TrajectoryTraceProvider;
+use App\Enums\EarnSessionStatus;
 use App\Models\CaptchaChallenge;
 use App\Models\ShortlinkClick;
 use App\Models\ShortlinkProviderCredential;
@@ -151,7 +152,7 @@ class AuthLandingTest extends TestCase
 
         $response->assertOk()->assertJson(['ok' => true, 'reward_sat' => 9]);
         $this->assertSame(9, (int) $user->fresh()->balance_sat);
-        $this->assertSame('verified', ShortlinkClick::find($click->id)->status);
+        $this->assertSame(EarnSessionStatus::Verified, ShortlinkClick::find($click->id)->status);
     }
 
     public function test_token_endpoint_404s_for_other_users_token(): void

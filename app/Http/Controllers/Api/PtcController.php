@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\BotDetection\PolicyEnforcer;
+use App\Enums\EarnSessionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\BalanceLedger;
 use App\Models\PtcAd;
@@ -52,7 +53,7 @@ class PtcController extends Controller
     public function start(Request $request, int $adId): JsonResponse
     {
         $user = $request->user();
-        if (! $this->policy->canStartPtcView($user)) {
+        if (! $this->policy->canStartEarningSession($user)) {
             return response()->json(['error' => 'tier_blocked'], 403);
         }
         // Use the same `servableAdsQuery` filter so users can never start views
@@ -135,7 +136,7 @@ class PtcController extends Controller
 
     private function runHeartbeat(Request $request, PtcView $view): JsonResponse
     {
-        if ($view->status !== 'pending') {
+        if ($view->status !== EarnSessionStatus::Pending) {
             return response()->json(['error' => 'view_not_pending'], 422);
         }
         $request->validate([

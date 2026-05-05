@@ -19,7 +19,12 @@ class PolicyEnforcer
         return $user->botScore?->tier ?? 'trust';
     }
 
-    public function canStartPtcView(User $user): bool
+    /**
+     * Tier gate for ALL earning surfaces (PTC views, shortlink clicks,
+     * internal article reads). Same rule across surfaces: `likely_bot`
+     * and `banned` tiers cannot start an earning session.
+     */
+    public function canStartEarningSession(User $user): bool
     {
         $tier = $this->tier($user);
 

@@ -65,7 +65,7 @@ class InternalArticleController extends Controller
     public function start(Request $request, int $articleId): JsonResponse
     {
         $user = $request->user();
-        if (! $this->policy->canStartPtcView($user)) {
+        if (! $this->policy->canStartEarningSession($user)) {
             return response()->json(['error' => 'tier_blocked'], 403);
         }
 

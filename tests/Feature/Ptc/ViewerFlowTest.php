@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ptc;
 
 use App\Captcha\TrajectoryTraceProvider;
+use App\Enums\EarnSessionStatus;
 use App\Models\BalanceLedger;
 use App\Models\CaptchaChallenge;
 use App\Models\PtcAd;
@@ -148,7 +149,7 @@ class ViewerFlowTest extends TestCase
         $response->assertJson(['ok' => true, 'reward_sat' => 17]);
         $this->assertSame(17, (int) $user->fresh()->balance_sat);
         $this->assertSame(17, (int) $user->fresh()->total_earned_sat);
-        $this->assertSame('verified', PtcView::find($viewId)->status);
+        $this->assertSame(EarnSessionStatus::Verified, PtcView::find($viewId)->status);
         $this->assertDatabaseHas('balance_ledgers', [
             'user_id' => $user->id,
             'delta_sat' => 17,
@@ -231,7 +232,7 @@ class ViewerFlowTest extends TestCase
         $response->assertStatus(422);
         $response->assertJson(['error' => 'heartbeat_deficit']);
         $this->assertSame(0, (int) $user->fresh()->balance_sat);
-        $this->assertSame('rejected', PtcView::find($start['view_id'])->status);
+        $this->assertSame(EarnSessionStatus::Rejected, PtcView::find($start['view_id'])->status);
     }
 
     public function test_complete_rejects_when_elapsed_is_too_fast(): void

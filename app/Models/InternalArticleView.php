@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EarnSessionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -19,7 +20,7 @@ use Illuminate\Support\Carbon;
  * @property string $epoch_token
  * @property int $reward_sat snapshot
  * @property int $read_seconds snapshot
- * @property string $status pending|verified|rejected|expired
+ * @property EarnSessionStatus $status
  * @property string|null $rejection_reason
  * @property Carbon $started_at
  * @property Carbon|null $completed_at
@@ -43,6 +44,7 @@ class InternalArticleView extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'status' => EarnSessionStatus::class,
         'reward_sat' => 'integer',
         'read_seconds' => 'integer',
     ];

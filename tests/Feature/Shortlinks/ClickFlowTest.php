@@ -6,6 +6,7 @@ namespace Tests\Feature\Shortlinks;
 
 use App\BotDetection\PolicyEnforcer;
 use App\Captcha\TrajectoryTraceProvider;
+use App\Enums\EarnSessionStatus;
 use App\Models\BalanceLedger;
 use App\Models\BotScore;
 use App\Models\CaptchaChallenge;
@@ -106,7 +107,7 @@ class ClickFlowTest extends TestCase
             'tier' => 'likely_bot',
             'signals' => [],
         ]);
-        $this->assertFalse(app(PolicyEnforcer::class)->canStartPtcView($user->fresh()));
+        $this->assertFalse(app(PolicyEnforcer::class)->canStartEarningSession($user->fresh()));
         $this->seedProvider(['name' => 'mock']);
 
         $response = $this->actingAs($user)->postJson('/api/shortlinks/start/mock');
@@ -194,7 +195,7 @@ class ClickFlowTest extends TestCase
         $response->assertJson(['ok' => true, 'reward_sat' => 11]);
         $this->assertSame(11, (int) $user->fresh()->balance_sat);
         $this->assertSame(11, (int) $user->fresh()->total_earned_sat);
-        $this->assertSame('verified', ShortlinkClick::find($start['click_id'])->status);
+        $this->assertSame(EarnSessionStatus::Verified, ShortlinkClick::find($start['click_id'])->status);
         $this->assertDatabaseHas('balance_ledgers', [
             'user_id' => $user->id,
             'delta_sat' => 11,
@@ -220,7 +221,7 @@ class ClickFlowTest extends TestCase
         $response->assertStatus(422);
         $response->assertJson(['error' => 'too_fast']);
         $this->assertSame(0, (int) $user->fresh()->balance_sat);
-        $this->assertSame('rejected', ShortlinkClick::find($start['click_id'])->status);
+        $this->assertSame(EarnSessionStatus::Rejected, ShortlinkClick::find($start['click_id'])->status);
     }
 
     public function test_complete_rejects_on_epoch_token_mismatch(): void
@@ -243,7 +244,7 @@ class ClickFlowTest extends TestCase
         $response->assertStatus(422);
         $response->assertJson(['error' => 'token_mismatch']);
         $this->assertSame(0, (int) $user->fresh()->balance_sat);
-        $this->assertSame('pending', ShortlinkClick::find($start['click_id'])->status);
+        $this->assertSame(EarnSessionStatus::Pending, ShortlinkClick::find($start['click_id'])->status);
     }
 
     public function test_complete_is_idempotent_under_concurrent_requests(): void

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\EarnSessionStatus;
 use App\Filament\Resources\ShortlinkClickResource\Pages;
 use App\Models\ShortlinkClick;
 use BackedEnum;
@@ -84,7 +85,7 @@ class ShortlinkClickResource extends Resource
                     ->color('info')
                     ->url(fn (ShortlinkClick $r) => route('shortlinks.auth', ['token' => $r->epoch_token]))
                     ->openUrlInNewTab()
-                    ->visible(fn (ShortlinkClick $r) => $r->status === 'pending'),
+                    ->visible(fn (ShortlinkClick $r) => $r->status === EarnSessionStatus::Pending),
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);

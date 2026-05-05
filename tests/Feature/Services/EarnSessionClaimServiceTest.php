@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Services;
 
 use App\Captcha\TrajectoryTraceProvider;
+use App\Enums\EarnSessionStatus;
 use App\Models\BalanceLedger;
 use App\Models\CaptchaChallenge;
 use App\Models\ShortlinkClick;
@@ -58,7 +59,7 @@ class EarnSessionClaimServiceTest extends TestCase
         $this->assertTrue($result->ok);
         $this->assertSame(11, $result->rewardSat);
         $this->assertSame(11, (int) $user->fresh()->balance_sat);
-        $this->assertSame('verified', ShortlinkClick::find($click->id)->status);
+        $this->assertSame(EarnSessionStatus::Verified, ShortlinkClick::find($click->id)->status);
         $this->assertSame(1, BalanceLedger::query()
             ->where('reference_type', ShortlinkClick::class)
             ->where('reference_id', $click->id)
@@ -187,7 +188,7 @@ class EarnSessionClaimServiceTest extends TestCase
         $this->assertFalse($result->ok);
         $this->assertSame('too_fast', $result->errorCode);
         $row = ShortlinkClick::find($click->id);
-        $this->assertSame('rejected', $row->status);
+        $this->assertSame(EarnSessionStatus::Rejected, $row->status);
         $this->assertSame('too_fast', $row->rejection_reason);
     }
 
@@ -212,7 +213,7 @@ class EarnSessionClaimServiceTest extends TestCase
         $this->assertFalse($result->ok);
         $this->assertSame('heartbeat_deficit', $result->errorCode);
         $row = ShortlinkClick::find($click->id);
-        $this->assertSame('rejected', $row->status);
+        $this->assertSame(EarnSessionStatus::Rejected, $row->status);
         $this->assertSame('heartbeat_deficit', $row->rejection_reason);
         $this->assertSame(0, (int) $user->fresh()->balance_sat);
     }

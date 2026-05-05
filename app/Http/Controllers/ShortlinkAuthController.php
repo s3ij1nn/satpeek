@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\EarnSessionStatus;
 use App\Models\ShortlinkClick;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -43,7 +44,7 @@ class ShortlinkAuthController extends Controller
 
         // Single-use: once a click flips out of `pending`, the URL is dead.
         // Reusing it for a second claim would be a replay attack vector.
-        if ($click->status !== 'pending') {
+        if ($click->status !== EarnSessionStatus::Pending) {
             throw new HttpException(410, 'This click has already been resolved.');
         }
 

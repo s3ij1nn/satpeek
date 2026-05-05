@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\EarnSessionStatus;
 use App\Models\InternalArticleView;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -39,7 +40,7 @@ class InternalArticleAuthController extends Controller
         if (! $view) {
             throw new NotFoundHttpException('Article view not found.');
         }
-        if ($view->status !== 'pending') {
+        if ($view->status !== EarnSessionStatus::Pending) {
             throw new HttpException(410, 'This article view has already been resolved.');
         }
         if (! $view->article) {

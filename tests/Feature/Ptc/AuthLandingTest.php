@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ptc;
 
 use App\Captcha\TrajectoryTraceProvider;
+use App\Enums\EarnSessionStatus;
 use App\Models\CaptchaChallenge;
 use App\Models\PtcAd;
 use App\Models\PtcView;
@@ -128,7 +129,7 @@ class AuthLandingTest extends TestCase
 
         $response->assertOk()->assertJson(['ok' => true, 'reward_sat' => 23]);
         $this->assertSame(23, (int) $user->fresh()->balance_sat);
-        $this->assertSame('verified', PtcView::find($view->id)->status);
+        $this->assertSame(EarnSessionStatus::Verified, PtcView::find($view->id)->status);
     }
 
     public function test_token_endpoint_404s_for_other_users_token(): void

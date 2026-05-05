@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EarnSessionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -11,7 +12,7 @@ use Illuminate\Support\Carbon;
  * @property int $user_id
  * @property int $ptc_ad_id
  * @property string $epoch_token
- * @property string $status
+ * @property EarnSessionStatus $status
  * @property string|null $rejection_reason
  * @property int $heartbeats_received
  * @property int $heartbeats_expected
@@ -39,6 +40,7 @@ class PtcView extends Model
     protected $casts = [
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'status' => EarnSessionStatus::class,
         'meta' => 'array',
     ];
 

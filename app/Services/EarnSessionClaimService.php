@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Captcha\CaptchaConsumer;
+use App\Enums\EarnSessionStatus;
 use App\Models\BalanceLedger;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -65,7 +66,7 @@ class EarnSessionClaimService
         ?callable $preClaim = null,
         ?callable $postCredit = null,
     ): EarnSessionClaim {
-        if ($session->getAttribute('status') !== 'pending') {
+        if ($session->getAttribute('status') !== EarnSessionStatus::Pending) {
             return EarnSessionClaim::rejected($notPendingError);
         }
         if (! hash_equals((string) $session->getAttribute('epoch_token'), $providedToken)) {
