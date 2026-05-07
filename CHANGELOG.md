@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-05-07
+
+Theme: operator response surface + Postgres / proxy edge bug fixes.
+On the feature side, the operator gains a hard-perimeter deny list
+that closes off an attacking IP without a redeploy and a captcha gate
+on email-verification resend that closes the inbox-bombing pattern. On
+the bug-fix side, two latent Postgres / proxy issues from earlier
+releases are closed: Filament 4's database-notifications drawer was
+500ing on `data->>'format'` because the `notifications.data` column
+was `text`, and asset URLs through any TLS-terminating reverse proxy
+(ngrok, Cloudflare, ALB) were generated as `http://` because the
+bootstrap callback that wired `TRUSTED_PROXIES` ran before the env
+loader. Both are fixed.
+
+No schema changes beyond two additive migrations (`ip_block_entries`
+table + alter `notifications.data` to json on Postgres). Wire format
+unchanged for every existing JSON endpoint. 432 tests; CI green.
+
 ### Added
 
 - **Operator-managed IP deny list at `/admin/ip-block-entries`.**
@@ -47,6 +65,51 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   trace rejects, humanoid trace sends, second resend within the
   same minute returns 429, already-verified user short-circuits
   to dashboard without consuming a captcha.
+
+### Fixed
+
+- **`notifications.data` must be `json`, not `text`, on Postgres.**
+  The base `notifications` migration shipped with `$table->text('data')`
+  matching the Laravel `notifications:table` Artisan stub, but Filament
+  4's database-notifications drawer filters on
+  `data->>'format' = 'filament'`, and Postgres only exposes `->>` on
+  json/jsonb columns. On a `text` column the request 500s with
+  `operator does not exist: text ->> unknown` — reproduced from the
+  user's `/admin` dashboard. SQLite (the test driver) has no static
+  column types so the JSON operator works on the same TEXT-affinity
+  column, which is why the test suite never caught it. Two changes:
+  the original create migration's `data` is now `$table->json('data')`
+  for fresh setups, and a new ALTER migration coerces existing
+  `notifications.data` from text to json on Postgres
+  (`USING data::json` — safe because Eloquent's array cast on the
+  Notification model has always written JSON-serialised payloads).
+  No-op on SQLite.
+
+- **`TRUSTED_PROXIES` config now via `config/trustedproxy.php`,
+  not the bootstrap callback.** Filament admin behind ngrok was
+  generating `http://` asset URLs even with `TRUSTED_PROXIES=*`
+  set in `.env`, causing every CSS/JS/font asset to be blocked
+  as mixed content on the `https://` edge. Root cause: the
+  `bootstrap/app.php` `withMiddleware()` callback is registered
+  via `afterResolving(HttpKernel::class)`, which fires BEFORE the
+  `LoadEnvironmentVariables` bootstrapper in the HTTP request flow.
+  `env('TRUSTED_PROXIES')` returned null at that point so the
+  `is_null` guard silently skipped `$middleware->trustProxies(...)`.
+  CLI / artisan / tinker work fine because their kernel-resolution
+  path runs after env load, which is why this never tripped the
+  test suite. Fix: ship `config/trustedproxy.php` reading
+  `env('TRUSTED_PROXIES')` and let the framework's built-in
+  TrustProxies middleware pick the value up via its legacy
+  `config('trustedproxy.proxies')` fallback. Config files are
+  loaded after env, so `env()` works correctly there. Removed the
+  dead `trustProxies()` block from `bootstrap/app.php` so the next
+  reader doesn't think it's wiring anything.
+
+- **DashboardWidgetTest captcha-outcome flake in the first hour past
+  UTC midnight.** The test seeded rows with `Carbon::now()->subHour()`,
+  which crosses the day boundary when "now" is in the first hour of
+  a UTC day; the rows landed in yesterday's bucket and the assertion
+  on today's bucket failed. Switched to `subMinute()`.
 
 ## [0.11.0] — 2026-05-06
 
