@@ -4,6 +4,7 @@ use App\Http\Middleware\AdblockGate;
 use App\Http\Middleware\BotScoreGate;
 use App\Http\Middleware\CloudflareClientIp;
 use App\Http\Middleware\FingerprintRequired;
+use App\Http\Middleware\IpBlocked;
 use App\Http\Middleware\IpReputationGate;
 use App\Http\Middleware\Ja4Capture;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -60,12 +61,23 @@ return Application::configure(basePath: dirname(__DIR__))
         // when the deployment sits behind a TLS-fingerprinting proxy.
         $middleware->prepend(Ja4Capture::class);
 
+        // Operator-managed IP deny list. Hard 403 for any address listed
+        // in `ip_block_entries`. Runs globally — landing page, /login,
+        // /admin, every API endpoint — so the on-call response to an
+        // active attack closes off ALL surfaces, not just the routes
+        // already gated by IpReputationGate. Placed AFTER CloudflareClientIp
+        // (prepend order is reversed) so request()->ip() returns the real
+        // visitor before the block check, and BEFORE Ja4Capture so a
+        // blocked attacker doesn't waste any further processing.
+        $middleware->prepend(IpBlocked::class);
+
         // Resolve the real client IP from CF-Connecting-IP when behind
         // Cloudflare orange-cloud. Off by default (TRUST_CLOUDFLARE_PROXY
         // env), so dev / non-CF deployments behave unchanged. PREPENDED
         // LAST so it runs FIRST in the chain — every downstream middleware
-        // (Ja4Capture / IpReputationGate / BotScoreGate / etc) and every
-        // controller call to request()->ip() sees the corrected value.
+        // (Ja4Capture / IpBlocked / IpReputationGate / BotScoreGate / etc)
+        // and every controller call to request()->ip() sees the corrected
+        // value.
         $middleware->prepend(CloudflareClientIp::class);
 
         // The Blade frontend is same-origin and uses session cookies, so the

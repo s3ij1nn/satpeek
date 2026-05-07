@@ -106,6 +106,12 @@ When `ScoreEngine::evaluate()` writes `tier = banned`, it also sets `User.is_ban
 
 Operator escape hatch for known shared NATs (campus / mobile / household / corporate proxy). `BOTSCORE_SHARED_IP_ALLOWLIST` accepts comma-separated CIDR or single-IP entries (IPv4 + IPv6). Allowlisted IPs are excluded from the cross-account count entirely. Workflow: roll out, browse `/admin/user-ip-observations`, paste the noisy shared prefixes into env. See `App\BotDetection\IpAllowlist`.
 
+### IP block list — `/admin/ip-block-entries`
+
+Operator deny-list counterpart to the env allowlist. DB-backed (`ip_block_entries` table) with a Filament UI under Operations → IP block list. Each row is one CIDR or single-IP entry; the global `App\Http\Middleware\IpBlocked` middleware 403s any matching request before any auth check, ScoreEngine pass, or controller logic runs. Used for the on-call response to an active attack — paste the source IP / range, next request from that address gets rejected at the perimeter without a code change.
+
+JSON requests get `{"error":"ip_blocked","reason":"operator_block"}`; browser navigations get a bare 403 page. Edits are intentionally not supported (delete + re-create) so the audit log reflects the exact set of addresses ever blocked. Cache: `App\BotDetection\IpDenyList` reads the active list and caches for 30 s; create/delete in Filament busts the cache so the change takes effect on the next request, not the next 30 s tick. Provenance: every create/delete writes an `admin_audit_log` row with the admin user id + cidr + note.
+
 ### Bot score tracking — `app/Models/BotScoreHistory`
 
 Every `ScoreEngine::evaluate()` call writes a row with the full snapshot (all 12 signal values, final tier, timestamp, user_id). Operators can browse the evaluation trail at `/admin/bot-score-history` to understand tier transitions. The `/up` health check probes 24-h evaluation count to detect if the scoring pipeline has stalled.

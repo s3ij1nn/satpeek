@@ -6,6 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Operator-managed IP deny list at `/admin/ip-block-entries`.**
+  Counterpart to the env-driven `BOTSCORE_SHARED_IP_ALLOWLIST`. Each
+  row is one CIDR or single-IP entry, and a global
+  `App\Http\Middleware\IpBlocked` middleware 403s any matching request
+  before any auth check, ScoreEngine pass, or controller logic runs.
+  Use case is the on-call response to an active attack: operator
+  pastes the source IP / range, next request from that address gets
+  rejected at the perimeter without a code change. JSON requests get
+  `{"error":"ip_blocked","reason":"operator_block"}`; browser
+  navigations get a bare `Forbidden.` 403. Edits are not supported
+  by design — delete + re-create so the audit log reflects the exact
+  set of addresses ever blocked. The `IpDenyList` cache is bust on
+  every create/delete so an operator action takes effect on the very
+  next request. Every CRUD writes an `admin_audit_log` row with the
+  admin id + cidr + note for full provenance. CIDR matching delegates
+  to the existing `IpAllowlist::matches()` so IPv4 + IPv6 + bit-
+  boundary correctness is shared with the allowlist. 12 new tests pin
+  the contract (deny-list service, middleware behaviour, admin
+  resource scoping).
+
 ### Security
 
 - **Captcha gate + per-user rate limit on email-verification resend.**

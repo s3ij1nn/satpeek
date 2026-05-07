@@ -372,15 +372,22 @@ class DashboardWidgetTest extends TestCase
         // Today: 2 verified, 1 consumed (rolls into verified bucket),
         // 3 rejected, 1 expired. Issued (still in flight) must NOT
         // count anywhere — the chart is about resolved outcomes only.
+        //
+        // `subHour()` here used to flake when the test ran in the
+        // first hour past UTC midnight: now-1h landed on yesterday and
+        // the seeded rows fell into the wrong day bucket. `subMinute()`
+        // is safe in any wall clock: the only failure mode would be the
+        // test starting in the last second of a UTC day, which is the
+        // sort of risk we live with everywhere else.
         $now = Carbon::now();
-        $this->seedCaptcha('verified', $now->copy()->subHour());
-        $this->seedCaptcha('verified', $now->copy()->subHour());
-        $this->seedCaptcha('consumed', $now->copy()->subHour());
-        $this->seedCaptcha('rejected', $now->copy()->subHour());
-        $this->seedCaptcha('rejected', $now->copy()->subHour());
-        $this->seedCaptcha('rejected', $now->copy()->subHour());
-        $this->seedCaptcha('expired', $now->copy()->subHour());
-        $this->seedCaptcha('issued', $now->copy()->subHour());
+        $this->seedCaptcha('verified', $now->copy()->subMinute());
+        $this->seedCaptcha('verified', $now->copy()->subMinute());
+        $this->seedCaptcha('consumed', $now->copy()->subMinute());
+        $this->seedCaptcha('rejected', $now->copy()->subMinute());
+        $this->seedCaptcha('rejected', $now->copy()->subMinute());
+        $this->seedCaptcha('rejected', $now->copy()->subMinute());
+        $this->seedCaptcha('expired', $now->copy()->subMinute());
+        $this->seedCaptcha('issued', $now->copy()->subMinute());
         // Out-of-window verified — must not contaminate today's bucket.
         $this->seedCaptcha('verified', $now->copy()->subDays(20));
 
