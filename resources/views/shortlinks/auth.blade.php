@@ -26,7 +26,9 @@
         <span class="reward-pill">+{{ number_format($reward_sat) }}<small style="color: var(--text-tertiary);">sat</small></span>
     </header>
 
-    <div id="slMsg" style="display:none;"></div>
+    {{-- Status / error sink. role=status + aria-live so SR users hear
+         "captcha required" / "claimed +X sat" without a manual reload. --}}
+    <div id="slMsg" role="status" aria-live="polite" style="display:none;"></div>
 
     <div class="panel" id="slClaimPanel">
         <h2>Solve captcha to claim</h2>

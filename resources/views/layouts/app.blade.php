@@ -26,11 +26,14 @@
             --border-subtle: #1d2634;
             --border-strong: #2a3647;
 
-            /* text */
+            /* text — values audited for WCAG AA (4.5:1) on --bg-canvas
+             * (#07090f). Tertiary used to be #6b7686 which was 4.18:1
+             * (sub-AA at body sizes); quaternary was #4a5260 (~2.4:1,
+             * fail at any size). Bumped to the values below. */
             --text-primary: #f4f6f9;
             --text-secondary: #aab4c2;
-            --text-tertiary: #6b7686;
-            --text-quaternary: #4a5260;
+            --text-tertiary: #8a96a8;
+            --text-quaternary: #707b8a;
 
             /* accents */
             --amber: #f59e0b;
@@ -89,11 +92,24 @@
         ::selection { background: var(--amber-glow); color: var(--amber-soft); }
 
         a { color: inherit; text-decoration: none; transition: color var(--dur-fast) var(--ease-out-expo); }
-        a:focus-visible, button:focus-visible {
+        a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
             outline: 2px solid var(--amber);
             outline-offset: 3px;
             border-radius: 4px;
         }
+        /* Skip link — keyboard / SR users land at <main> directly. */
+        .skip-link {
+            position: absolute; left: 1rem; top: -40px;
+            background: var(--amber); color: #1a0e00;
+            padding: 0.5rem 0.875rem;
+            border-radius: var(--radius-md);
+            font-weight: 500;
+            z-index: 100;
+            transition: top var(--dur-fast) var(--ease-out-expo);
+        }
+        .skip-link:focus { top: 0.75rem; }
+        /* Sticky-header offset for tab-stops landing under the header. */
+        h1, h2, h3, [tabindex], input, button, a, label { scroll-margin-top: 5rem; }
 
         /* — Header — */
         .site-header {
@@ -192,6 +208,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Skip to main content</a>
+
 <header class="site-header">
     <div class="site-header__inner">
         <a href="{{ route('home') }}" class="brand">
@@ -222,7 +240,7 @@
     </div>
 </header>
 
-<main>
+<main id="main" tabindex="-1">
     {{ $slot ?? '' }}
     @yield('content')
 </main>

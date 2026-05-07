@@ -90,7 +90,7 @@
                     The advertiser site opens in a new tab. Keep <strong>this</strong> tab open — the countdown
                     and reward claim happen here. The advertiser tab can redirect itself; the timer keeps running.
                 </p>
-                <div id="ptcInlineError" class="alert--err" style="display:none; max-width: 36rem;"></div>
+                <div id="ptcInlineError" class="alert--err" role="alert" aria-live="assertive" style="display:none; max-width: 36rem;"></div>
             @endif
         </div>
         <div class="countdown">
@@ -98,7 +98,11 @@
                 <div class="countdown__label">Time remaining</div>
                 <div class="countdown__bar"><div id="ptcBar"></div></div>
             </div>
-            <div class="countdown__num"><span id="ptcSec">{{ $ad->duration_sec }}</span><small>sec</small></div>
+            {{-- aria-live=off on the countdown: a per-second SR
+                 announcement would be wildly noisy. The countdown is
+                 a visual aid; the modal-open announces the next state
+                 transition (claim flow). --}}
+            <div class="countdown__num" aria-live="off"><span id="ptcSec">{{ $ad->duration_sec }}</span><small>sec</small></div>
             <div class="viewer__meta">heartbeats: <span id="ptcHb">0</span></div>
         </div>
     </div>
@@ -112,7 +116,7 @@
     <div class="modal__card">
         <h2 class="modal__title" id="claimModalTitle">Solve captcha to claim</h2>
         <p class="modal__reward">{{ number_format($ad->reward_sat) }}<small>sat</small></p>
-        <div id="ptcResult" style="display:none;"></div>
+        <div id="ptcResult" role="status" aria-live="polite" style="display:none;"></div>
         <x-trajectory-captcha name="ptc" />
         <button type="button" class="cta cta--primary" id="claimBtn" style="justify-content:center;">
             Claim reward <span class="cta__arrow">→</span>

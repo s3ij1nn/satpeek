@@ -33,7 +33,7 @@
     <p class="lede">Username, email, password — that's it. We'll verify the email to unlock withdrawals to FaucetPay.</p>
 
     <div id="signupError" class="alert--err" role="alert" style="display:none;"></div>
-    @error('captcha') <div class="alert--err">{{ $message }}</div> @enderror
+    @error('captcha') <div class="alert--err" role="alert">{{ $message }}</div> @enderror
 
     <form class="form-card" method="POST" action="{{ route('register.store') }}" id="signupForm" novalidate>
         @csrf
@@ -42,22 +42,25 @@
             <label for="username">Username</label>
             <input id="username" name="username" type="text" required minlength="3" maxlength="32"
                    pattern="[A-Za-z0-9_]+" autocomplete="username"
-                   placeholder="lowercase, digits, underscore" value="{{ old('username') }}">
-            @error('username') <span class="field__error">{{ $message }}</span> @enderror
+                   placeholder="lowercase, digits, underscore" value="{{ old('username') }}"
+                   @error('username') aria-invalid="true" aria-describedby="username-error" @enderror>
+            @error('username') <span class="field__error" id="username-error" role="alert">{{ $message }}</span> @enderror
         </div>
 
         <div class="field">
             <label for="email">Email</label>
             <input id="email" name="email" type="email" required autocomplete="email"
-                   placeholder="you@inbox.com" value="{{ old('email') }}">
-            @error('email') <span class="field__error">{{ $message }}</span> @enderror
+                   placeholder="you@inbox.com" value="{{ old('email') }}"
+                   @error('email') aria-invalid="true" aria-describedby="email-error" @enderror>
+            @error('email') <span class="field__error" id="email-error" role="alert">{{ $message }}</span> @enderror
         </div>
 
         <div class="field-row">
             <div class="field">
                 <label for="password">Password</label>
-                <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password">
-                @error('password') <span class="field__error">{{ $message }}</span> @enderror
+                <input id="password" name="password" type="password" required minlength="8" autocomplete="new-password"
+                       @error('password') aria-invalid="true" aria-describedby="password-error" @enderror>
+                @error('password') <span class="field__error" id="password-error" role="alert">{{ $message }}</span> @enderror
             </div>
             <div class="field">
                 <label for="password_confirmation">Confirm</label>

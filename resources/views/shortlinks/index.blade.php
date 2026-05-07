@@ -47,9 +47,13 @@
     .row__reward small { font-family: var(--font-mono); font-size: .55em; color: var(--text-tertiary); margin-left: .15rem; }
 
     /* Multi-button visit chip strip — one chip per remaining daily view,
-       firefaucet-style. Each chip is its own click → fresh ShortlinkClick. */
-    .row__chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .35rem; padding-top: .25rem; }
-    .chip { min-width: 2.25rem; padding: .35rem .55rem; border-radius: var(--radius-sm, 6px); background: var(--bg-elev); border: 1px solid var(--border-subtle); color: var(--amber-soft); font-family: var(--font-mono); font-size: var(--text-xs); cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease; text-align: center; line-height: 1; }
+       firefaucet-style. Each chip is its own click → fresh ShortlinkClick.
+       Gap bumped from .35rem to .5rem (≥8px) so adjacent chips don't
+       trip WCAG 2.5.8 spacing-exception edge cases. */
+    .row__chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; padding-top: .25rem; }
+    /* Hit area: 28×28 minimum to comfortably exceed the 24×24 floor
+       (WCAG 2.5.8) once line-height + border are accounted for. */
+    .chip { min-width: 28px; min-height: 28px; padding: .45rem .6rem; border-radius: var(--radius-sm, 6px); background: var(--bg-elev); border: 1px solid var(--border-subtle); color: var(--amber-soft); font-family: var(--font-mono); font-size: var(--text-xs); cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease; text-align: center; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
     .chip:hover { background: var(--amber); color: #1a0e00; border-color: var(--amber); }
     .chip[disabled] { background: var(--bg-elev); color: var(--text-tertiary); border-color: var(--border-subtle); cursor: not-allowed; opacity: .55; }
     .chip--in-flight { background: var(--bg-elev); color: var(--text-tertiary); cursor: progress; }

@@ -23,9 +23,9 @@
     <p>We sent a verification link to <strong style="color: var(--text-primary);">{{ auth()->user()?->email }}</strong>. Click it to unlock withdrawals.</p>
     <p style="font-size: var(--text-sm); color: var(--text-tertiary);">PTC viewing and shortlinks are available right now — verification is only required when you withdraw to FaucetPay.</p>
 
-    @if (session('status')) <div class="alert--ok">{{ session('status') }}</div> @endif
-    @error('captcha') <div class="alert--err">{{ $message }}</div> @enderror
-    <div id="resendError" class="alert--err" style="display:none"></div>
+    @if (session('status')) <div class="alert--ok" role="status">{{ session('status') }}</div> @endif
+    @error('captcha') <div class="alert--err" role="alert">{{ $message }}</div> @enderror
+    <div id="resendError" class="alert--err" role="alert" aria-live="assertive" style="display:none"></div>
 
     <form id="resendForm" method="POST" action="{{ route('verification.send') }}" class="resend-form">
         @csrf
@@ -35,9 +35,18 @@
     <p style="margin-top: 2rem; font-size: var(--text-xs);">
         <a href="{{ route('dashboard') }}" style="color: var(--text-tertiary); text-decoration: underline;">Continue to dashboard</a>
         &nbsp;·&nbsp;
-        <a href="{{ route('logout') }}" style="color: var(--text-tertiary); text-decoration: underline;"
-           onclick="event.preventDefault(); document.getElementById('lo').submit();">Sign out</a>
-        <form id="lo" method="POST" action="{{ route('logout') }}" style="display:none;">@csrf</form>
+        {{-- Logout is a state-changing action and CSRF-protected, so it MUST
+             be a POST form. Previously rendered as <a> with a JS form-submit
+             onclick — keyboard-operable but the GET href violated CSRF-safe-
+             method semantics if JS failed. The styled <button> below is
+             POST-only, keyboard-native, and SR-correct. --}}
+        <form method="POST" action="{{ route('logout') }}"
+              style="display:inline; margin:0; padding:0;">
+            @csrf
+            <button type="submit" class="logout-link"
+                    style="background:none; border:0; padding:0; font:inherit;
+                           color: var(--text-tertiary); text-decoration: underline; cursor:pointer;">Sign out</button>
+        </form>
     </p>
 </section>
 @endsection

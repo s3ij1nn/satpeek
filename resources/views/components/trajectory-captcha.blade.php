@@ -27,13 +27,27 @@
      data-points-input-id="{{ $pointsInputId }}">
     <div class="captcha-block__head">
         <span>Trajectory captcha</span>
-        <span class="captcha-block__status" id="{{ $statusId }}" data-state="ready">● ready</span>
+        {{-- role="status" + aria-live="polite" announces state changes
+             ("capturing", "in goal · hold & release", "captcha unavailable")
+             without interrupting other SR output. State word is in the
+             text itself ("ready"/"capturing"/"pass"/"fail") so SR users
+             aren't relying on the colour swatch driven by data-state. --}}
+        <span class="captcha-block__status" id="{{ $statusId }}"
+              role="status" aria-live="polite" aria-atomic="true"
+              data-state="ready">● ready</span>
     </div>
     <canvas id="{{ $canvasId }}" width="320" height="{{ (int) $height }}"
-            aria-label="Drag from the green dot to the red goal following the moving target."></canvas>
+            aria-label="Drag from the green dot to the red goal following the moving target.">
+        {{-- Fallback DOM for canvas-unsupported / disabled-JS clients.
+             Real users without canvas support can't solve the captcha
+             but at least see why the form will reject them. --}}
+        Your browser does not render the captcha canvas. Sign-in / sign-up
+        will require a different verification method — please contact support.
+    </canvas>
     <div class="captcha-block__instr">
         <span>From the green dot, follow the yellow target. Release inside the red ring — it turns green when you're in.</span>
-        <button type="button" class="captcha-block__reset" id="{{ $resetId }}">↺ new</button>
+        <button type="button" class="captcha-block__reset" id="{{ $resetId }}"
+                aria-label="Issue a new captcha challenge">↺ new</button>
     </div>
     <input type="hidden" name="{{ $challengeIdName }}" id="{{ $challengeIdInputId }}">
     <input type="hidden" name="{{ $pointsName }}" id="{{ $pointsInputId }}">
@@ -94,6 +108,12 @@
     .captcha-block__reset {
         background: none; border: 0; color: inherit;
         font: inherit; cursor: pointer; text-decoration: underline;
+        /* WCAG 2.5.8 minimum 24×24 click target. Padding plus
+           inline-flex centering gives the icon glyph enough hit
+           area without enlarging its visual footprint. */
+        min-width: 44px; min-height: 24px;
+        padding: 4px 6px;
+        display: inline-flex; align-items: center; justify-content: center;
     }
     .captcha-block__reset:hover { color: var(--text-secondary, #aab4c2); }
 </style>
@@ -163,9 +183,26 @@
             return [x, y];
         }
 
+        // Honour prefers-reduced-motion: skip the rAF loop and
+        // render a single still frame at the start of the curve.
+        // The captcha is still solvable — the user drags from the
+        // green dot to the red goal — but the moving target dot
+        // doesn't animate. Live (non-static) match because the
+        // user can still toggle OS-level reduced-motion mid-session.
+        const reducedMotion = window.matchMedia
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+
         function startAnim() {
             const start = performance.now();
             if (animId) cancelAnimationFrame(animId);
+            if (reducedMotion && reducedMotion.matches) {
+                // Single static frame — target sits at u=0 (the green
+                // dot) so the user has a fixed visual reference.
+                if (payload) draw(0);
+
+                return;
+            }
             const tick = (now) => {
                 if (!payload) return;
                 const elapsed = capturing ? (now - startedAt) : ((now - start) % payload.durationMs);

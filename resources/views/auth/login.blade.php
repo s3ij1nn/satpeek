@@ -29,10 +29,10 @@
     <h1>Welcome <em>back</em>.</h1>
     <p class="lede">Pick up where you left off. Solve the trajectory captcha to confirm you're human.</p>
 
-    @if (session('status')) <div class="alert--ok">{{ session('status') }}</div> @endif
+    @if (session('status')) <div class="alert--ok" role="status">{{ session('status') }}</div> @endif
 
-    <div id="loginError" class="alert--err" role="alert" style="display:none;"></div>
-    @error('email') <div class="alert--err">{{ $message }}</div> @enderror
+    <div id="loginError" class="alert--err" role="alert" aria-live="assertive" style="display:none;"></div>
+    @error('email') <div class="alert--err" role="alert">{{ $message }}</div> @enderror
 
     <form class="form-card" method="POST" action="{{ route('login.store') }}" id="loginForm" novalidate>
         @csrf
