@@ -75,15 +75,15 @@ class RateLimitTest extends TestCase
         for ($i = 0; $i < 5; $i++) {
             $this->actingAs($user)->postJson('/api/withdraw', [
                 'amount_sat' => 1000,
-                'faucetpay_email' => 'u@example.com',
-                'currency' => 'BTC',
+                'destination' => 'u@example.com',
+                'payout_currency' => 'BTC',
             ]);
         }
 
         $blocked = $this->actingAs($user)->postJson('/api/withdraw', [
             'amount_sat' => 1000,
-            'faucetpay_email' => 'u@example.com',
-            'currency' => 'BTC',
+            'destination' => 'u@example.com',
+            'payout_currency' => 'BTC',
         ]);
         $blocked->assertStatus(429);
     }
@@ -97,17 +97,17 @@ class RateLimitTest extends TestCase
         for ($i = 0; $i < 5; $i++) {
             $this->actingAs($u1)->postJson('/api/withdraw', [
                 'amount_sat' => 1000,
-                'faucetpay_email' => 'a@example.com',
-                'currency' => 'BTC',
+                'destination' => 'a@example.com',
+                'payout_currency' => 'BTC',
             ]);
         }
         $this->actingAs($u1)->postJson('/api/withdraw', [
-            'amount_sat' => 1000, 'faucetpay_email' => 'a@example.com', 'currency' => 'BTC',
+            'amount_sat' => 1000, 'destination' => 'a@example.com', 'payout_currency' => 'BTC',
         ])->assertStatus(429);
 
         // u2 must still be free — different user, different bucket.
         $u2Response = $this->actingAs($u2)->postJson('/api/withdraw', [
-            'amount_sat' => 1000, 'faucetpay_email' => 'b@example.com', 'currency' => 'BTC',
+            'amount_sat' => 1000, 'destination' => 'b@example.com', 'payout_currency' => 'BTC',
         ]);
         $this->assertNotSame(429, $u2Response->getStatusCode(), 'per-user buckets must not bleed across users');
     }

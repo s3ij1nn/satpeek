@@ -160,7 +160,103 @@ return [
     'faucetpay' => [
         'api_key' => env('FAUCETPAY_API_KEY'),
         'api_base' => env('FAUCETPAY_API_BASE', 'https://faucetpay.io/api/v1'),
+        // Legacy default — kept for the few code paths that don't yet
+        // pick a per-currency floor. Phase 1 multi-currency reads
+        // `payout.currencies.<CODE>.min_withdraw_sat` instead.
         'min_withdraw_sat' => (int) env('FAUCETPAY_MIN_WITHDRAW_SAT', 1000),
+    ],
+
+    /*
+     * Payout currencies — per-currency metadata read by
+     * App\Payout\PayoutCurrencyRegistry. Adding a new currency is a
+     * one-place edit here; the registry, gateways, and Filament UI
+     * pick it up automatically.
+     *
+     * Fields:
+     *   - label              human-readable name shown on the form
+     *   - faucetpay_code     code FaucetPay's `/send` API expects
+     *   - decimals           base-10 fractional digits below the main
+     *                        unit (8 for BTC sats, 18 for ETH wei,
+     *                        6 for USDT-TRC20, 12 for XMR piconero)
+     *   - min_withdraw_sat   floor expressed in BTC-sats (the platform
+     *                        accounting unit) — different per chain
+     *                        because gas / withdraw fees differ wildly
+     *   - faucetpay_supported   FP route enabled
+     *   - onchain_supported     direct-network route enabled (Phase 2+)
+     *   - coingecko_id          id used by PriceOracle for BTC→target rate
+     */
+    'payout' => [
+        'currencies' => [
+            'BTC' => [
+                'label' => 'Bitcoin',
+                'faucetpay_code' => 'BTC',
+                'decimals' => 8,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_BTC_SAT', 1000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // Phase 2: BTC onchain
+                'coingecko_id' => 'bitcoin',
+            ],
+            'LTC' => [
+                'label' => 'Litecoin',
+                'faucetpay_code' => 'LTC',
+                'decimals' => 8,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_LTC_SAT', 1000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // FaucetPay-only by spec
+                'coingecko_id' => 'litecoin',
+            ],
+            'ETH' => [
+                'label' => 'Ethereum',
+                'faucetpay_code' => 'ETH',
+                'decimals' => 18,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_ETH_SAT', 5000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // Phase 3: ETH onchain
+                'coingecko_id' => 'ethereum',
+            ],
+            'USDT_TRC20' => [
+                'label' => 'USDT (TRC20)',
+                'faucetpay_code' => 'USDTTRC',
+                'decimals' => 6,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_USDT_TRC20_SAT', 1000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // Phase 2: TRX onchain (same chain)
+                'coingecko_id' => 'tether',
+            ],
+            'TRX' => [
+                'label' => 'Tron',
+                'faucetpay_code' => 'TRX',
+                'decimals' => 6,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_TRX_SAT', 1000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // Phase 2: TRX onchain
+                'coingecko_id' => 'tron',
+            ],
+            'DASH' => [
+                'label' => 'Dash',
+                'faucetpay_code' => 'DASH',
+                'decimals' => 8,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_DASH_SAT', 1000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // FaucetPay-only by spec
+                'coingecko_id' => 'dash',
+            ],
+            'XMR' => [
+                'label' => 'Monero',
+                'faucetpay_code' => 'XMR',
+                'decimals' => 12,
+                'min_withdraw_sat' => (int) env('PAYOUT_MIN_XMR_SAT', 1000),
+                'faucetpay_supported' => true,
+                'onchain_supported' => false, // FaucetPay-only by spec (no self-host)
+                'coingecko_id' => 'monero',
+            ],
+        ],
+        // PriceOracle settings — see App\Payout\PriceOracle.
+        'price_oracle' => [
+            'cache_ttl_seconds' => (int) env('PRICE_ORACLE_CACHE_TTL', 60),
+            'request_timeout_seconds' => (int) env('PRICE_ORACLE_TIMEOUT', 5),
+            'coingecko_base' => env('PRICE_ORACLE_COINGECKO_BASE', 'https://api.coingecko.com/api/v3'),
+        ],
     ],
 
     // BitcoTasks publisher integration. Per the docs (fetched 2026-04-27)

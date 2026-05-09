@@ -11,6 +11,9 @@ use App\Models\User;
 use App\Models\Withdrawal;
 use App\Payout\FaucetPayClient;
 use App\Payout\FaucetPayUnreachableException;
+use App\Payout\Gateway\FaucetPayGateway;
+use App\Payout\Gateway\PayoutGatewayRegistry;
+use App\Payout\PayoutCurrencyRegistry;
 use App\Payout\ProcessWithdrawalJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -52,7 +55,7 @@ class ProcessWithdrawalJobTest extends TestCase
 
         $client = $this->fakeClient(['ok' => true, 'payout_id' => 'PO-1', 'message' => 'sent', 'raw' => ['status' => 200]]);
 
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $w->refresh();
         $this->assertSame('sent', $w->status);
@@ -82,7 +85,7 @@ class ProcessWithdrawalJobTest extends TestCase
             'raw' => ['status' => 405],
         ]);
 
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $w->refresh();
         $this->assertSame('failed', $w->status);
@@ -113,7 +116,7 @@ class ProcessWithdrawalJobTest extends TestCase
         $this->expectException(FaucetPayUnreachableException::class);
 
         try {
-            (new ProcessWithdrawalJob($w->id))->handle($client);
+            (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
         } finally {
             // Status is left as 'processing' (we marked it so before send),
             // attempts counter has been recorded — operator dashboard sees
@@ -198,7 +201,7 @@ class ProcessWithdrawalJobTest extends TestCase
         // Client must never be touched.
         $client = $this->throwingClient(new RuntimeException('should not be called'));
 
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $this->assertSame('hold', $w->fresh()->status);
         $this->assertDatabaseMissing('balance_ledgers', [
@@ -236,7 +239,7 @@ class ProcessWithdrawalJobTest extends TestCase
         // Worker B fires now. The throwing client guarantees we'd
         // detect any FaucetPay call (which must NOT happen).
         $clientBNeverCalled = $this->throwingClient(new RuntimeException('FaucetPay must not be called for an already-settled row'));
-        (new ProcessWithdrawalJob($w->id))->handle($clientBNeverCalled);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($clientBNeverCalled));
 
         $w = $w->fresh();
         $user = $user->fresh();
@@ -291,7 +294,7 @@ class ProcessWithdrawalJobTest extends TestCase
             }
         };
 
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $w = $w->fresh();
         $user = $user->fresh();
@@ -322,7 +325,7 @@ class ProcessWithdrawalJobTest extends TestCase
 
         // First run: FaucetPay returns ok=false → refund path fires.
         $client = $this->fakeClient(['ok' => false, 'payout_id' => null, 'message' => 'declined', 'raw' => []]);
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $this->assertSame('failed', $w->fresh()->status);
         $this->assertSame(3300, (int) $user->fresh()->balance_sat, 'first refund credited');
@@ -332,7 +335,7 @@ class ProcessWithdrawalJobTest extends TestCase
         // catch this in normal flow, but if it didn't, the atomic
         // refund's WHERE filter would. Here we drive the path
         // directly by re-invoking handle() against the now-failed row.
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $this->assertSame(3300, (int) $user->fresh()->balance_sat, 'must not double-refund');
         $this->assertSame(1, BalanceLedger::where('reference_type', Withdrawal::class)
@@ -356,7 +359,7 @@ class ProcessWithdrawalJobTest extends TestCase
         $balanceBefore = (int) $user->balance_sat;
 
         $client = $this->throwingClient(new RuntimeException('should not be called'));
-        (new ProcessWithdrawalJob($w->id))->handle($client);
+        (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $this->assertSame('sent', $w->fresh()->status);
         $this->assertSame($balanceBefore, (int) $user->fresh()->balance_sat);
@@ -397,5 +400,24 @@ class ProcessWithdrawalJobTest extends TestCase
                 throw $this->e;
             }
         };
+    }
+
+    /**
+     * Wrap a fake / throwing FaucetPayClient in a PayoutGatewayRegistry
+     * so it can be passed to ProcessWithdrawalJob::handle() now that the
+     * job dispatches via the gateway registry rather than calling the
+     * client directly. Keeps the existing fakeClient/throwingClient
+     * helpers untouched — the dispatch layer is what changed, not the
+     * FaucetPay protocol stubbing.
+     */
+    private function gatewayRegistry(FaucetPayClient $client): PayoutGatewayRegistry
+    {
+        $registry = new PayoutGatewayRegistry;
+        $registry->register(new FaucetPayGateway(
+            $client,
+            $this->app->make(PayoutCurrencyRegistry::class),
+        ));
+
+        return $registry;
     }
 }

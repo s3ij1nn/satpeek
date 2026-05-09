@@ -33,6 +33,11 @@ use App\Models\ShortlinkProviderCredential;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
+use App\Payout\FaucetPayClient;
+use App\Payout\Gateway\FaucetPayGateway;
+use App\Payout\Gateway\PayoutGatewayRegistry;
+use App\Payout\PayoutCurrencyRegistry;
+use App\Payout\PriceOracle;
 use App\Shortlinks\Providers\GenericShortenerClient;
 use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\Providers\ShortenerClient;
@@ -175,6 +180,27 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(Signal::class, ResponseTimeSignal::class);
+
+        // Multi-currency payout — gateway registry is a singleton so
+        // `ProcessWithdrawalJob` always sees the same set of registered
+        // routes. Phase 1 wires only FaucetPay; per-chain onchain
+        // gateways register here as they land in Phase 2+.
+        $this->app->singleton(PayoutCurrencyRegistry::class);
+        $this->app->singleton(PriceOracle::class, function ($app) {
+            return new PriceOracle(
+                $app->make(Client::class),
+                $app->make(PayoutCurrencyRegistry::class),
+            );
+        });
+        $this->app->singleton(PayoutGatewayRegistry::class, function ($app) {
+            $registry = new PayoutGatewayRegistry;
+            $registry->register(new FaucetPayGateway(
+                $app->make(FaucetPayClient::class),
+                $app->make(PayoutCurrencyRegistry::class),
+            ));
+
+            return $registry;
+        });
     }
 
     public function boot(): void

@@ -98,8 +98,8 @@ class PolicyEnforcerIntegrationTest extends TestCase
 
         $response = $this->actingAs($user)->postJson('/api/withdraw', [
             'amount_sat' => 2000,
-            'faucetpay_email' => 'u@example.com',
-            'currency' => 'BTC',
+            'destination' => 'u@example.com',
+            'payout_currency' => 'BTC',
         ]);
 
         $response->assertStatus(202);
@@ -120,8 +120,8 @@ class PolicyEnforcerIntegrationTest extends TestCase
 
         $response = $this->actingAs($user)->postJson('/api/withdraw', [
             'amount_sat' => 2000,
-            'faucetpay_email' => 'u@example.com',
-            'currency' => 'BTC',
+            'destination' => 'u@example.com',
+            'payout_currency' => 'BTC',
         ]);
 
         $response->assertStatus(202);
@@ -139,8 +139,8 @@ class PolicyEnforcerIntegrationTest extends TestCase
 
         $response = $this->actingAs($user)->postJson('/api/withdraw', [
             'amount_sat' => 2000,
-            'faucetpay_email' => 'u@example.com',
-            'currency' => 'BTC',
+            'destination' => 'u@example.com',
+            'payout_currency' => 'BTC',
         ]);
 
         $response->assertStatus(403);

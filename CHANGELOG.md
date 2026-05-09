@@ -6,6 +6,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-currency payout via FaucetPay (Phase 1 of the payout
+  expansion).** SatPeek can now pay users in BTC / LTC / ETH /
+  USDT-TRC20 / DASH / XMR / TRX through FaucetPay's `/send` endpoint.
+  Schema additions on `withdrawals`: `payout_method` ('faucetpay' |
+  'onchain'), `payout_currency` (canonical SatPeek code, e.g.
+  `USDT_TRC20`), `payout_amount` (decimal(36, 0) — ETH wei overflows
+  signed-64-bit so we use a bigdecimal column), `payout_rate`
+  (decimal(30, 18) — BTC sats per main-unit at withdraw time, captured
+  for support reproduction), `destination` (generic recipient — email
+  for FP, address for onchain Phase 2+), `fee_sat` (operator fee on
+  onchain; 0 for FP), `onchain_tx_hash` (null for FP, populated by
+  per-chain gateways later). Existing rows are backfilled with
+  `payout_method='faucetpay'`, `payout_currency=upper(currency)`,
+  `destination=faucetpay_email`. Legacy `currency` and
+  `faucetpay_email` columns stay until a later cleanup migration so
+  existing readers keep working.
+
+  New abstractions: `App\Payout\Gateway\PayoutGateway` interface,
+  `PayoutGatewayRegistry` (lookup by `payout_method`),
+  `FaucetPayGateway` wrapping the existing `FaucetPayClient` with
+  multi-currency support. `ProcessWithdrawalJob` dispatches via the
+  registry — adding a future onchain gateway is a one-line
+  registration in `AppServiceProvider`.
+
+  New services: `PayoutCurrency` value object + `PayoutCurrencyRegistry`
+  (config-driven, single source of truth — adding a currency is a
+  one-place edit in `config/satpeek.php`); `PriceOracle` (CoinGecko
+  free `/simple/price` endpoint, 60 s cache, bcmath conversion to
+  preserve ETH-wei precision; throws `PriceOracleUnavailableException`
+  on outage so the controller bails BEFORE debiting balance — user
+  retries fresh once the oracle recovers). 19 new tests pin the
+  registry / oracle / gateway / withdrawal-flow contracts.
+
+  Reserved for Phase 2+: `payout_method='onchain'` with per-chain
+  gateways for BTC + ETH + TRX + USDT-TRC20 (public RPC endpoints,
+  no self-hosted nodes per the operator decision). LTC / DASH / XMR
+  stay FaucetPay-only by spec.
+
 ## [0.12.0] — 2026-05-07
 
 Theme: operator response surface + Postgres / proxy edge bug fixes.

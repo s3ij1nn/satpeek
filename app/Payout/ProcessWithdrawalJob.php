@@ -6,6 +6,7 @@ use App\Mail\WithdrawalRejectedEmail;
 use App\Mail\WithdrawalSentEmail;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use App\Payout\Gateway\PayoutGatewayRegistry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -77,7 +78,7 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
      */
     public int $uniqueFor = 2400;
 
-    public function handle(FaucetPayClient $client): void
+    public function handle(PayoutGatewayRegistry $gateways): void
     {
         /** @var Withdrawal|null $w */
         $w = Withdrawal::find($this->withdrawalId);
@@ -92,10 +93,10 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
 
         // Atomic claim: only ONE worker can flip the row out of queued
         // (or stay on processing for a retry that re-entered after a
-        // FaucetPayUnreachableException). ShouldBeUnique above is the
+        // gateway-unreachable exception). ShouldBeUnique above is the
         // primary mutex via the cache lock — this is the DB-level
         // backstop for the cache-evicted edge case where two workers
-        // could both pass the precheck and both call FaucetPay.
+        // could both pass the precheck and both call the gateway.
         $meta = (array) $w->meta;
         $meta['attempts'] = (int) ($meta['attempts'] ?? 0) + 1;
         $meta['last_attempted_at'] = Carbon::now()->toIso8601String();
@@ -104,7 +105,7 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
             ->update(['status' => 'processing', 'meta' => $meta]);
         if ($claimed === 0) {
             // Another worker already settled this withdrawal. Bail
-            // silently — no FaucetPay call, no balance mutation.
+            // silently — no gateway call, no balance mutation.
             Log::info('withdrawal claim lost; another worker holds it', [
                 'withdrawal_id' => $w->id,
             ]);
@@ -113,45 +114,52 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
         }
         $w = $w->fresh();
 
-        // Lets FaucetPayUnreachableException escape on purpose — Laravel's
-        // retry machinery picks it up and re-enqueues with backoff. The
-        // request never reached the wire (ConnectionException at TCP/DNS),
+        // Pick the gateway by `payout_method`. Pre-Phase-1 rows have
+        // payout_method=null on legacy data — coalesce to 'faucetpay'
+        // so they continue settling through the same path.
+        $method = $w->payout_method ?? Withdrawal::METHOD_FAUCETPAY;
+        $gateway = $gateways->forMethod($method);
+
+        // FaucetPayUnreachableException (or onchain equivalents) escape
+        // on purpose — Laravel's retry machinery picks them up and
+        // re-enqueues with backoff. The request never reached the wire,
         // so a retry can safely re-claim and try again.
-        $result = $client->send(
-            faucetpayEmail: $w->faucetpay_email,
-            amountSat: (int) $w->amount_sat,
-            currency: $w->currency ?? 'BTC',
-            referenceId: 'satpeek-withdraw-'.$w->id,
-        );
+        $result = $gateway->send($w);
 
         $sent = false;
         DB::transaction(function () use ($w, $result, &$sent) {
-            if ($result['ok']) {
+            if ($result->ok) {
                 // Atomic settle: status MUST still be `processing` for
-                // this update to fire. If a parallel job (cache-lock
-                // failure edge case) somehow finished first, the row
-                // already says `sent` and the WHERE clause filters us
-                // out — affected_rows=0 → skip the total_withdrawn_sat
-                // increment so we don't double-count the payout.
+                // this update to fire. Parallel-worker race (cache-lock
+                // evicted) → losing worker sees affected_rows=0 and
+                // skips the total_withdrawn_sat increment.
+                $update = [
+                    'status' => 'sent',
+                    'processed_at' => Carbon::now(),
+                    'meta' => array_merge((array) $w->meta, ['response' => $result->raw]),
+                ];
+                // Stamp the gateway-specific external reference into
+                // the right column. FaucetPay → faucetpay_payout_id;
+                // onchain → onchain_tx_hash.
+                if ($w->payout_method === Withdrawal::METHOD_ONCHAIN) {
+                    $update['onchain_tx_hash'] = $result->externalId;
+                } else {
+                    $update['faucetpay_payout_id'] = $result->externalId;
+                }
                 $settled = Withdrawal::where('id', $w->id)
                     ->where('status', 'processing')
-                    ->update([
-                        'status' => 'sent',
-                        'faucetpay_payout_id' => $result['payout_id'],
-                        'processed_at' => Carbon::now(),
-                        'meta' => array_merge((array) $w->meta, ['response' => $result['raw']]),
-                    ]);
+                    ->update($update);
                 if ($settled === 1) {
                     $w->user->increment('total_withdrawn_sat', $w->amount_sat);
                     $sent = true;
                 } else {
                     Log::warning('withdrawal settle race: row already sent by another worker', [
                         'withdrawal_id' => $w->id,
-                        'payout_id' => $result['payout_id'],
+                        'external_id' => $result->externalId,
                     ]);
                 }
             } else {
-                self::markFailedAndRefund($w, $result['message'], $result['raw']);
+                self::markFailedAndRefund($w, $result->message, $result->raw);
             }
         });
 
