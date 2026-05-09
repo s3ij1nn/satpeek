@@ -101,9 +101,32 @@ class WithdrawalResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('id')->label('#')->sortable(),
                 Tables\Columns\TextColumn::make('user.email')->label('User')->searchable()->copyable(),
-                Tables\Columns\TextColumn::make('amount_sat')->label('Amount')->suffix(' sat')->sortable()->numeric(),
-                Tables\Columns\TextColumn::make('currency')->badge(),
-                Tables\Columns\TextColumn::make('faucetpay_email')->label('Pay to')->searchable()->copyable(),
+                Tables\Columns\TextColumn::make('amount_sat')->label('Debited')->suffix(' sat')->sortable()->numeric(),
+                Tables\Columns\TextColumn::make('payout_method')
+                    ->label('Route')
+                    ->badge()
+                    ->colors(['warning' => 'faucetpay', 'success' => 'onchain'])
+                    ->placeholder('—'),
+                Tables\Columns\TextColumn::make('payout_currency')
+                    ->label('Currency')
+                    ->badge()
+                    ->placeholder(fn (Withdrawal $r): string => strtoupper((string) $r->currency)),
+                Tables\Columns\TextColumn::make('payout_amount')
+                    ->label('Payout')
+                    ->placeholder('—')
+                    ->fontFamily('mono')
+                    ->description(fn (Withdrawal $r): ?string => $r->payout_currency ? 'in '.$r->payout_currency.' smallest unit' : null)
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('destination')
+                    ->label('Pay to')
+                    ->searchable()
+                    ->copyable()
+                    ->placeholder(fn (Withdrawal $r): ?string => $r->faucetpay_email),
+                Tables\Columns\TextColumn::make('fee_sat')
+                    ->label('Fee')
+                    ->suffix(' sat')
+                    ->numeric()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('status')->badge()->colors([
                     'gray' => 'queued',
                     'warning' => 'hold',
@@ -112,7 +135,18 @@ class WithdrawalResource extends Resource
                     'danger' => fn ($state) => in_array($state, ['failed', 'rejected'], true),
                 ])->sortable(),
                 Tables\Columns\IconColumn::make('requires_review')->boolean(),
-                Tables\Columns\TextColumn::make('faucetpay_payout_id')->label('Payout id')->placeholder('—')->copyable(),
+                Tables\Columns\TextColumn::make('faucetpay_payout_id')
+                    ->label('FP payout id')
+                    ->placeholder('—')
+                    ->copyable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('onchain_tx_hash')
+                    ->label('Tx hash')
+                    ->placeholder('—')
+                    ->limit(14)
+                    ->copyable()
+                    ->copyMessage('Copied tx hash')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('attempts')
                     ->label('Tries')
                     ->getStateUsing(fn (Withdrawal $r): int => (int) (((array) $r->meta)['attempts'] ?? 0))

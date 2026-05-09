@@ -2,10 +2,26 @@
 
 @php
     use App\Models\Withdrawal;
+    use App\Payout\PayoutCurrencyRegistry;
     $u = auth()->user();
-    $min = (int) config('satpeek.faucetpay.min_withdraw_sat', 1000);
     $verified = $u->hasVerifiedEmail();
     $recent = Withdrawal::where('user_id', $u->id)->orderByDesc('id')->limit(10)->get();
+    // Multi-currency: pull the FaucetPay-supported set from the registry
+    // so adding a new currency in config/satpeek.php surfaces here on the
+    // next page render. Legacy `min_withdraw_sat` stays for the form's
+    // initial-state fallback before JS swaps the per-currency floor in.
+    $registry = app(PayoutCurrencyRegistry::class);
+    $currencies = $registry->faucetpaySupported();
+    // Inline JSON so the JS dropdown handler can read per-currency floors
+    // without an extra round-trip. Limited to fields the client needs.
+    $currencyMeta = collect($currencies)->mapWithKeys(fn ($c) => [
+        $c->code => [
+            'label' => $c->label,
+            'min_sat' => $c->minWithdrawSat,
+        ],
+    ])->all();
+    $defaultCurrency = $currencies[0]->code ?? 'BTC';
+    $defaultMin = $currencies[0]->minWithdrawSat ?? 1000;
 @endphp
 
 @push('head')
@@ -52,45 +68,56 @@
     <header class="wd__head">
         <span class="meta">/ withdraw to faucetpay</span>
         <h1>Cash <em>out</em>.</h1>
-        <p style="color: var(--text-secondary); margin: 0;">Balance moves to FaucetPay via <code style="font-family: var(--font-mono); font-size: .9em; color: var(--cyan-soft);">/api/v1/send</code>. Min withdrawal {{ number_format($min) }} sat.</p>
+        <p style="color: var(--text-secondary); margin: 0;">Pick a currency and a FaucetPay address — your sat balance converts to the chosen coin at submit-time using live exchange rates.</p>
     </header>
 
     <div>
         @unless ($verified)
-            <div class="alert--warn" style="margin-bottom: 1rem;">
+            <div class="alert--warn" role="alert" style="margin-bottom: 1rem;">
                 ⚠ Verify your email first — withdrawals are locked until then.
                 <a href="{{ route('verification.notice') }}" style="color: var(--amber-soft); text-decoration: underline;">Resend link →</a>
             </div>
         @endunless
 
-        @if (session('status')) <div class="alert--ok" style="margin-bottom: 1rem;">{{ session('status') }}</div> @endif
-        <div id="wdMsg" style="display:none; margin-bottom: 1rem;"></div>
+        @if (session('status')) <div class="alert--ok" role="status" style="margin-bottom: 1rem;">{{ session('status') }}</div> @endif
+        <div id="wdMsg" role="alert" aria-live="assertive" style="display:none; margin-bottom: 1rem;"></div>
 
         <div style="margin-bottom: 1rem;">
             <span class="balance-pill">{{ number_format($u->balance_sat) }} <small style="color: var(--text-tertiary);">sat available</small></span>
         </div>
 
-        <form class="form-card" method="POST" action="/api/withdraw" id="wdForm" novalidate>
+        <form class="form-card" method="POST" action="/api/withdraw" id="wdForm" novalidate
+              data-currency-meta='@json($currencyMeta)'>
             @csrf
+
             <div class="field">
-                <label for="amount_sat">Amount (sat)</label>
-                <input id="amount_sat" name="amount_sat" type="number" min="{{ $min }}" max="{{ (int) $u->balance_sat }}" step="1" required
-                       placeholder="{{ $min }}" value="{{ old('amount_sat', $min) }}" {{ $verified ? '' : 'disabled' }}>
-                <span class="field__hint">Minimum {{ number_format($min) }} sat — Maximum {{ number_format($u->balance_sat) }} sat.</span>
-            </div>
-            <div class="field">
-                <label for="faucetpay_email">FaucetPay address</label>
-                <input id="faucetpay_email" name="faucetpay_email" type="email" required autocomplete="email"
-                       value="{{ old('faucetpay_email', $u->faucetpay_email) }}" {{ $verified ? '' : 'disabled' }}>
-            </div>
-            <div class="field">
-                <label for="currency">Currency</label>
-                <select id="currency" name="currency" {{ $verified ? '' : 'disabled' }}>
-                    @foreach (['BTC', 'DOGE', 'LTC', 'ETH', 'USDT', 'TRX'] as $c)
-                        <option value="{{ $c }}">{{ $c }}</option>
+                <label for="payout_currency">Currency</label>
+                <select id="payout_currency" name="payout_currency" {{ $verified ? '' : 'disabled' }}>
+                    @foreach ($currencies as $c)
+                        <option value="{{ $c->code }}" {{ $c->code === $defaultCurrency ? 'selected' : '' }}>
+                            {{ $c->label }} ({{ $c->code }})
+                        </option>
                     @endforeach
                 </select>
+                <span class="field__hint" id="currencyHint">FaucetPay-routed payout. Conversion uses live BTC→target rates.</span>
             </div>
+
+            <div class="field">
+                <label for="amount_sat">Amount (sat)</label>
+                <input id="amount_sat" name="amount_sat" type="number" min="{{ $defaultMin }}" max="{{ (int) $u->balance_sat }}" step="1" required
+                       placeholder="{{ $defaultMin }}" value="{{ old('amount_sat', $defaultMin) }}" {{ $verified ? '' : 'disabled' }}>
+                <span class="field__hint" id="minHint">Minimum <span id="minDisplay">{{ number_format($defaultMin) }}</span> sat — Maximum {{ number_format($u->balance_sat) }} sat.</span>
+            </div>
+
+            <div class="field">
+                <label for="destination">FaucetPay address (email)</label>
+                <input id="destination" name="destination" type="email" required autocomplete="email"
+                       placeholder="you@faucetpay.io"
+                       value="{{ old('destination', $u->faucetpay_email) }}" {{ $verified ? '' : 'disabled' }}>
+                <span class="field__hint">Onchain (direct-network) payouts arrive in a future release.</span>
+            </div>
+
+            <input type="hidden" name="payout_method" value="faucetpay">
 
             <x-trajectory-captcha name="wd" />
 
@@ -109,12 +136,22 @@
         @else
             <ul class="ledger">
                 @foreach ($recent as $w)
+                    @php
+                        // payout_currency / payout_amount are populated for
+                        // post-Phase-1 rows; legacy rows fall back to the
+                        // BTC-sat amount + the legacy currency column.
+                        $cur = $w->payout_currency ?? strtoupper((string) $w->currency);
+                        $dest = $w->destination ?? $w->faucetpay_email;
+                        $payoutDisplay = $w->payout_amount
+                            ? rtrim(rtrim($w->payout_amount, '0'), '.').' '.$cur
+                            : number_format($w->amount_sat).' '.$cur;
+                    @endphp
                     <li>
                         <span>
-                            <span class="reason">{{ number_format($w->amount_sat) }} {{ $w->currency }} → {{ $w->faucetpay_email }}</span><br>
+                            <span class="reason">{{ $payoutDisplay }} → {{ $dest }}</span><br>
                             <span class="when">{{ $w->created_at->diffForHumans() }} · <span class="tier-badge tier-{{ $w->status }}">{{ $w->status }}</span></span>
                         </span>
-                        <span class="delta">{{ $w->faucetpay_payout_id ? '#'.$w->faucetpay_payout_id : '—' }}</span>
+                        <span class="delta">{{ $w->faucetpay_payout_id ? '#'.$w->faucetpay_payout_id : ($w->onchain_tx_hash ? substr($w->onchain_tx_hash, 0, 8).'…' : '—') }}</span>
                     </li>
                 @endforeach
             </ul>
@@ -129,14 +166,35 @@
     const form = document.getElementById('wdForm');
     const msgEl = document.getElementById('wdMsg');
     const submitBtn = document.getElementById('wdSubmit');
+    const currencyEl = document.getElementById('payout_currency');
+    const amountEl = document.getElementById('amount_sat');
+    const minDisplay = document.getElementById('minDisplay');
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
     const fp = window.SPCaptcha?.fingerprint || '';
+    const meta = JSON.parse(form?.dataset?.currencyMeta || '{}');
 
     function showMsg(state, text) {
         msgEl.style.display = 'block';
         msgEl.className = state === 'ok' ? 'alert--ok' : 'alert--err';
         msgEl.textContent = text;
         msgEl.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+
+    // Per-currency min: swap the input's `min` + the displayed floor when
+    // the user switches currency. The server-side validator is the source
+    // of truth; this is just live UX so users don't waste a submit on a
+    // sub-minimum amount.
+    function applyCurrencyMin() {
+        const code = currencyEl?.value || '';
+        const m = meta[code];
+        if (!m || !amountEl || !minDisplay) return;
+        amountEl.min = m.min_sat;
+        amountEl.placeholder = m.min_sat;
+        minDisplay.textContent = new Intl.NumberFormat().format(m.min_sat);
+    }
+    if (currencyEl) {
+        currencyEl.addEventListener('change', applyCurrencyMin);
+        applyCurrencyMin();
     }
 
     if (!form) return;
@@ -151,7 +209,8 @@
         const challengeId = state.challengeId;
         const points = state.points;
 
-        // Captcha verify (so server side stamps + binds fingerprint).
+        // Captcha verify so the server stamps + binds fingerprint before
+        // /api/withdraw runs.
         try {
             const v = await fetch('/api/captcha/verify', {
                 method: 'POST',
@@ -174,9 +233,24 @@
             const wd = await w.json();
             submitBtn.disabled = false; submitBtn.innerHTML = original;
 
-            if (!w.ok) { showMsg('err', wd?.error || 'Could not submit withdrawal.'); return; }
+            if (!w.ok) {
+                // Surface the most actionable error variant. The server
+                // returns shape { error, reason?, message?, min_sat?, currency? }.
+                let msg = wd?.message || wd?.error || 'Could not submit withdrawal.';
+                if (wd?.error === 'below_minimum' && wd?.min_sat && wd?.currency) {
+                    msg = `Below minimum for ${wd.currency} (${new Intl.NumberFormat().format(wd.min_sat)} sat).`;
+                }
+                if (wd?.error === 'price_oracle_unavailable') {
+                    msg = 'Live exchange rates are temporarily unavailable. Please retry in a moment.';
+                }
+                showMsg('err', msg);
+                return;
+            }
             const verb = wd.requires_review ? 'queued for review' : 'queued';
-            showMsg('ok', `Withdrawal ${verb} (#${wd.id}). Confirmation email is on its way.`);
+            const amountTxt = wd.payout_amount && wd.payout_currency
+                ? `${wd.payout_amount} ${wd.payout_currency}`
+                : 'payout';
+            showMsg('ok', `${amountTxt} ${verb} (#${wd.id}). Confirmation email is on its way.`);
             setTimeout(() => location.reload(), 1800);
         } catch (e) {
             showMsg('err', 'Network error.');

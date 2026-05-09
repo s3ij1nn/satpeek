@@ -46,6 +46,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no self-hosted nodes per the operator decision). LTC / DASH / XMR
   stay FaucetPay-only by spec.
 
+- **Multi-currency UI for `/withdraw` + Filament admin.** The user-
+  facing form now reads the FaucetPay-supported currency set from
+  `PayoutCurrencyRegistry` (was a hardcoded `['BTC','DOGE','LTC',...]`
+  array), swaps the per-currency minimum live as the user changes the
+  picker, and submits with the new field names (`destination`,
+  `payout_currency`, `payout_method`). Recent-withdrawals list
+  gracefully handles both Phase 1 rows (shows `payout_currency` +
+  formatted payout amount) and pre-Phase-1 legacy rows (falls back to
+  `currency` + `faucetpay_email`). `/admin/withdrawals` adds Route /
+  Currency / Payout / Destination / Fee / Tx-hash columns; legacy
+  payout-id / faucetpay-email surface as toggleable secondary columns.
+  Migration relaxes `withdrawals.faucetpay_email` and
+  `withdrawals.currency` to nullable so Phase 2+ onchain rows
+  (which have no FP email + no FP currency code) can persist
+  cleanly. 4 new view tests pin the form contract.
+
 ## [0.12.0] — 2026-05-07
 
 Theme: operator response surface + Postgres / proxy edge bug fixes.

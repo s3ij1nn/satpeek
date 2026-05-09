@@ -70,6 +70,17 @@ return new class extends Migration
             $table->index(['payout_method', 'status'], 'withdrawals_method_status_idx');
         });
 
+        // Relax NOT NULL on the legacy fields. Onchain rows (Phase 2+)
+        // legitimately have no faucetpay_email — they pay to a wallet
+        // address via `destination` instead. The legacy `currency`
+        // column likewise has no meaning for an onchain row keyed by
+        // `payout_currency`. doctrine/dbal-style change() works the
+        // same on Postgres + SQLite via Laravel's Schema builder.
+        Schema::table('withdrawals', function (Blueprint $table) {
+            $table->string('faucetpay_email')->nullable()->change();
+            $table->string('currency')->nullable()->change();
+        });
+
         // Backfill — single UPDATE per column so the migration is fast on
         // a multi-million-row table. coalesce() keeps any pre-existing
         // explicit value (defensive, this column is brand new so all rows
