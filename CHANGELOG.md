@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-05-09
+
+Theme: Tron onchain Phase 2a — infrastructure scaffold for the next
+payout route, shipped without the cryptographic signing surface so
+the schema, address validation, and HTTP transport can be reviewed
++ deployed independently of the heavier ext-gmp / secp256k1 work.
+
+The split is deliberate: Phase 2b will need a Docker image rebuild
+(adding ext-gmp), a new Composer dependency for ECC math, and
+careful testnet validation of the signing math. Landing those in
+their own release keeps blast radius small if something needs to
+roll back. The Phase 2a code in this release is dead-end safe —
+without a signer registered the gateway can't broadcast, the
+config kill switch defaults off, and the `WithdrawController`
+validator continues to refuse `payout_method=onchain` until Phase 2b
+flips the registry flag.
+
+No user-visible behaviour change. Wire format unchanged. 466 tests
+all green; pint + phpstan green.
+
 ### Added
 
 - **Tron onchain payout — Phase 2a infrastructure scaffold (no
