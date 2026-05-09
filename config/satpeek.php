@@ -257,6 +257,62 @@ return [
             'request_timeout_seconds' => (int) env('PRICE_ORACLE_TIMEOUT', 5),
             'coingecko_base' => env('PRICE_ORACLE_COINGECKO_BASE', 'https://api.coingecko.com/api/v3'),
         ],
+
+        /*
+         * Onchain gateway configuration (Phase 2+). Each chain block
+         * holds the RPC URL list (multi-provider for fallback), the
+         * network code (mainnet vs testnet — Shasta for Tron, Sepolia
+         * for ETH), the smart contract addresses for token sends, and
+         * the hot wallet credentials. ALL secret material (private
+         * keys) MUST stay in env — never hardcoded in this file or
+         * committed.
+         *
+         * `enabled = false` is the master kill switch — when off, the
+         * per-chain gateway refuses to register and the WithdrawController
+         * validator rejects onchain method requests for that currency.
+         * The default is OFF so a fresh deploy can never accidentally
+         * broadcast before the operator has provisioned a hot wallet.
+         *
+         * Phase 2a (this release): config schema only — the gateways
+         * themselves don't read these yet. Phase 2b wires them up.
+         */
+        'onchain' => [
+            'tron' => [
+                'enabled' => filter_var(env('TRON_ONCHAIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+                // Network code — selects contract addresses + RPC URL
+                // set. 'mainnet' or 'shasta'.
+                'network' => env('TRON_NETWORK', 'mainnet'),
+                // Comma-separated fallback RPC URLs. publicnode +
+                // TronGrid gives us two independent operators so a
+                // single outage doesn't halt payouts.
+                'rpc_urls' => array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', (string) env(
+                        'TRON_RPC_URLS',
+                        'https://api.trongrid.io,https://tron-rpc.publicnode.com'
+                    )),
+                ))),
+                // USDT-TRC20 contract addresses per network.
+                'usdt_trc20_contract' => [
+                    'mainnet' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+                    'shasta' => env('TRON_USDT_TRC20_CONTRACT_SHASTA', ''),
+                ],
+                // Hot wallet — REQUIRED when enabled=true. Sourced
+                // from env so the keys never land in version control.
+                // ADDRESS is the publishable counterpart of PRIVATE_KEY;
+                // the gateway re-derives + checks at boot (Phase 2b)
+                // to catch a mismatched env pair.
+                'hot_wallet_address' => env('TRON_HOT_WALLET_ADDRESS', ''),
+                'hot_wallet_private_key' => env('TRON_HOT_WALLET_PRIVATE_KEY', ''),
+                // Per-tx fee charged to the user (sat) — Tron txs are
+                // typically free for the sender thanks to staked TRX
+                // bandwidth/energy, but staking pools deplete and the
+                // operator absorbs occasional burn cases. Default 0
+                // and enable on a per-deploy basis.
+                'fee_sat' => (int) env('TRON_ONCHAIN_FEE_SAT', 0),
+                'request_timeout_seconds' => (int) env('TRON_RPC_TIMEOUT', 10),
+            ],
+        ],
     ],
 
     // BitcoTasks publisher integration. Per the docs (fetched 2026-04-27)

@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Tron onchain payout — Phase 2a infrastructure scaffold (no
+  signing yet).** First half of the Phase 2 onchain payout split.
+  Ships only the pieces that can land safely without ext-gmp /
+  secp256k1 signing: `TronAddress` Base58Check validator (5 tests
+  including ground-truth checks against well-known mainnet
+  addresses + checksum-tampered rejects), `TronHttpClient` Guzzle
+  wrapper for TronGrid + publicnode TRON RPC with multi-URL
+  fallback (transport failure rolls to the next URL; HTTP-error
+  5xx does NOT fall through — preserves the "could already be
+  processed" semantics ProcessWithdrawalJob already encodes for
+  FaucetPay). New `config('satpeek.payout.onchain.tron')` block
+  holds the RPC URL list, network code (mainnet vs Shasta
+  testnet), USDT-TRC20 contract addresses, hot-wallet env keys,
+  and operator fee. Master kill switch `TRON_ONCHAIN_ENABLED=false`
+  defaults so a fresh deploy can never accidentally broadcast
+  before the operator has provisioned a hot wallet. Phase 2b (next
+  release) lands ext-gmp, the secp256k1 signing path, and the
+  actual `TronGateway` registration.
+
 ## [0.13.0] — 2026-05-09
 
 Theme: payout multi-currency (Phase 1 of the operator-requested
