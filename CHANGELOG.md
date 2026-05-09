@@ -6,6 +6,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-05-09
+
+Theme: payout multi-currency (Phase 1 of the operator-requested
+payout expansion). SatPeek's withdrawal flow used to pay BTC sats
+through FaucetPay full-stop; this release ships a currency-agnostic
+schema, gateway abstraction, price oracle, and end-to-end UI so
+users can withdraw in BTC, LTC, ETH, USDT-TRC20, TRX, DASH, or XMR
+through the same FaucetPay endpoint at submit-time-converted
+amounts. Onchain (direct-network) payout routes for BTC / ETH / TRX /
+USDT-TRC20 are reserved for Phase 2+ — the gateway abstraction is in
+place so adding each chain is a one-line registration in
+`AppServiceProvider`.
+
+No user-visible behaviour change for legacy rows (existing FaucetPay
+withdrawals continue to settle through the same code path); the new
+schema columns are additive and backfilled. Wire format: API request
+shape changes (`faucetpay_email` → `destination`, `currency` →
+`payout_currency`, new `payout_method`) but the response shape is a
+strict superset.
+
 ### Added
 
 - **Multi-currency payout via FaucetPay (Phase 1 of the payout
