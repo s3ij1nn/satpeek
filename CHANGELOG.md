@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-05-10
+
+Theme: silent-failure batch — close the financial-correctness
+findings from the silent-failure-hunter audit.
+
+The audit surfaced 6 items in money-touching code: 2 HIGH (admin
+race conditions that could double-credit users on simultaneous
+clicks), 1 MEDIUM (captcha consumed-without-credit on outer-txn
+failure), 3 LOW (hygiene). All 6 are fixed in this release; the
+HIGH and MEDIUM patches add atomic-claim guards inside the credit
+transactions so loser-of-race admins / failed credit paths bail
+cleanly instead of double-crediting or stranding the user's
+captcha solve.
+
+No user-visible behaviour change in the happy path; the changes
+only surface in the rare race / failure branches that were
+previously incorrect. 472 tests pass; pint + phpstan green.
+
 ### Fixed
 
 - **Withdrawal admin reject: atomic claim guard inside the credit
