@@ -6,6 +6,7 @@ use App\Enums\WithdrawalStatus;
 use App\Mail\WithdrawalRejectedEmail;
 use App\Mail\WithdrawalSentEmail;
 use App\Models\BalanceLedger;
+use App\Models\SystemAuditLog;
 use App\Models\Withdrawal;
 use App\Payout\Gateway\PayoutGatewayRegistry;
 use Illuminate\Bus\Queueable;
@@ -205,6 +206,17 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
             'withdrawal_id' => $w->id,
             'reason' => $reason,
         ]);
+        SystemAuditLog::record(
+            source: 'job:ProcessWithdrawalJob',
+            level: SystemAuditLog::LEVEL_ERROR,
+            summary: "Withdrawal #{$w->id} dead-lettered after exhausting retries",
+            detail: [
+                'withdrawal_id' => $w->id,
+                'reason' => $reason,
+                'payout_method' => $w->payout_method,
+                'payout_currency' => $w->payout_currency,
+            ],
+        );
         $this->notify($w->fresh(), sent: false);
     }
 

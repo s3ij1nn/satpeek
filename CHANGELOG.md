@@ -6,6 +6,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-05-10
+
+Theme: Phase 4b — `SystemAuditLog` for cron + scheduled-job
+failures. Closes the architect's deferred D2 recommendation
+(originally scoped for Phase 2b). Until this release, a stalled
+watcher only surfaced via the live `/up` probe + dashboard widget;
+operators couldn't reconstruct "what happened on the night of X"
+without grep-ing storage/logs. Now every chain-head fetch failure,
+job dead-letter, and similar event lands a durable row visible
+under `/admin/system-audit-logs`.
+
+### Added
+
+- **`system_audit_logs` table** — `(source, level, summary, detail
+  JSON, occurred_at, created_at, updated_at)`. Indexed on source +
+  level + occurred_at for the Filament resource's filters.
+- **`App\Models\SystemAuditLog`** — Eloquent model + static
+  `record(source, level, summary, detail)` helper. Never throws
+  even when the underlying DB write fails (a logging path that
+  itself fails would mask the failure it's trying to capture);
+  on DB unavailability the line falls through to `Log::warn`.
+  `LEVEL_INFO` / `LEVEL_WARNING` / `LEVEL_ERROR` constants.
+- **`App\Filament\Resources\SystemAuditLogResource`** — read-only
+  browse under Operations group (`/admin/system-audit-logs`).
+  Source + level filters; default sort by id desc. Listing-only
+  (canCreate / canEdit / canDelete all return false — touching
+  rows would defeat the audit purpose).
+- 3 feature tests: `record()` writes; `record()` truncates summary
+  to 500 chars; `record()` does NOT throw when the table is
+  missing.
+
+### Changed
+
+- **`WatchOnchainConfirmationsJob`**: per-chain head-fetch failures
+  now record a `cron:watch-onchain-confirmations:<chain>` audit row
+  alongside the existing `Log::warning` line.
+- **`ProcessWithdrawalJob::failed()`**: dead-letter callback
+  records a `job:ProcessWithdrawalJob` row at level=error with
+  withdrawal id + reason + payout method/currency.
+
+578 tests pass; pint + phpstan green.
+
 ## [0.28.0] — 2026-05-10
 
 Theme: Phase 4a — per-currency burn-rate metrics in the operator

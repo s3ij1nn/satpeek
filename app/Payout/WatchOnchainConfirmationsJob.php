@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Payout;
 
 use App\Models\BalanceLedger;
+use App\Models\SystemAuditLog;
 use App\Models\Withdrawal;
 use App\Payout\Btc\BtcHttpClient;
 use App\Payout\Btc\BtcRpcException;
@@ -134,6 +135,12 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
             Log::warning('onchain confirmations: cannot fetch btc chain head, skipping btc sweep', [
                 'err' => $e->getMessage(),
             ]);
+            SystemAuditLog::record(
+                source: 'cron:watch-onchain-confirmations:btc',
+                level: SystemAuditLog::LEVEL_WARNING,
+                summary: 'BTC chain head unreachable; sweep skipped',
+                detail: ['err' => $e->getMessage()],
+            );
 
             return;
         }
@@ -182,6 +189,12 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
             Log::warning('onchain confirmations: cannot fetch tron chain head, skipping tron sweep', [
                 'err' => $e->getMessage(),
             ]);
+            SystemAuditLog::record(
+                source: 'cron:watch-onchain-confirmations:tron',
+                level: SystemAuditLog::LEVEL_WARNING,
+                summary: 'Tron chain head unreachable; sweep skipped',
+                detail: ['err' => $e->getMessage()],
+            );
 
             return;
         }
@@ -202,6 +215,12 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
             Log::warning('onchain confirmations: cannot fetch eth chain head, skipping eth sweep', [
                 'err' => $e->getMessage(),
             ]);
+            SystemAuditLog::record(
+                source: 'cron:watch-onchain-confirmations:eth',
+                level: SystemAuditLog::LEVEL_WARNING,
+                summary: 'ETH chain head unreachable; sweep skipped',
+                detail: ['err' => $e->getMessage()],
+            );
 
             return;
         }
