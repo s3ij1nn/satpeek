@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
-use App\Models\Withdrawal;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Operator visibility into Withdrawals waiting on chain finality.
@@ -37,14 +37,18 @@ class OnchainConfirmationsWidget extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $rows = Withdrawal::query()
+        // DB::table (vs Withdrawal::query()) so the selectRaw aliases
+        // come back on a stdClass — Eloquent would type-fight phpstan
+        // about model-property access for the synthetic `cnt` /
+        // `oldest` columns.
+        $row = DB::table('withdrawals')
             ->where('status', 'broadcast')
             ->where('payout_method', 'like', 'onchain_%')
             ->whereNotNull('broadcast_at')
-            ->selectRaw('count(*) as cnt, min(broadcast_at) as oldest, coalesce(max(confirmations_seen), 0) as max_seen')
+            ->selectRaw('count(*) as cnt, min(broadcast_at) as oldest')
             ->first();
 
-        $count = (int) ($rows?->cnt ?? 0);
+        $count = (int) ($row->cnt ?? 0);
         if ($count === 0) {
             return [
                 Stat::make('Onchain awaiting finality', '0')
@@ -54,8 +58,9 @@ class OnchainConfirmationsWidget extends StatsOverviewWidget
             ];
         }
 
-        $oldest = $rows->oldest ? Carbon::parse($rows->oldest) : null;
-        $oldestAgeMin = $oldest ? (int) $oldest->diffInMinutes(now()) : 0;
+        $oldestStr = $row !== null ? (string) ($row->oldest ?? '') : '';
+        $oldest = $oldestStr !== '' ? Carbon::parse($oldestStr) : null;
+        $oldestAgeMin = $oldest !== null ? (int) $oldest->diffInMinutes(now()) : 0;
 
         if ($oldestAgeMin >= self::STALE_AFTER_MINUTES) {
             $color = 'danger';

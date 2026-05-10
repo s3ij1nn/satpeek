@@ -6,6 +6,81 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-05-10
+
+Theme: Phase 3a — ETH onchain payouts. The Tron-family pipeline
+shipped over v0.18 → v0.24 generalises one chain further: a new
+EthOnchainGateway signs EIP-1559 (type-2) transactions with simplito
+secp256k1 + kornrunner Keccak, broadcasts via the public Cloudflare
+ETH and publicnode JSON-RPC endpoints, and lets the existing
+WatchOnchainConfirmationsJob (now refactored to dispatch by chain)
+promote ETH rows to Sent at 12-block finality.
+
+The pipeline is gated by `ETH_ONCHAIN_ENABLED=true` AND a populated
+`ETH_HOT_WALLET_ADDRESS` + `ETH_HOT_WALLET_PRIVATE_KEY` pair —
+identical defence-in-depth pattern to Tron.
+
+### Added
+
+- **`EthRlp`** — pure-PHP Recursive Length Prefix encoder. Pinned
+  against the canonical Ethereum test vectors (encode 0 as empty
+  string, encode 1 as itself, leading-zero stripping for big
+  uints, 55-byte short-form / 56-byte long-form boundary). `gmp`
+  for arbitrary precision so wei × multi-ETH doesn't overflow.
+- **`EthAddress`** — EIP-55 checksum validator + 20-byte binary
+  derivation. Accepts mixed-case checksum, all-lowercase, and
+  all-uppercase addresses; rejects mixed-case with wrong checksum
+  (typo defence). Test vectors from the EIP-55 reference itself.
+- **`EthHttpClient`** — JSON-RPC wrapper over publicnode +
+  Cloudflare ETH. Multi-URL fallback identical to TronHttpClient
+  (connect failures fall through; HTTP errors do NOT). Methods:
+  `eth_blockNumber`, `eth_chainId`, `eth_getBalance`,
+  `eth_getTransactionCount` (pending), `eth_feeHistory`,
+  `eth_sendRawTransaction`, `eth_getTransactionReceipt`.
+- **`EthRpcException` + `EthUnreachableException`** — same retry
+  semantics as the Tron / FaucetPay pair.
+- **`EthTxSigner`** — EIP-1559 type-2 builder + signer. RLP-encodes
+  the unsigned payload, prepends `0x02` envelope byte, keccak256
+  hashes, signs with simplito secp256k1 (canonical low-s,
+  RFC6979 deterministic-k), appends (yParity, r, s). 6 tests pin
+  determinism + envelope shape + txhash derivation.
+- **`EthOnchainGateway`** implements `PayoutGateway` with
+  `name='onchain_eth'`. Reads chainId + nonce + feeHistory,
+  derives priorityFee (median of recent tips, floor 1 gwei) and
+  maxFee (baseFee × 2 + priorityFee for 1-block headroom), signs,
+  broadcasts. 5 unit tests.
+- **`EthWalletBalanceMonitor`** — `eth_getBalance` probe.
+  Auto-registered alongside the gateway; lights up
+  `HotWalletBalanceWidget` + `/up` `hot_wallet_balance` + weekly
+  digest + `satpeek:hot-wallet-alert` automatically (registry
+  pattern pays off).
+- **`Withdrawal::METHOD_ONCHAIN_ETH`** const. The `isOnchainMethod`
+  prefix detector picks it up automatically.
+- **`composer require kornrunner/keccak ^1.1`** — pure-PHP keccak
+  for EIP-55 checksum + EIP-1559 signing hash.
+
+### Changed
+
+- **`WatchOnchainConfirmationsJob`** refactored to dispatch by
+  chain. Per-chain sweep methods (`sweepTron`, `sweepEth`); each
+  caches its chain head once per run. A stuck oracle for one chain
+  no longer blocks the others. ETH receipt parsing checks
+  `status: 0x1` (success) vs `0x0` (revert) — the latter triggers
+  the same atomic refund-on-revert path the TRC20 case uses.
+- **`WithdrawController`** adds `onchain_eth` to allowed methods +
+  `ETH`-only currency list + EIP-55 destination validation.
+- **`config/satpeek.php`**: ETH `onchain_supported=true` + new
+  `payout.onchain.eth` block (RPC URLs, hot wallet env, timeout).
+- **CI workflow**: added `ext-gmp` to the setup-php extensions for
+  both lint + test jobs (was missing despite v0.19's
+  `ext-gmp` requirement). Was the cause of the recent CI failures.
+- **Phpstan fixes**: pre-existing selectRaw access warnings in
+  HealthController + OnchainConfirmationsWidget surfaced under the
+  Phase-3a refactor — moved to DB::table to avoid Eloquent model
+  property-access warnings.
+
+558 tests pass; pint + phpstan green.
+
 ## [0.25.0] — 2026-05-10
 
 Theme: documentation catch-up after the v0.18.0 → v0.24.0 onchain

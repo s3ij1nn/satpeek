@@ -33,7 +33,11 @@ use App\Models\ShortlinkProviderCredential;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
+use App\Payout\Eth\EthHttpClient;
+use App\Payout\Eth\EthTxSigner;
+use App\Payout\Eth\EthWalletBalanceMonitor;
 use App\Payout\FaucetPayClient;
+use App\Payout\Gateway\EthOnchainGateway;
 use App\Payout\Gateway\FaucetPayGateway;
 use App\Payout\Gateway\PayoutGatewayRegistry;
 use App\Payout\Gateway\TronOnchainGateway;
@@ -209,6 +213,16 @@ class AppServiceProvider extends ServiceProvider
                 requestTimeoutSeconds: (int) ($tron['request_timeout_seconds'] ?? 10),
             );
         });
+        $this->app->singleton(EthTxSigner::class);
+        $this->app->singleton(EthHttpClient::class, function ($app) {
+            $eth = (array) config('satpeek.payout.onchain.eth', []);
+
+            return new EthHttpClient(
+                $app->make(Client::class),
+                rpcUrls: (array) ($eth['rpc_urls'] ?? ['https://ethereum-rpc.publicnode.com']),
+                requestTimeoutSeconds: (int) ($eth['request_timeout_seconds'] ?? 10),
+            );
+        });
         $this->app->singleton(PayoutGatewayRegistry::class, function ($app) {
             $registry = new PayoutGatewayRegistry;
             $registry->register(new FaucetPayGateway(
@@ -255,6 +269,20 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
+            // ETH onchain — same conditional gating as Tron.
+            $eth = (array) config('satpeek.payout.onchain.eth', []);
+            $ethEnabled = (bool) ($eth['enabled'] ?? false);
+            $ethAddress = (string) ($eth['hot_wallet_address'] ?? '');
+            $ethPriv = (string) ($eth['hot_wallet_private_key'] ?? '');
+            if ($ethEnabled && $ethAddress !== '' && $ethPriv !== '') {
+                $registry->register(new EthOnchainGateway(
+                    $app->make(EthHttpClient::class),
+                    $app->make(EthTxSigner::class),
+                    hotWalletAddress: $ethAddress,
+                    hotWalletPrivateKey: $ethPriv,
+                ));
+            }
+
             return $registry;
         });
 
@@ -281,6 +309,16 @@ class AppServiceProvider extends ServiceProvider
                         $contract,
                     ));
                 }
+            }
+            // ETH wallet monitor — same gating as the gateway.
+            $eth = (array) config('satpeek.payout.onchain.eth', []);
+            $ethEnabled = (bool) ($eth['enabled'] ?? false);
+            $ethAddress = (string) ($eth['hot_wallet_address'] ?? '');
+            if ($ethEnabled && $ethAddress !== '') {
+                $registry->register(new EthWalletBalanceMonitor(
+                    $app->make(EthHttpClient::class),
+                    $ethAddress,
+                ));
             }
 
             return $registry;

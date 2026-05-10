@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "5cb8072926a9895eaca9020a4164a083",
+    "content-hash": "18adcf512fabb9c8bd2948cb6d8cc13f",
     "packages": [
         {
             "name": "blade-ui-kit/blade-heroicons",
@@ -2148,6 +2148,55 @@
                 "source": "https://github.com/kirschbaum-development/eloquent-power-joins/tree/4.3.1"
             },
             "time": "2026-03-29T12:05:03+00:00"
+        },
+        {
+            "name": "kornrunner/keccak",
+            "version": "1.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/kornrunner/php-keccak.git",
+                "reference": "433749d28e117fb97baf9f2631b92b5d9ab3c890"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/kornrunner/php-keccak/zipball/433749d28e117fb97baf9f2631b92b5d9ab3c890",
+                "reference": "433749d28e117fb97baf9f2631b92b5d9ab3c890",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.3",
+                "symfony/polyfill-mbstring": "^1.8"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^8.2"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "kornrunner\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Boris Momcilovic",
+                    "homepage": "https://github.com/kornrunner/php-keccak"
+                }
+            ],
+            "description": "Pure PHP implementation of Keccak",
+            "keywords": [
+                "keccak",
+                "sha-3",
+                "sha3-256"
+            ],
+            "support": {
+                "issues": "https://github.com/kornrunner/php-keccak/issues",
+                "source": "https://github.com/kornrunner/php-keccak/tree/1.1.0"
+            },
+            "time": "2020-12-07T15:40:44+00:00"
         },
         {
             "name": "laravel/framework",

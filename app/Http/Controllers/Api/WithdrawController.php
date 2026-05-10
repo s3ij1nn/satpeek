@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\WithdrawalQueuedEmail;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use App\Payout\Eth\EthAddress;
 use App\Payout\Gateway\PayoutGatewayRegistry;
 use App\Payout\PayoutCurrencyRegistry;
 use App\Payout\PriceOracle;
@@ -45,6 +46,9 @@ class WithdrawController extends Controller
         if ($method === Withdrawal::METHOD_ONCHAIN_USDT_TRC20) {
             return ['USDT_TRC20'];
         }
+        if ($method === Withdrawal::METHOD_ONCHAIN_ETH) {
+            return ['ETH'];
+        }
 
         return array_map(
             fn ($c) => $c->code,
@@ -69,6 +73,9 @@ class WithdrawController extends Controller
         }
         if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_USDT_TRC20)) {
             $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_USDT_TRC20;
+        }
+        if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_ETH)) {
+            $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_ETH;
         }
         // Allowed currencies depend on the chosen method; default to
         // FaucetPay-supported until we see the request's `payout_method`.
@@ -118,6 +125,13 @@ class WithdrawController extends Controller
             return response()->json([
                 'error' => 'invalid_destination',
                 'reason' => 'onchain_usdt_trc20_requires_tron_address',
+            ], 422);
+        }
+        if ($method === Withdrawal::METHOD_ONCHAIN_ETH
+            && ! EthAddress::isValid($validated['destination'])) {
+            return response()->json([
+                'error' => 'invalid_destination',
+                'reason' => 'onchain_eth_requires_eth_address',
             ], 422);
         }
 

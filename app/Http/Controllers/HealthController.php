@@ -556,14 +556,14 @@ class HealthController extends Controller
      */
     private function checkOnchainWatcher(): array
     {
-        $row = Withdrawal::query()
+        $row = DB::table('withdrawals')
             ->where('status', 'broadcast')
             ->where('payout_method', 'like', 'onchain_%')
             ->whereNotNull('broadcast_at')
             ->selectRaw('count(*) as cnt, min(broadcast_at) as oldest')
             ->first();
 
-        $count = (int) ($row?->cnt ?? 0);
+        $count = (int) ($row->cnt ?? 0);
         if ($count === 0) {
             return [
                 'status' => 'ok',
@@ -573,8 +573,9 @@ class HealthController extends Controller
             ];
         }
 
-        $oldest = $row->oldest ? Carbon::parse($row->oldest) : null;
-        $oldestMin = $oldest ? (int) $oldest->diffInMinutes(now()) : 0;
+        $oldestStr = $row !== null ? (string) ($row->oldest ?? '') : '';
+        $oldest = $oldestStr !== '' ? Carbon::parse($oldestStr) : null;
+        $oldestMin = $oldest !== null ? (int) $oldest->diffInMinutes(now()) : 0;
 
         if ($oldestMin >= 120) {
             $status = 'down';

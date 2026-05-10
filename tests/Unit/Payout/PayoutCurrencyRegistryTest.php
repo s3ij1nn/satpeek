@@ -65,7 +65,7 @@ class PayoutCurrencyRegistryTest extends TestCase
         $codes = array_map(fn ($c) => $c->code, $reg->onchainSupported());
         $this->assertContains('TRX', $codes);
         $this->assertContains('USDT_TRC20', $codes);
+        $this->assertContains('ETH', $codes);
         $this->assertNotContains('BTC', $codes);
-        $this->assertNotContains('ETH', $codes);
     }
 }

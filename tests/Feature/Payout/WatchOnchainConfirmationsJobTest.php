@@ -45,7 +45,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
             ->andReturn(['blockNumber' => 65000000]); // 21 confirmations
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $w->refresh();
         $this->assertSame(WithdrawalStatus::Sent, $w->status);
@@ -63,7 +63,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
             ->andReturn(['blockNumber' => 65000000]); // 6 confirmations
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $w->refresh();
         $this->assertSame(WithdrawalStatus::Broadcast, $w->status);
@@ -81,7 +81,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
             ->andReturn([]); // empty body = not in block yet
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $w->refresh();
         $this->assertSame(WithdrawalStatus::Broadcast, $w->status);
@@ -102,7 +102,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
         $http->shouldNotReceive('getTransactionInfo');
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $w->refresh();
         $this->assertSame(WithdrawalStatus::Broadcast, $w->status);
@@ -122,7 +122,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
             ->andReturn(['blockNumber' => 65000000]); // 21 conf → promote
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $w1->refresh();
         $w2->refresh();
@@ -158,7 +158,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
             ]);
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $w->refresh();
         $user->refresh();
@@ -188,7 +188,7 @@ class WatchOnchainConfirmationsJobTest extends TestCase
         $http->shouldNotReceive('getTransactionInfo');
         $this->app->instance(TronHttpClient::class, $http);
 
-        (new WatchOnchainConfirmationsJob)->handle($http);
+        (new WatchOnchainConfirmationsJob)->handle();
 
         $fp->refresh();
         // Still bogus 'broadcast' — the watcher's responsibility is

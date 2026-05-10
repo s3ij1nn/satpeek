@@ -211,7 +211,12 @@ return [
                 'decimals' => 18,
                 'min_withdraw_sat' => (int) env('PAYOUT_MIN_ETH_SAT', 5000),
                 'faucetpay_supported' => true,
-                'onchain_supported' => false, // Phase 3: ETH onchain
+                // Phase 3a: EthOnchainGateway shipped. Same gating
+                // story as Tron — ETH_ONCHAIN_ENABLED + hot wallet
+                // env pair must both be set; otherwise the gateway
+                // is never registered and the controller's allowed-
+                // methods list excludes onchain_eth.
+                'onchain_supported' => true,
                 'coingecko_id' => 'ethereum',
             ],
             'USDT_TRC20' => [
@@ -318,6 +323,25 @@ return [
                 // and enable on a per-deploy basis.
                 'fee_sat' => (int) env('TRON_ONCHAIN_FEE_SAT', 0),
                 'request_timeout_seconds' => (int) env('TRON_RPC_TIMEOUT', 10),
+            ],
+
+            // EIP-1559 type-2 ETH onchain payouts. Same gating story
+            // as Tron: ETH_ONCHAIN_ENABLED + hot wallet env pair must
+            // both be set or the gateway is not registered. Default
+            // RPC URLs are the public Cloudflare ETH gateway +
+            // publicnode — both no-key, generous rate limits.
+            'eth' => [
+                'enabled' => filter_var(env('ETH_ONCHAIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+                'rpc_urls' => array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', (string) env(
+                        'ETH_RPC_URLS',
+                        'https://ethereum-rpc.publicnode.com,https://cloudflare-eth.com'
+                    )),
+                ))),
+                'hot_wallet_address' => env('ETH_HOT_WALLET_ADDRESS', ''),
+                'hot_wallet_private_key' => env('ETH_HOT_WALLET_PRIVATE_KEY', ''),
+                'request_timeout_seconds' => (int) env('ETH_RPC_TIMEOUT', 10),
             ],
         ],
     ],
