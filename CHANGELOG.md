@@ -6,6 +6,90 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-05-10
+
+Theme: docs hygiene — close the comment-rot findings from the
+comment-analyzer audit and the dead-code findings from the
+refactor-cleaner audit. No functional change; the release is pure
+maintenance to set a clean baseline before Phase 2b (Tron signing).
+
+The most operationally significant fix is the comment in
+`ProcessWithdrawalJob`: the `ShouldBeUnique` lock window was
+documented as 5 minutes but is actually **40 minutes** (`$uniqueFor =
+2400`). An operator reading the comment to reason about the
+double-pay race window would underestimate the protection 8x. Fixed
+along with seven other inaccurate / outdated docblocks across the
+payout stack.
+
+Removed dead code: the `WaitlistController` / `WaitlistSignup` /
+`WaitlistConfirmation` mail / waitlist email views were never wired
+into any route. The whole stack is removed; an additive migration
+drops the orphan `waitlist_signups` table on environments that ran
+the original create migration.
+
+`.env.example` gains documentation for 23 env vars that were added
+across v0.13–v0.16 without `.env.example` updates: per-currency
+withdrawal floors, PriceOracle settings, Tron onchain scaffold,
+health-probe cache, and registration / payout burst signal tunables.
+
+472 tests pass; pint + phpstan green.
+
+### Removed
+
+- **Waitlist scaffold (5 files + create migration).** The
+  `WaitlistController` was never registered in `routes/web.php` or
+  `routes/api.php`; the model + mail + views were dead. Removed
+  `app/Http/Controllers/WaitlistController.php`,
+  `app/Mail/WaitlistConfirmation.php`,
+  `app/Models/WaitlistSignup.php`, both
+  `resources/views/emails/waitlist*.blade.php`, and the
+  `2026_04_25_000011_create_waitlist_signups_table` migration. New
+  `2026_05_10_000001_drop_waitlist_signups_table` migration cleans
+  up environments that already ran the create.
+
+### Fixed
+
+- **`ProcessWithdrawalJob` class docblock: `$uniqueFor` window
+  documented as 5 min, actually 40 min.** Most dangerous comment-rot
+  finding from the audit — operators reasoning about the double-pay
+  race window would underestimate the lock 8x. Comment now reflects
+  the real 2400-second value matching the `$uniqueFor` property.
+  Same docblock now also names `PayoutGatewayRegistry` as the
+  dispatch path (was still describing the pre-v0.13.0 direct
+  `FaucetPayClient` call), `PayoutResult` as the gateway return type
+  (was still describing the legacy `['ok' => false, ...]` array
+  shape), and gateway-agnostic exception handling.
+
+- **`BalanceLedger.reason` property hint: `string` → `LedgerReason`.**
+  v0.16.0 added the enum cast but the docblock `@property` was not
+  updated; static analysis would infer the wrong type. Fixed. The
+  `REASON_*` constants class doc now also documents the
+  three-edit workflow (enum case + constant + LABELS entry +
+  analytics consumer) for adding a new reason.
+
+- **Six other comment-rot fixes:** `FaucetPayClient` docblock notes
+  `FaucetPayGateway` as the direct caller; `EarnSessionClaimService`
+  `$reason` param doc signals enum preference; `WithdrawController`
+  drops the "Phase 1 / Phase 2+" temporal anchor in favour of
+  describing the gateway-extension pattern; `PayoutGatewayRegistry`
+  + `PayoutGateway` interface docblocks generalize the
+  FaucetPay-specific framing; `PriceOracle` docblock trims
+  migration-era prose that would be context-free noise to future
+  readers.
+
+### Changed
+
+- **`.env.example` documentation catch-up.** 23 env vars added across
+  v0.13–v0.16 without `.env.example` updates now have entries with
+  the same comment style as the existing block: per-currency
+  `PAYOUT_MIN_*_SAT` floors, `PRICE_ORACLE_*` settings,
+  `TRON_ONCHAIN_*` scaffold + hot-wallet placeholders,
+  `HEALTH_PROBE_CACHE_SECONDS`, and the
+  `BOTSCORE_REG_BURST_*` / `BOTSCORE_PAYOUT_BURST_*` signal
+  tunables. Defaults all match the code-level fallbacks so behaviour
+  is unchanged; new operators just get visibility into the knobs
+  during onboarding.
+
 ## [0.16.0] — 2026-05-10
 
 Theme: type-design batch — close the HIGH/MEDIUM findings from the
