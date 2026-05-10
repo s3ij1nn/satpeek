@@ -6,6 +6,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`App\Enums\WithdrawalStatus` backed enum.** From the type-design
+  audit (HIGH). Pre-enum, the six lifecycle values
+  (`queued`/`processing`/`hold`/`sent`/`failed`/`rejected`) lived as
+  bare string literals in `ProcessWithdrawalJob`, the Filament
+  resource, and tests — a typo in any WHERE clause silently skipped
+  rows with no PHPStan signal, and the financial-path code in the
+  job + admin reject/approve actions all gated on the status
+  string. `Withdrawal.status` now casts to the enum so every
+  comparison is type-checked. The underlying column stays a
+  lowercase string (existing rows + reporting queries unchanged);
+  WHERE clauses that pass raw strings continue to work while new
+  code uses `WithdrawalStatus::Queued` etc.
+
+- **`App\Enums\LedgerReason` backed enum.** From the type-design
+  audit (MEDIUM). The v0.10.0 `BalanceLedger::REASON_*` constants
+  closed the typo risk for the constants we'd named, but a future
+  bare-string write site (`'reason' => 'ptc_view'` instead of
+  `BalanceLedger::REASON_PTC_VIEW`) would silently route credits to
+  an "unknown" bucket in the operator filter dropdown. The cast on
+  `BalanceLedger.reason` makes every new write site PHPStan-
+  verifiable. The string `value` of each case mirrors the existing
+  constants for migration compatibility — no DB rewrite, existing
+  rows continue to deserialize.
+
+- **`App\Payout\PayoutConversion` value object.** From the type-
+  design audit (HIGH). `PriceOracle::convertBtcSatToTarget()`
+  returned `array{0: string, 1: string}` — a positional tuple where
+  slot 0 was the target-currency smallest-unit count and slot 1
+  was the BTC-sats-per-unit rate. A caller destructuring with the
+  slots swapped would persist a rate as the amount and vice versa,
+  an invisible over/under-payment bug PHPStan can't catch. The
+  named VO (`targetAmount` + `rateSatPerUnit`) eliminates the
+  slot-swap risk; field semantics are unambiguous at every call
+  site.
+
 ## [0.15.0] — 2026-05-10
 
 Theme: silent-failure batch — close the financial-correctness

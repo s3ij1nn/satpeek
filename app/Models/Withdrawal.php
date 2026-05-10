@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\WithdrawalStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -18,7 +19,7 @@ use Illuminate\Support\Carbon;
  * @property int $fee_sat
  * @property string|null $faucetpay_email legacy — pre-multi-currency rows
  * @property string|null $currency legacy — pre-multi-currency rows
- * @property string $status
+ * @property WithdrawalStatus $status
  * @property string|null $faucetpay_payout_id
  * @property string|null $onchain_tx_hash
  * @property string|null $failure_reason
@@ -59,6 +60,7 @@ class Withdrawal extends Model
     protected $casts = [
         'requires_review' => 'boolean',
         'processed_at' => 'datetime',
+        'status' => WithdrawalStatus::class,
         'meta' => 'array',
     ];
 

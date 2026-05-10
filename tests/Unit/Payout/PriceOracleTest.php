@@ -38,10 +38,10 @@ class PriceOracleTest extends TestCase
     {
         $oracle = new PriceOracle($this->mockClient([]), $this->app->make(PayoutCurrencyRegistry::class));
 
-        [$amount, $rate] = $oracle->convertBtcSatToTarget(50_000, 'BTC');
+        $conv = $oracle->convertBtcSatToTarget(50_000, 'BTC');
 
-        $this->assertSame('50000', $amount);
-        $this->assertSame('1', $rate);
+        $this->assertSame('50000', $conv->targetAmount);
+        $this->assertSame('1', $conv->rateSatPerUnit);
     }
 
     public function test_btc_to_eth_uses_decimals_correctly(): void
@@ -61,16 +61,16 @@ class PriceOracleTest extends TestCase
         ]);
         $oracle = new PriceOracle($http, $this->app->make(PayoutCurrencyRegistry::class));
 
-        [$amount, $rate] = $oracle->convertBtcSatToTarget(100_000_000, 'ETH');
+        $conv = $oracle->convertBtcSatToTarget(100_000_000, 'ETH');
 
         // 1 BTC at $60k / $3k per ETH = 20 ETH = 20e18 wei. The string
         // representation of 20 * 10^18 = 20000000000000000000 — overflows
         // signed-64-bit (max ~9.2e18) so PriceOracle returns it as a
         // decimal string and the caller persists it into a decimal(36,0)
         // column.
-        $this->assertSame('20000000000000000000', $amount);
+        $this->assertSame('20000000000000000000', $conv->targetAmount);
         // Rate: 1 ETH costs $3000 / $60000 BTC = 0.05 BTC = 5,000,000 sats.
-        $this->assertSame('5000000', explode('.', $rate)[0]);
+        $this->assertSame('5000000', explode('.', $conv->rateSatPerUnit)[0]);
     }
 
     public function test_btc_to_usdt_trc20_with_6_decimals(): void
@@ -91,9 +91,9 @@ class PriceOracleTest extends TestCase
         ]);
         $oracle = new PriceOracle($http, $this->app->make(PayoutCurrencyRegistry::class));
 
-        [$amount, $rate] = $oracle->convertBtcSatToTarget(100_000, 'USDT_TRC20');
+        $conv = $oracle->convertBtcSatToTarget(100_000, 'USDT_TRC20');
 
-        $this->assertSame('60000000', $amount);
+        $this->assertSame('60000000', $conv->targetAmount);
     }
 
     public function test_cache_returns_warm_value_without_second_fetch(): void
@@ -107,9 +107,9 @@ class PriceOracleTest extends TestCase
 
         $oracle->convertBtcSatToTarget(100_000, 'USDT_TRC20');
         // Second call MUST hit the cache, not re-fetch.
-        [$amount] = $oracle->convertBtcSatToTarget(100_000, 'USDT_TRC20');
+        $conv = $oracle->convertBtcSatToTarget(100_000, 'USDT_TRC20');
 
-        $this->assertSame('60000000', $amount);
+        $this->assertSame('60000000', $conv->targetAmount);
     }
 
     public function test_coingecko_outage_with_cold_cache_throws(): void

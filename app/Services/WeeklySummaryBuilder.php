@@ -101,7 +101,14 @@ class WeeklySummaryBuilder
             ->selectRaw('status, count(*) as cnt, coalesce(sum(amount_sat), 0) as total_sat')
             ->groupBy('status')
             ->get()
-            ->keyBy(fn ($r) => (string) $r->getAttribute('status'));
+            // status is now a backed-enum cast (WithdrawalStatus) on
+            // hydrated Withdrawal rows. The selectRaw above returns
+            // the raw column value through the Eloquent cast pipeline,
+            // so $r->getAttribute('status') is a WithdrawalStatus
+            // instance — `->value` to get the string back for keyBy.
+            ->keyBy(fn ($r): string => $r->getAttribute('status') instanceof \App\Enums\WithdrawalStatus
+                ? $r->getAttribute('status')->value
+                : (string) $r->getAttribute('status'));
 
         return [
             'sent_count' => (int) ($rows->get('sent')?->getAttribute('cnt') ?? 0),

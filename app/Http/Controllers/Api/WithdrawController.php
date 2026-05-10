@@ -76,12 +76,16 @@ class WithdrawController extends Controller
 
         // Convert BTC sats → target currency smallest unit. Bail BEFORE
         // opening the DB transaction so the user retries without a
-        // ledger row to refund.
+        // ledger row to refund. The named PayoutConversion fields
+        // (was a positional tuple) eliminate the slot-swap risk where
+        // a refactor could persist a rate as the amount or vice versa.
         try {
-            [$payoutAmount, $payoutRate] = $this->priceOracle->convertBtcSatToTarget(
+            $conversion = $this->priceOracle->convertBtcSatToTarget(
                 (int) $validated['amount_sat'],
                 $currency->code,
             );
+            $payoutAmount = $conversion->targetAmount;
+            $payoutRate = $conversion->rateSatPerUnit;
         } catch (PriceOracleUnavailableException $e) {
             Log::warning('withdraw blocked: price oracle unavailable', [
                 'user_id' => $user->id,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Payout;
 
+use App\Enums\WithdrawalStatus;
 use App\Mail\WithdrawalRejectedEmail;
 use App\Mail\WithdrawalSentEmail;
 use App\Models\BalanceLedger;
@@ -58,7 +59,7 @@ class ProcessWithdrawalJobTest extends TestCase
         (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $w->refresh();
-        $this->assertSame('sent', $w->status);
+        $this->assertSame(WithdrawalStatus::Sent, $w->status);
         $this->assertSame('PO-1', $w->faucetpay_payout_id);
         $this->assertSame(5000, (int) $user->fresh()->total_withdrawn_sat);
         Mail::assertQueued(WithdrawalSentEmail::class);
@@ -88,7 +89,7 @@ class ProcessWithdrawalJobTest extends TestCase
         (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
         $w->refresh();
-        $this->assertSame('failed', $w->status);
+        $this->assertSame(WithdrawalStatus::Failed, $w->status);
         $this->assertSame('Insufficient balance', $w->failure_reason);
         $this->assertSame(5000, (int) $user->fresh()->balance_sat);
         $this->assertDatabaseHas('balance_ledgers', [
@@ -123,7 +124,7 @@ class ProcessWithdrawalJobTest extends TestCase
             // a real "in flight, retrying" indicator. NO refund yet because
             // the retry might still succeed.
             $w->refresh();
-            $this->assertSame('processing', $w->status);
+            $this->assertSame(WithdrawalStatus::Processing, $w->status);
             $this->assertSame(1, (int) ($w->meta['attempts'] ?? 0));
             // No balance_ledger refund row was written.
             $this->assertDatabaseMissing('balance_ledgers', [
@@ -150,7 +151,7 @@ class ProcessWithdrawalJobTest extends TestCase
         (new ProcessWithdrawalJob($w->id))->failed(new FaucetPayUnreachableException('still down'));
 
         $w->refresh();
-        $this->assertSame('failed', $w->status);
+        $this->assertSame(WithdrawalStatus::Failed, $w->status);
         $this->assertStringContainsString('job_failed', (string) $w->failure_reason);
         $this->assertSame(5000, (int) $user->fresh()->balance_sat);
         $this->assertDatabaseHas('balance_ledgers', [
@@ -178,7 +179,7 @@ class ProcessWithdrawalJobTest extends TestCase
 
         (new ProcessWithdrawalJob($w->id))->failed(new RuntimeException('stray exception'));
 
-        $this->assertSame('sent', $w->fresh()->status);
+        $this->assertSame(WithdrawalStatus::Sent, $w->fresh()->status);
         $this->assertDatabaseMissing('balance_ledgers', [
             'user_id' => $user->id,
             'reason' => 'withdraw_refund',
@@ -203,7 +204,7 @@ class ProcessWithdrawalJobTest extends TestCase
 
         (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
-        $this->assertSame('hold', $w->fresh()->status);
+        $this->assertSame(WithdrawalStatus::Hold, $w->fresh()->status);
         $this->assertDatabaseMissing('balance_ledgers', [
             'user_id' => $user->id,
             'reason' => 'withdraw_refund',
@@ -243,7 +244,7 @@ class ProcessWithdrawalJobTest extends TestCase
 
         $w = $w->fresh();
         $user = $user->fresh();
-        $this->assertSame('sent', $w->status);
+        $this->assertSame(WithdrawalStatus::Sent, $w->status);
         $this->assertSame('PO-by-A', $w->faucetpay_payout_id, "worker A's payout id must not be overwritten");
         $this->assertSame(7500, (int) $user->total_withdrawn_sat, 'must not double-count');
     }
@@ -298,7 +299,7 @@ class ProcessWithdrawalJobTest extends TestCase
 
         $w = $w->fresh();
         $user = $user->fresh();
-        $this->assertSame('sent', $w->status);
+        $this->assertSame(WithdrawalStatus::Sent, $w->status);
         // Worker A wrote PO-from-A; worker B's update was filtered by
         // the WHERE status='processing' predicate so PO-from-A survives.
         $this->assertSame('PO-from-A', $w->faucetpay_payout_id);
@@ -327,7 +328,7 @@ class ProcessWithdrawalJobTest extends TestCase
         $client = $this->fakeClient(['ok' => false, 'payout_id' => null, 'message' => 'declined', 'raw' => []]);
         (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
-        $this->assertSame('failed', $w->fresh()->status);
+        $this->assertSame(WithdrawalStatus::Failed, $w->fresh()->status);
         $this->assertSame(3300, (int) $user->fresh()->balance_sat, 'first refund credited');
 
         // Second run: simulates a second worker re-entering after the
@@ -361,7 +362,7 @@ class ProcessWithdrawalJobTest extends TestCase
         $client = $this->throwingClient(new RuntimeException('should not be called'));
         (new ProcessWithdrawalJob($w->id))->handle($this->gatewayRegistry($client));
 
-        $this->assertSame('sent', $w->fresh()->status);
+        $this->assertSame(WithdrawalStatus::Sent, $w->fresh()->status);
         $this->assertSame($balanceBefore, (int) $user->fresh()->balance_sat);
         Mail::assertNothingQueued();
     }

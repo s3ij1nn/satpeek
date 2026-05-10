@@ -70,7 +70,14 @@ class PayoutVolumeChartWidget extends ChartWidget
         $byDay = [];
         foreach ($rows as $r) {
             $day = (string) $r->getAttribute('day');
-            $reason = (string) $r->getAttribute('reason');
+            // reason is now a backed-enum cast (LedgerReason). Pull
+            // ->value back out for the string-keyed pivot. Fallback
+            // (string) cast covers any legacy row whose value isn't
+            // a known enum case (e.g. partial migration mid-rollout).
+            $reasonRaw = $r->getAttribute('reason');
+            $reason = $reasonRaw instanceof \App\Enums\LedgerReason
+                ? $reasonRaw->value
+                : (string) $reasonRaw;
             $sat = (int) $r->getAttribute('sat');
             $byDay[$day][$reason] = $sat;
         }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Withdraw;
 
 use App\Models\User;
+use App\Payout\PayoutConversion;
 use App\Payout\PriceOracle;
 use App\Payout\PriceOracleUnavailableException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -54,14 +55,14 @@ class MultiCurrencyWithdrawTest extends TestCase
 
     public function test_usdt_trc20_withdrawal_uses_oracle_for_conversion(): void
     {
-        // Mock the oracle to avoid hitting CoinGecko. Returns 1000 USDT
-        // smallest-unit + a bogus rate string — controller persists the
-        // tuple verbatim. Both elements are decimal strings now (ETH
-        // wei overflows int64; PriceOracle returns strings).
+        // Mock the oracle to avoid hitting CoinGecko. Returns a
+        // PayoutConversion (was a positional tuple — the named VO
+        // closes the slot-swap risk). Controller persists targetAmount
+        // verbatim into payout_amount and rateSatPerUnit into payout_rate.
         $this->mock(PriceOracle::class, function ($mock) {
             $mock->shouldReceive('convertBtcSatToTarget')
                 ->with(50000, 'USDT_TRC20')
-                ->andReturn(['1000', '5000']);
+                ->andReturn(new PayoutConversion('1000', '5000'));
         });
 
         $user = User::factory()->create(['balance_sat' => 100000]);

@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\WithdrawalResource\Pages;
 use App\Mail\WithdrawalRejectedEmail;
+use App\Enums\WithdrawalStatus;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
 use App\Services\AdminAuditor;
@@ -175,7 +176,7 @@ class WithdrawalResource extends Resource
                     ->icon('heroicon-o-check')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (Withdrawal $r) => $r->status === 'hold')
+                    ->visible(fn (Withdrawal $r) => $r->status === WithdrawalStatus::Hold)
                     ->action(function (Withdrawal $r) {
                         // Atomic claim: row MUST still be `hold` for the
                         // transition to fire. visible() filters render-time
@@ -202,7 +203,7 @@ class WithdrawalResource extends Resource
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn (Withdrawal $r) => in_array($r->status, ['hold', 'queued'], true))
+                    ->visible(fn (Withdrawal $r) => in_array($r->status, [WithdrawalStatus::Hold, WithdrawalStatus::Queued], true))
                     ->schema([
                         Forms\Components\Textarea::make('failure_reason')
                             ->label('Reason (visible to user)')

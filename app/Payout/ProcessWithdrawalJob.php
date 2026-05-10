@@ -2,6 +2,7 @@
 
 namespace App\Payout;
 
+use App\Enums\WithdrawalStatus;
 use App\Mail\WithdrawalRejectedEmail;
 use App\Mail\WithdrawalSentEmail;
 use App\Models\BalanceLedger;
@@ -82,7 +83,7 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
     {
         /** @var Withdrawal|null $w */
         $w = Withdrawal::find($this->withdrawalId);
-        if (! $w || ! in_array($w->status, ['queued', 'processing'], true)) {
+        if (! $w || ! in_array($w->status, [WithdrawalStatus::Queued, WithdrawalStatus::Processing], true)) {
             return;
         }
         if ($w->requires_review) {
@@ -175,7 +176,7 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
     public function failed(?Throwable $e): void
     {
         $w = Withdrawal::find($this->withdrawalId);
-        if (! $w || ! in_array($w->status, ['queued', 'processing'], true)) {
+        if (! $w || ! in_array($w->status, [WithdrawalStatus::Queued, WithdrawalStatus::Processing], true)) {
             // Either deleted or already settled — nothing to refund.
             return;
         }

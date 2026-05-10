@@ -44,29 +44,23 @@ class PriceOracle
     /**
      * Convert a BTC-sats amount to the smallest unit of `$target`.
      *
-     * Returns a tuple [$amount, $rate] where both elements are
-     * **decimal strings** (not ints):
-     *   - $amount = count of `$target`'s smallest unit. ETH at 18
-     *               decimals × multi-BTC balance overflows
-     *               signed-64-bit, so callers MUST persist this
-     *               verbatim into the decimal(36, 0) `payout_amount`
-     *               column.
-     *   - $rate   = decimal "BTC sats per 1 unit of $target's main
-     *               denomination" — captured + persisted on the
-     *               withdrawal row so support can reproduce the math.
-     *
-     * @return array{0: string, 1: string}
+     * Returns a {@see PayoutConversion} value object whose named
+     * fields remove the slot-swap risk a positional tuple invited
+     * (callers can no longer accidentally persist a rate where an
+     * amount belongs). Both fields are stringified bcmath decimals —
+     * ETH wei × multi-BTC balance overflows signed-64-bit, and the
+     * rate carries 18 fractional digits.
      *
      * @throws PriceOracleUnavailableException
      */
-    public function convertBtcSatToTarget(int $btcSat, string $targetCode): array
+    public function convertBtcSatToTarget(int $btcSat, string $targetCode): PayoutConversion
     {
         $target = $this->registry->get($targetCode);
 
         // Same-currency optimisation — BTC→BTC is the identity, no
         // oracle needed and no precision loss from float math.
         if ($target->code === 'BTC') {
-            return [(string) $btcSat, '1'];
+            return new PayoutConversion((string) $btcSat, '1');
         }
 
         $prices = $this->usdPrices();
@@ -101,7 +95,7 @@ class PriceOracle
             18,
         );
 
-        return [$amount, $satPerTarget];
+        return new PayoutConversion($amount, $satPerTarget);
     }
 
     /**

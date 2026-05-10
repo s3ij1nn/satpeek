@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\LedgerReason;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -87,6 +88,7 @@ class BalanceLedger extends Model
 
     protected $casts = [
         'meta' => 'array',
+        'reason' => LedgerReason::class,
     ];
 
     public function user(): BelongsTo

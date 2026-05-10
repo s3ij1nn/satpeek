@@ -184,7 +184,8 @@
                         <li>
                             <span>
                                 <span class="reason">{{ number_format($w->amount_sat) }} {{ $w->currency }} → {{ $w->faucetpay_email }}</span><br>
-                                <span class="when">{{ $w->created_at->diffForHumans() }} · status: <span class="tier-badge tier-{{ $w->status === 'sent' ? 'trust' : ($w->status === 'hold' ? 'suspect' : 'trust') }}">{{ $w->status }}</span></span>
+                                @php $statusVal = $w->status?->value ?? (string) $w->status; @endphp
+                                <span class="when">{{ $w->created_at->diffForHumans() }} · status: <span class="tier-badge tier-{{ $statusVal === 'sent' ? 'trust' : ($statusVal === 'hold' ? 'suspect' : 'trust') }}">{{ $statusVal }}</span></span>
                             </span>
                             <span class="delta">—</span>
                         </li>
