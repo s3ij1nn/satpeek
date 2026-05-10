@@ -8,6 +8,9 @@ use App\Models\PtcAd;
 use App\Models\ShortlinkProviderCredential;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Payout\WalletBalanceMonitor;
+use App\Payout\WalletBalanceMonitorRegistry;
+use App\Payout\WalletBalanceUnavailableException;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
@@ -46,6 +49,7 @@ class HealthEndpointTest extends TestCase
                 'bot_detection' => ['status', 'critical'],
                 'earning_inventory' => ['status', 'critical'],
                 'trusted_proxies' => ['status', 'critical'],
+                'hot_wallet_balance' => ['status', 'critical'],
             ],
         ]);
         $this->assertContains($response->json('status'), ['ok', 'degraded', 'down']);
@@ -439,5 +443,89 @@ class HealthEndpointTest extends TestCase
         putenv('TRUSTED_PROXIES=*');
         $response = $this->getJson('/up', ['X-Forwarded-For' => '203.0.113.10']);
         $this->assertSame('ok', $response->json('checks.trusted_proxies.status'));
+    }
+
+    public function test_hot_wallet_balance_ok_when_no_monitors_registered(): void
+    {
+        // FaucetPay-only deploy → registry is empty → check reports
+        // ok with detail=no_monitors_registered. Must NOT alert; an
+        // operator with no onchain routes shouldn't see false signal.
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('ok', $response->json('checks.hot_wallet_balance.status'));
+        $this->assertSame('no_monitors_registered', $response->json('checks.hot_wallet_balance.detail'));
+        $this->assertSame([], $response->json('checks.hot_wallet_balance.currencies'));
+    }
+
+    public function test_hot_wallet_balance_down_when_gap_negative(): void
+    {
+        // Inject a fake monitor that reports over-committed (gap < 0).
+        // Overall status should drop to `degraded` (the hot-wallet
+        // probe is non-critical, so 200 OK at the HTTP layer) and
+        // the per-currency entry should be `down`.
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $registry->register(new class implements WalletBalanceMonitor
+        {
+            public function currency(): string
+            {
+                return 'TRX';
+            }
+
+            public function available(): string
+            {
+                return '100';
+            }
+
+            public function required(): string
+            {
+                return '500';
+            }
+        });
+
+        $response = $this->getJson('/up');
+
+        $response->assertStatus(200);
+        $this->assertSame('down', $response->json('checks.hot_wallet_balance.status'));
+        $this->assertSame('down', $response->json('checks.hot_wallet_balance.currencies.0.status'));
+        $this->assertSame('TRX', $response->json('checks.hot_wallet_balance.currencies.0.code'));
+    }
+
+    public function test_hot_wallet_balance_unavailable_surfaces_as_down(): void
+    {
+        // RPC failure → available() throws WalletBalanceUnavailableException.
+        // Probe must report `down` rather than swallowing as zero (a
+        // misleading zero would underreport the runway and miss alerts).
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $registry->register(new class implements WalletBalanceMonitor
+        {
+            public function currency(): string
+            {
+                return 'TRX';
+            }
+
+            public function available(): string
+            {
+                throw new WalletBalanceUnavailableException('rpc down');
+            }
+
+            public function required(): string
+            {
+                return '0';
+            }
+        });
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('down', $response->json('checks.hot_wallet_balance.status'));
+        $this->assertSame('rpc_unavailable', $response->json('checks.hot_wallet_balance.currencies.0.detail'));
     }
 }

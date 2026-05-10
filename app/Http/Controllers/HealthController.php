@@ -9,6 +9,8 @@ use App\Models\ShortlinkProviderCredential;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Offerwall\AdapterRegistry;
+use App\Payout\WalletBalanceMonitorRegistry;
+use App\Payout\WalletBalanceUnavailableException;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,6 +46,7 @@ class HealthController extends Controller
             'bot_detection' => $this->checkBotDetection(),
             'earning_inventory' => $this->checkEarningInventory(),
             'trusted_proxies' => $this->checkTrustedProxies($request),
+            'hot_wallet_balance' => $this->checkHotWalletBalance(),
         ];
 
         $hasCriticalDown = false;
@@ -443,5 +446,88 @@ class HealthController extends Controller
         }
 
         return ['status' => 'ok', 'critical' => false, 'sources' => $sources];
+    }
+
+    /**
+     * Per-currency hot-wallet runway probe. Iterates the
+     * {@see WalletBalanceMonitorRegistry} and reports each monitor's
+     * available + required + gap. Per-currency status:
+     *   - ok       — gap >= required (≥ 1× pending withdrawals worth of headroom)
+     *   - degraded — 0 <= gap < required (less than 1× pending — top up soon)
+     *   - down     — gap < 0 (over-committed — fund hot wallet now)
+     *               OR available() throws (chain probe failed)
+     *
+     * Non-critical (200 OK overall, just `status: degraded` so
+     * monitoring tooling can alert without paging). Operator with
+     * FaucetPay-only routes sees an empty `currencies: []` and a
+     * `no_monitors_registered` detail — not an alert condition.
+     *
+     * Live RPC calls for every probe — kept off the hot path because
+     * /up is hit by external monitors, not user requests, and chain-
+     * head fetches are sub-second on TronGrid + publicnode.
+     *
+     * @return array{status: string, critical: bool, detail?: string, currencies: array<int, array<string, mixed>>}
+     */
+    private function checkHotWalletBalance(): array
+    {
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $monitors = $registry->all();
+        if ($monitors === []) {
+            return [
+                'status' => 'ok',
+                'critical' => false,
+                'detail' => 'no_monitors_registered',
+                'currencies' => [],
+            ];
+        }
+
+        $currencies = [];
+        $worst = 'ok';
+        foreach ($monitors as $monitor) {
+            $code = $monitor->currency();
+            try {
+                $available = $monitor->available();
+            } catch (WalletBalanceUnavailableException) {
+                $currencies[] = [
+                    'code' => $code,
+                    'status' => 'down',
+                    'detail' => 'rpc_unavailable',
+                ];
+                $worst = 'down';
+
+                continue;
+            }
+            $required = $monitor->required();
+            $gap = bcsub($available, $required, 0);
+            if (bccomp($gap, '0', 0) < 0) {
+                $status = 'down';
+            } elseif (bccomp($required, '0', 0) > 0 && bccomp($gap, $required, 0) < 0) {
+                $status = 'degraded';
+            } else {
+                $status = 'ok';
+            }
+            // Worst-case promotion: down > degraded > ok.
+            if ($status === 'down') {
+                $worst = 'down';
+            } elseif ($status === 'degraded' && $worst === 'ok') {
+                $worst = 'degraded';
+            }
+            $currencies[] = [
+                'code' => $code,
+                'status' => $status,
+                'available' => $available,
+                'required' => $required,
+                'gap' => $gap,
+            ];
+        }
+
+        return [
+            'status' => $worst,
+            // NOT critical — hot-wallet dry should alert the operator
+            // but never page-out a load balancer (FaucetPay route is
+            // unaffected, app process is healthy).
+            'critical' => false,
+            'currencies' => $currencies,
+        ];
     }
 }

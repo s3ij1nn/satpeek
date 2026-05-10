@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-05-10
+
+Theme: Phase 2e — `/up` extension surfaces hot-wallet runway to
+external monitoring. The 0.21 dashboard widget is for visual
+inspection by an operator; this release lets external monitors
+(Pingdom, UptimeRobot, custom probes) page-out when the hot wallet
+runs dry.
+
+### Added
+
+- **`hot_wallet_balance` check** in `HealthController`. Iterates
+  `WalletBalanceMonitorRegistry` and reports per-currency status:
+  - `ok` — `gap >= required` (≥ 1× pending withdrawals worth of
+    headroom)
+  - `degraded` — `0 <= gap < required` (less than 1× pending —
+    top up soon)
+  - `down` — `gap < 0` (over-committed) OR `available()` throws
+    `WalletBalanceUnavailableException` (chain probe failed)
+  Non-critical → never paginates the load balancer (FaucetPay route
+  is unaffected, app process is healthy). Operator with no onchain
+  routes sees `ok` + `detail=no_monitors_registered`.
+- 3 feature tests pin: empty registry → ok; over-committed gap →
+  worst-case `down` status with overall `degraded`; RPC failure →
+  `down` with `detail=rpc_unavailable`.
+
+515 + 3 = 518 tests pass; pint + phpstan green.
+
 ## [0.21.0] — 2026-05-10
 
 Theme: Phase 2d — operator visibility for the Tron hot wallet. The
