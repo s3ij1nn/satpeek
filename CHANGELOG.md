@@ -6,6 +6,77 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-05-10
+
+Theme: Phase-2b foundation — every schema column, enum case, and
+interface that the upcoming Tron / BTC / ETH onchain settlement code
+will write into. Ships zero behaviour change on its own; the watcher
+job, deposit pollers, and per-chain wallet monitors land on top of
+this scaffold in 0.19+.
+
+The shape pinned here came out of an architect-agent review of the
+Phase 2a Tron scaffold. Three pre-Phase-2b foundation gaps were
+flagged HIGH: (a) `withdrawals` table had no way to express the
+broadcast→confirmed lifecycle, (b) `WithdrawalStatus` had no
+intermediate state for "broadcasted, awaiting finality", (c) no
+contract existed for the deposit-side polling that incoming onchain
+funds will need. Closing them now means the Phase 2b commit is a
+behaviour change, not a schema change — much safer to roll back if
+the chain integration trips on something.
+
+### Added
+
+- **`withdrawals.broadcast_at` + `confirmed_at` + `confirmations_seen`
+  columns + UNIQUE on `onchain_tx_hash`.** The watcher job will write
+  `broadcast_at` the moment the gateway returns a tx hash, then poll
+  the chain and tick `confirmations_seen` until the per-currency
+  finality threshold (BTC 3, ETH 12, TRX 19), at which point
+  `confirmed_at` is stamped and `status` flips to `Sent`. The UNIQUE
+  constraint is the last-line-of-defence behind the watcher's own
+  dedupe — even if a bug let two rows claim the same chain tx hash,
+  the DB rejects the second insert. Backfill: existing `Sent` rows
+  get `broadcast_at = confirmed_at = processed_at` so reporting that
+  joins on these columns doesn't see NULL for historical FaucetPay
+  payouts.
+- **`WithdrawalStatus::Broadcast` enum case.** Sits between `Hold`
+  and `Sent`. Pre-Phase-2b, `Sent` did double duty for "gateway
+  accepted" and "chain confirmed" — fine for FaucetPay because FP is
+  publisher-confirmed at API return — but onchain payouts have a
+  real gap (BTC: ~30 min, ETH: ~3 min, TRX: ~1 min) where the tx is
+  visible on the chain but hasn't reached SatPeek's finality
+  threshold. From 0.18 onward `Sent` strictly means "confirmed at
+  finality"; FaucetPay rows continue to skip `Broadcast` entirely.
+- **`App\Deposit\DepositObserver` interface + `DepositEvent` VO +
+  `DepositObserverException`.** The deposit-side mirror of
+  `PayoutGateway`: where `PayoutGateway` is push-driven (we initiate
+  a withdrawal), `DepositObserver` is poll-driven (we scan the chain
+  for incoming funds to advertiser hot wallets). Returns an iterable
+  of `DepositEvent` readonly VOs (currency, address, amount as
+  string for ETH wei, txHash, confirmations, blockHeight).
+  Implementations MUST be idempotent — same tx returned across calls
+  until finality — so the consuming job can `firstOrCreate` ledger
+  rows without dedupe logic of its own.
+- **`App\Payout\WalletBalanceMonitor` interface +
+  `WalletBalanceUnavailableException`.** Per-chain hot-wallet
+  balance probe used by the operator dashboard + the pre-broadcast
+  guard in the future watcher job (refuse to broadcast if available
+  < required + buffer). Both `available()` and `required()` return
+  bcmath strings because ETH wei overflows int64. Throws sentinel
+  exception on RPC failure — callers MUST NOT trust a fallback zero
+  (would silently allow over-commit).
+
+### Tests
+
+- `tests/Feature/Payout/OnchainLifecycleSchemaTest.php` — 4 tests
+  pinning the schema:
+  - new lifecycle columns persist + round-trip through Eloquent casts
+  - UNIQUE on `onchain_tx_hash` rejects duplicate settlement
+  - multiple NULL `onchain_tx_hash` rows coexist (FaucetPay rows
+    must not collide on the UNIQUE)
+  - `WithdrawalStatus::Broadcast` enum value round-trips
+
+476 tests pass; pint + phpstan green.
+
 ## [0.17.0] — 2026-05-10
 
 Theme: docs hygiene — close the comment-rot findings from the

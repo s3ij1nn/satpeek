@@ -26,6 +26,9 @@ use Illuminate\Support\Carbon;
  * @property bool $requires_review
  * @property int|null $reviewed_by
  * @property Carbon|null $processed_at
+ * @property Carbon|null $broadcast_at onchain: gateway accepted tx for relay; FaucetPay: same as processed_at
+ * @property Carbon|null $confirmed_at onchain: reached finality threshold; FaucetPay: same as processed_at
+ * @property int $confirmations_seen last observed confirmation count (0 for FaucetPay)
  * @property array<string, mixed>|null $meta
  * @property-read User|null $user
  * @property-read User|null $reviewer
@@ -54,12 +57,17 @@ class Withdrawal extends Model
         'requires_review',
         'reviewed_by',
         'processed_at',
+        'broadcast_at',
+        'confirmed_at',
+        'confirmations_seen',
         'meta',
     ];
 
     protected $casts = [
         'requires_review' => 'boolean',
         'processed_at' => 'datetime',
+        'broadcast_at' => 'datetime',
+        'confirmed_at' => 'datetime',
         'status' => WithdrawalStatus::class,
         'meta' => 'array',
     ];
