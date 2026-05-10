@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Payout;
 
+use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
 use App\Payout\Tron\TronHttpClient;
 use App\Payout\Tron\TronRpcException;
@@ -14,6 +15,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -77,9 +79,16 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(TronHttpClient $http): void
     {
+        // Both Tron-family methods share TronHttpClient — single sweep,
+        // single chain-head fetch. Future onchain_btc / onchain_eth
+        // gateways will dispatch off `payout_method` to their own RPC
+        // clients; the loop body stays the same shape.
         $rows = Withdrawal::query()
             ->where('status', 'broadcast')
-            ->where('payout_method', Withdrawal::METHOD_ONCHAIN_TRX)
+            ->whereIn('payout_method', [
+                Withdrawal::METHOD_ONCHAIN_TRX,
+                Withdrawal::METHOD_ONCHAIN_USDT_TRC20,
+            ])
             ->whereNotNull('onchain_tx_hash')
             ->get();
 
@@ -130,6 +139,18 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
 
         $confirmations = max(0, $tronHead - $txBlock + 1);
 
+        // TRC20 contract calls can be in a block but REVERT (insufficient
+        // balance, paused contract, blacklisted recipient). receipt.result
+        // is the canonical "did the contract succeed" signal. Native TRX
+        // transfers never revert once they're in a block — receipt.result
+        // is absent or 'SUCCESS' so the same check is harmless for TRX.
+        $receiptResult = (string) ($info['receipt']['result'] ?? '');
+        if ($receiptResult !== '' && $receiptResult !== 'SUCCESS') {
+            $this->refundReverted($w, $confirmations, $receiptResult, $info);
+
+            return;
+        }
+
         if ($confirmations < self::TRX_FINALITY) {
             // Not yet final — just tick the counter so an operator
             // watching the dashboard can see progress. Don't write
@@ -159,5 +180,49 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
                 'confirmations' => $confirmations,
             ]);
         }
+    }
+
+    /**
+     * TRC20 (or any contract) reverted on-chain. The tx is mined but
+     * the state change never happened, so SatPeek's debit at withdrawal
+     * creation time is now incorrect — refund the user and mark the
+     * row failed.
+     *
+     * Atomic settle: same WHERE status='broadcast' guard as the success
+     * path so a parallel run can't double-refund. The
+     * `balance_ledgers (reason, reference_type, reference_id)` partial
+     * UNIQUE backstop catches even a bypassed affected_rows check.
+     *
+     * @param  array<string, mixed>  $info
+     */
+    private function refundReverted(Withdrawal $w, int $confirmations, string $receiptResult, array $info): void
+    {
+        DB::transaction(function () use ($w, $confirmations, $receiptResult, $info) {
+            $marked = Withdrawal::where('id', $w->id)
+                ->where('status', 'broadcast')
+                ->update([
+                    'status' => 'failed',
+                    'confirmations_seen' => $confirmations,
+                    'failure_reason' => "onchain_revert: {$receiptResult}",
+                    'meta' => array_merge((array) $w->meta, ['receipt' => $info['receipt'] ?? null]),
+                ]);
+            if ($marked === 0) {
+                return;
+            }
+
+            BalanceLedger::create([
+                'user_id' => $w->user_id,
+                'delta_sat' => $w->amount_sat,
+                'reason' => BalanceLedger::REASON_WITHDRAW_REFUND,
+                'reference_type' => Withdrawal::class,
+                'reference_id' => $w->id,
+            ]);
+            $w->user->increment('balance_sat', $w->amount_sat);
+        });
+        Log::warning('onchain confirmations: refunded after onchain revert', [
+            'withdrawal_id' => $w->id,
+            'tx_hash' => $w->onchain_tx_hash,
+            'receipt_result' => $receiptResult,
+        ]);
     }
 }

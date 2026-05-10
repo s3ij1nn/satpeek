@@ -37,6 +37,7 @@ use App\Payout\FaucetPayClient;
 use App\Payout\Gateway\FaucetPayGateway;
 use App\Payout\Gateway\PayoutGatewayRegistry;
 use App\Payout\Gateway\TronOnchainGateway;
+use App\Payout\Gateway\TronUsdtTrc20Gateway;
 use App\Payout\PayoutCurrencyRegistry;
 use App\Payout\PriceOracle;
 use App\Payout\Tron\TronHttpClient;
@@ -231,6 +232,24 @@ class AppServiceProvider extends ServiceProvider
                     hotWalletAddress: $hotAddress,
                     hotWalletPrivateKey: $hotPriv,
                 ));
+
+                // USDT-TRC20 piggybacks on the same hot wallet + RPC
+                // surface; the only extra config is the per-network
+                // contract address. Skip silently if the operator
+                // hasn't supplied a contract address (e.g. a custom
+                // private testnet that doesn't have USDT yet).
+                $network = (string) ($tron['network'] ?? 'mainnet');
+                $contracts = (array) ($tron['usdt_trc20_contract'] ?? []);
+                $contract = (string) ($contracts[$network] ?? '');
+                if ($contract !== '') {
+                    $registry->register(new TronUsdtTrc20Gateway(
+                        $app->make(TronHttpClient::class),
+                        $app->make(TronTxSigner::class),
+                        hotWalletAddress: $hotAddress,
+                        hotWalletPrivateKey: $hotPriv,
+                        contractAddress: $contract,
+                    ));
+                }
             }
 
             return $registry;

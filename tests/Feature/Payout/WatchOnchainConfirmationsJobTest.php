@@ -130,6 +130,45 @@ class WatchOnchainConfirmationsJobTest extends TestCase
         $this->assertSame(WithdrawalStatus::Sent, $w2->status);
     }
 
+    public function test_trc20_revert_refunds_user_and_marks_failed(): void
+    {
+        // TRC20 contract calls can be in a block but REVERT (insufficient
+        // contract balance, paused contract, blacklisted recipient).
+        // The watcher MUST refund the user's debit and mark the row
+        // failed — leaving it as "sent" would silently steal balance.
+        $user = User::factory()->create(['balance_sat' => 0]);
+        $w = Withdrawal::create([
+            'user_id' => $user->id,
+            'amount_sat' => 1000,
+            'payout_amount' => '1000000',
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            'payout_method' => Withdrawal::METHOD_ONCHAIN_USDT_TRC20,
+            'payout_currency' => 'USDT_TRC20',
+            'status' => 'broadcast',
+            'onchain_tx_hash' => 'reverted-tx',
+            'broadcast_at' => '2026-05-10 12:00:00',
+        ]);
+
+        $http = Mockery::mock(TronHttpClient::class);
+        $http->shouldReceive('getNowBlock')->once()->andReturn(65000020);
+        $http->shouldReceive('getTransactionInfo')->with('reverted-tx')->once()
+            ->andReturn([
+                'blockNumber' => 65000000,
+                'receipt' => ['result' => 'REVERT', 'energy_usage_total' => 14000],
+            ]);
+        $this->app->instance(TronHttpClient::class, $http);
+
+        (new WatchOnchainConfirmationsJob)->handle($http);
+
+        $w->refresh();
+        $user->refresh();
+        $this->assertSame(WithdrawalStatus::Failed, $w->status);
+        $this->assertStringContainsString('REVERT', (string) $w->failure_reason);
+        // User got a refund equal to amount_sat (NOT payout_amount —
+        // the debit was the BTC-sat side of the original ledger row).
+        $this->assertSame(1000, (int) $user->balance_sat);
+    }
+
     public function test_faucetpay_rows_are_not_touched(): void
     {
         $user = User::factory()->create();

@@ -55,17 +55,17 @@ class PayoutCurrencyRegistryTest extends TestCase
 
     public function test_onchain_supported_lists_only_currencies_with_real_gateways(): void
     {
-        // Phase 2b ships TRX onchain (TronOnchainGateway). Future
-        // chains (BTC, ETH, USDT-TRC20) flip their `onchain_supported`
-        // flag here as their gateway lands. The test fails the moment
-        // a flag flips without the matching gateway — alerting the
-        // next reader that they need to register the real gateway in
-        // AppServiceProvider before flipping the flag.
+        // Phase 2b/2c ship TRX + USDT-TRC20 onchain. Future chains
+        // (BTC, ETH) flip their `onchain_supported` flag here as their
+        // gateway lands. The test fails the moment a flag flips without
+        // the matching gateway — alerting the next reader that they
+        // need to register the real gateway in AppServiceProvider
+        // before flipping the flag.
         $reg = new PayoutCurrencyRegistry;
         $codes = array_map(fn ($c) => $c->code, $reg->onchainSupported());
         $this->assertContains('TRX', $codes);
+        $this->assertContains('USDT_TRC20', $codes);
         $this->assertNotContains('BTC', $codes);
         $this->assertNotContains('ETH', $codes);
-        $this->assertNotContains('USDT_TRC20', $codes);
     }
 }

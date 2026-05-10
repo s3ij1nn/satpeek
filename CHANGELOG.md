@@ -6,6 +6,66 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-05-10
+
+Theme: Phase 2c — USDT-TRC20 onchain payouts ride alongside TRX on the
+same Tron infrastructure. The 0.19 gateway / signer / watcher
+machinery shipped with TRX as the only consumer; this release adds
+a TRC20 contract-call gateway (`/wallet/triggersmartcontract` for
+`transfer(address,uint256)`) and teaches the watcher to handle
+contract reverts by refunding the user.
+
+The pipeline is gated by the same `TRON_ONCHAIN_ENABLED` + hot wallet
+env pair as TRX, plus a non-empty per-network `usdt_trc20_contract`
+address in config (mainnet ships pre-populated with the canonical
+USDT contract `TR7N…`; Shasta is operator-supplied via
+`TRON_USDT_TRC20_CONTRACT_SHASTA`).
+
+### Added
+
+- **`TronUsdtTrc20Gateway`** implements `PayoutGateway` with
+  `name='onchain_usdt_trc20'`. ABI-encodes the recipient + amount,
+  calls `triggersmartcontract`, signs via the existing `TronTxSigner`,
+  broadcasts via the existing `TronHttpClient`. 4 unit tests cover
+  happy path + invalid destination + `triggersmartcontract` build
+  error decode + transport-failure retry signal.
+- **`TronAbi::encodeTransfer($recipientBase58, $amountBaseUnits)`** —
+  pure-PHP Solidity ABI encoder for `transfer(address,uint256)`.
+  Pads the address slot with 12 zero bytes, big-endian-encodes the
+  uint256 left-padded to 32 bytes. 5 tests pin every byte position;
+  a misaligned pad would silently send funds to the wrong address.
+- **`TronAddress::toHash20($base58)`** — derives the 20-byte EVM-style
+  hash from a Base58Check Tron address (drops the 0x41 version
+  prefix). Used by the ABI encoder; throws on a malformed address
+  (defence-in-depth — gateway already pre-validates).
+- **`TronHttpClient::triggerSmartContract(...)`** wraps
+  `/wallet/triggersmartcontract`. Default `fee_limit=100 TRX` covers
+  cold-account TRC20 energy costs (~14 TRX) with comfortable
+  headroom for fee shocks.
+- **`Withdrawal::METHOD_ONCHAIN_USDT_TRC20`** const. The
+  `isOnchainMethod()` prefix detector picks it up automatically.
+- **`WatchOnchainConfirmationsJob` revert handling**: TRC20 contract
+  calls can be in a block but REVERT (insufficient balance, paused
+  contract, blacklisted recipient). The watcher checks
+  `receipt.result` and:
+  - `SUCCESS` (or absent for native TRX) → standard finality flow.
+  - any other value → atomic `failed` + balance refund + ledger
+    `withdraw_refund` row. Same race-defence guard
+    (`WHERE status='broadcast'`) as the success path.
+  1 new feature test pins the revert path.
+
+### Changed
+
+- **`WithdrawController`**: adds `onchain_usdt_trc20` to allowed
+  methods (when registered) + `USDT_TRC20`-only currency list for
+  that method + Tron Base58Check destination validation.
+- **`config/satpeek.php`**: USDT_TRC20 `onchain_supported=true`.
+- **`AppServiceProvider`**: `TronUsdtTrc20Gateway` registered
+  conditionally on `TRON_ONCHAIN_ENABLED` + hot wallet env pair +
+  non-empty per-network contract address.
+
+509 tests pass; pint + phpstan green.
+
 ## [0.19.0] — 2026-05-10
 
 Theme: Phase 2b — TRX onchain payouts ship end-to-end. The 0.18

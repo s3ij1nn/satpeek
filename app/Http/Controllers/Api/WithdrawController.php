@@ -42,6 +42,9 @@ class WithdrawController extends Controller
         if ($method === Withdrawal::METHOD_ONCHAIN_TRX) {
             return ['TRX'];
         }
+        if ($method === Withdrawal::METHOD_ONCHAIN_USDT_TRC20) {
+            return ['USDT_TRC20'];
+        }
 
         return array_map(
             fn ($c) => $c->code,
@@ -63,6 +66,9 @@ class WithdrawController extends Controller
         $allowedMethods = [Withdrawal::METHOD_FAUCETPAY];
         if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_TRX)) {
             $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_TRX;
+        }
+        if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_USDT_TRC20)) {
+            $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_USDT_TRC20;
         }
         // Allowed currencies depend on the chosen method; default to
         // FaucetPay-supported until we see the request's `payout_method`.
@@ -104,6 +110,14 @@ class WithdrawController extends Controller
             return response()->json([
                 'error' => 'invalid_destination',
                 'reason' => 'onchain_trx_requires_tron_address',
+            ], 422);
+        }
+        // USDT-TRC20 lives on the Tron chain → same address shape.
+        if ($method === Withdrawal::METHOD_ONCHAIN_USDT_TRC20
+            && ! TronAddress::isValid($validated['destination'])) {
+            return response()->json([
+                'error' => 'invalid_destination',
+                'reason' => 'onchain_usdt_trc20_requires_tron_address',
             ], 422);
         }
 

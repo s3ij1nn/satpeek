@@ -48,6 +48,8 @@ class Withdrawal extends Model
 
     public const METHOD_ONCHAIN_TRX = 'onchain_trx';
 
+    public const METHOD_ONCHAIN_USDT_TRC20 = 'onchain_usdt_trc20';
+
     /**
      * Returns true when `payout_method` selects an onchain gateway —
      * either a per-chain method (`onchain_trx`, `onchain_btc`, etc) or

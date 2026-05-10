@@ -106,6 +106,39 @@ class TronHttpClient
     }
 
     /**
+     * Build an unsigned smart-contract call (TRC20 transfer + future
+     * staking / TRC721 mints). Mirrors {@see createTransaction} but
+     * the response wraps the unsigned tx under a `transaction` key
+     * — callers MUST descend into `$response['transaction']` before
+     * passing to {@see broadcastTransaction}.
+     *
+     * `feeLimitSun` caps the contract's energy/bandwidth burn — Tron
+     * charges the caller in TRX when the staked resources run out.
+     * 100 TRX (100 000 000 sun) is generous for a TRC20 transfer
+     * (typically uses ~14 TRX worth of energy on a cold account).
+     *
+     * @return array<string, mixed>
+     */
+    public function triggerSmartContract(
+        string $ownerAddress,
+        string $contractAddress,
+        string $functionSelector,
+        string $parameter,
+        int $feeLimitSun = 100_000_000,
+        int $callValueSun = 0,
+    ): array {
+        return $this->post('/wallet/triggersmartcontract', [
+            'owner_address' => $ownerAddress,
+            'contract_address' => $contractAddress,
+            'function_selector' => $functionSelector,
+            'parameter' => $parameter,
+            'fee_limit' => $feeLimitSun,
+            'call_value' => $callValueSun,
+            'visible' => true,
+        ]);
+    }
+
+    /**
      * Broadcast a signed transaction. Caller is responsible for the
      * full sign-and-package step (Phase 2b). Returns the parsed
      * response — `result=true` indicates the node accepted the tx

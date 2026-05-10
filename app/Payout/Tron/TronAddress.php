@@ -34,6 +34,25 @@ final class TronAddress
 
     private const ADDRESS_BYTES = 25;
 
+    /**
+     * Convert a valid Base58Check Tron address into its 20-byte hex form
+     * (no `0x41` prefix). Used by TRC20 ABI parameter encoding —
+     * ERC20-style `transfer(address,uint256)` expects the 20-byte
+     * EVM address shape, NOT the 21-byte Tron form. Throws if the
+     * input fails Base58Check validation.
+     */
+    public static function toHash20(string $address): string
+    {
+        if (! self::isValid($address)) {
+            throw new \InvalidArgumentException("invalid tron address: {$address}");
+        }
+        $decoded = self::base58Decode($address);
+
+        // 25 bytes = 1 version + 20 hash + 4 checksum. Return the
+        // middle 20 as hex — this is what ABI encoding expects.
+        return bin2hex(substr((string) $decoded, 1, 20));
+    }
+
     public static function isValid(string $address): bool
     {
         // Cheap structural rejects first — Base58Check decoding is more

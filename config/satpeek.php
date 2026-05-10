@@ -220,7 +220,10 @@ return [
                 'decimals' => 6,
                 'min_withdraw_sat' => (int) env('PAYOUT_MIN_USDT_TRC20_SAT', 1000),
                 'faucetpay_supported' => true,
-                'onchain_supported' => false, // Phase 2: TRX onchain (same chain)
+                // Phase 2c: TronUsdtTrc20Gateway is wired up. Same gating
+                // story as TRX — TRON_ONCHAIN_ENABLED + hot wallet env
+                // + a non-empty per-network usdt_trc20_contract address.
+                'onchain_supported' => true,
                 'coingecko_id' => 'tether',
             ],
             'TRX' => [
