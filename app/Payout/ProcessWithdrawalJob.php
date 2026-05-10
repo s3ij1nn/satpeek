@@ -23,27 +23,37 @@ use Throwable;
 /**
  * Process a single queued withdrawal.
  *
+ * Dispatch shape (post-Phase-1): the job receives a
+ * {@see PayoutGatewayRegistry}, looks up the gateway matching
+ * `Withdrawal.payout_method` (faucetpay / onchain), and lets the
+ * gateway's `send()` produce a {@see Gateway\PayoutResult}. The job
+ * itself is gateway-agnostic.
+ *
  * Retry policy (transient-only):
  *   - $tries = 3 with exponential backoff (1 m, 5 m, 30 m).
- *   - The ONLY exception that triggers a retry is
- *     {@see FaucetPayUnreachableException} — thrown by FaucetPayClient when
- *     the API host could not be reached at the TCP / DNS layer. In that
- *     case the request never made it onto the wire, so re-issuing it on
- *     retry cannot double-pay.
- *   - All other failures (HTTP error response, body status != 200,
- *     timeout mid-request) are treated as terminal in `handle()` itself:
- *     the withdrawal is marked `failed`, the user's balance is refunded,
+ *   - The only exceptions that trigger a retry are the gateway-specific
+ *     "unreachable" exceptions (e.g. {@see FaucetPayUnreachableException}
+ *     for the FaucetPay route, future Tron/ETH equivalents for onchain).
+ *     Each gateway throws its own marker class when the request never
+ *     reached the wire (TCP/DNS pre-flight failure). In that case re-
+ *     issuing it on retry cannot double-pay.
+ *   - All other failures (HTTP error response, body indicates failure,
+ *     timeout mid-request) come back as `PayoutResult::failed()` from
+ *     the gateway and are treated as terminal in `handle()` itself: the
+ *     withdrawal is marked `failed`, the user's balance is refunded,
  *     and a rejection email is queued. We do NOT retry these because we
- *     cannot tell whether FaucetPay processed the payout — a duplicate
+ *     cannot tell whether the gateway processed the payout — a duplicate
  *     send is much worse than a delayed one.
  *
- * `ShouldBeUnique` (keyed by withdrawal id, 5-minute lock) prevents the
- * cron's `satpeek:process-withdrawals` from racing the active retry: the
- * second dispatch is rejected before it starts, so two workers can't
- * both call FaucetPay for the same row.
+ * `ShouldBeUnique` (keyed by withdrawal id, **40-minute** lock — see
+ * `$uniqueFor` below) prevents the cron's `satpeek:process-withdrawals`
+ * from racing the active retry: the second dispatch is rejected before
+ * it starts, so two workers can't both call the gateway for the same
+ * row. The 40-minute window covers the full backoff budget (60 + 300 +
+ * 1800 = 2160 s) plus actual `handle()` runtime.
  *
  * `failed()` is the dead-letter path: triggered when $tries is exhausted
- * (FaucetPay still unreachable after 3 attempts) or any unhandled
+ * (gateway still unreachable after 3 attempts) or any unhandled
  * exception escapes `handle()`. It performs the same refund + notify
  * sequence as a permanent failure.
  */
@@ -121,10 +131,11 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
         $method = $w->payout_method ?? Withdrawal::METHOD_FAUCETPAY;
         $gateway = $gateways->forMethod($method);
 
-        // FaucetPayUnreachableException (or onchain equivalents) escape
-        // on purpose — Laravel's retry machinery picks them up and
-        // re-enqueues with backoff. The request never reached the wire,
-        // so a retry can safely re-claim and try again.
+        // Gateway-unreachable exceptions (e.g. FaucetPayUnreachableException
+        // for the FaucetPay route, future Tron / ETH equivalents for the
+        // onchain gateways) escape on purpose — Laravel's retry machinery
+        // picks them up and re-enqueues with backoff. The request never
+        // reached the wire, so a retry can safely re-claim and try again.
         $result = $gateway->send($w);
 
         $sent = false;

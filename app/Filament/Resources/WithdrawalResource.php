@@ -64,11 +64,13 @@ class WithdrawalResource extends Resource
                 Forms\Components\Textarea::make('failure_reason')->rows(2),
             ])->columns(2),
 
-            // FaucetPay retry telemetry — populated by ProcessWithdrawalJob
-            // (auto-retry on FaucetPayUnreachableException, $tries=3 with
-            // [60, 300, 1800] backoff). Surfaced here so the operator can
-            // tell at a glance whether a `processing` row is actively
-            // retrying or stuck for an external reason.
+            // Job retry telemetry — populated by ProcessWithdrawalJob
+            // (auto-retry on the gateway-specific unreachable exception,
+            // e.g. FaucetPayUnreachableException for the FaucetPay route;
+            // up to 3 total attempts with backoffs [60, 300, 1800] s).
+            // Surfaced here so the operator can tell at a glance whether
+            // a `processing` row is actively retrying or stuck for an
+            // external reason.
             Schemas\Components\Section::make('Job retry telemetry')->schema([
                 Forms\Components\Placeholder::make('attempts')
                     ->label('Attempts')

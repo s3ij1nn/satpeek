@@ -10,9 +10,10 @@ use InvalidArgumentException;
  * Lookup table for the {@see PayoutGateway} implementations.
  *
  * `ProcessWithdrawalJob` calls `forMethod($withdrawal->payout_method)`
- * to pick the right gateway. Phase 1 ships only `faucetpay`; per-chain
- * onchain gateways register here (`onchain_btc`, `onchain_eth`,
- * `onchain_trx`, `onchain_usdt_trc20`) as they land in Phase 2+.
+ * to pick the right gateway. Each registered gateway maps its
+ * `name()` (e.g. `faucetpay`, `onchain_btc`, `onchain_eth`) to the
+ * payout-method values stored on `Withdrawal.payout_method`. Adding
+ * a new chain is one call to `register()` from the service provider.
  *
  * Wired up in App\Providers\AppServiceProvider — the container
  * instantiates each gateway and the registry holds them by name.

@@ -47,7 +47,12 @@ class EarnSessionClaimService
      * @param  string  $captchaId  Request input — the captcha challenge to consume.
      * @param  string  $notPendingError  Error code returned when the session is not in `pending` state (e.g. `view_not_pending`).
      * @param  int  $minElapsedSeconds  Server-side floor on session duration. < this triggers `too_fast` rejection.
-     * @param  string  $reason  BalanceLedger::REASON_* constant for the credit row.
+     * @param  string  $reason  Ledger reason for the credit row. New
+     *                          callers SHOULD pass a `LedgerReason::Foo`
+     *                          enum case (statically verifiable);
+     *                          legacy `BalanceLedger::REASON_*` string
+     *                          constants are still accepted by the cast
+     *                          on `BalanceLedger.reason`.
      * @param  string  $referenceType  Model class string for the ledger reference_type column (typically `Model::class`).
      * @param  int  $rewardSat  Sat amount to credit.
      * @param  callable(): ?string|null  $preClaim  Optional gate run BEFORE the elapsed-time floor. Return a rejection_reason string to reject the row + return that code; null to pass.

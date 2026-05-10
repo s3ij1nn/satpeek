@@ -32,9 +32,9 @@ class WithdrawController extends Controller
             return response()->json(['error' => 'banned_or_blocked'], 403);
         }
 
-        // Phase 1: only `faucetpay` is wired up; the form passes
-        // `payout_method=faucetpay` (default). Onchain methods (Phase 2+)
-        // surface through the same validator once their gateway registers.
+        // The form posts `payout_method=faucetpay` by default. Add an
+        // entry here when a new gateway registers (see
+        // `PayoutGatewayRegistry`) so the validator accepts it.
         $allowedMethods = [Withdrawal::METHOD_FAUCETPAY];
         $allowedCurrencies = array_map(
             fn ($c) => $c->code,
@@ -123,7 +123,11 @@ class WithdrawController extends Controller
                 'payout_amount' => $payoutAmount,
                 'payout_rate' => $payoutRate,
                 'destination' => $validated['destination'],
-                'fee_sat' => 0, // Phase 1 FaucetPay route is fee-free
+                // FaucetPay charges no publisher-side fee, so the
+                // operator absorbs nothing on this route. Onchain
+                // gateways override this with their per-tx fee at
+                // claim creation time.
+                'fee_sat' => 0,
                 // Legacy column kept populated for any reporting that
                 // still reads `faucetpay_email`. Drops in a later
                 // cleanup migration once those readers are gone.

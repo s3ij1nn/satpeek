@@ -44,12 +44,9 @@ class PriceOracle
     /**
      * Convert a BTC-sats amount to the smallest unit of `$target`.
      *
-     * Returns a {@see PayoutConversion} value object whose named
-     * fields remove the slot-swap risk a positional tuple invited
-     * (callers can no longer accidentally persist a rate where an
-     * amount belongs). Both fields are stringified bcmath decimals —
-     * ETH wei × multi-BTC balance overflows signed-64-bit, and the
-     * rate carries 18 fractional digits.
+     * Returns a {@see PayoutConversion}; both fields are stringified
+     * bcmath decimals (ETH wei × multi-BTC balance overflows
+     * signed-64-bit; the rate carries 18 fractional digits).
      *
      * @throws PriceOracleUnavailableException
      */

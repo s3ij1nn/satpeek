@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $id
  * @property int $user_id
  * @property int $delta_sat
- * @property string $reason
+ * @property LedgerReason $reason
  * @property string|null $external_ref
  * @property string|null $reference_type
  * @property int|null $reference_id
@@ -20,15 +20,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BalanceLedger extends Model
 {
     /**
-     * Canonical `reason` strings written into the ledger. Every call site
-     * that creates a ledger row MUST reference one of these constants
-     * rather than a raw string literal — a typo silently routes a credit
-     * to the "unknown" bucket in the operator filter dropdown and breaks
-     * tier-distribution analytics.
+     * Canonical `reason` strings written into the ledger. New write
+     * sites SHOULD prefer `LedgerReason::Foo` enum cases over the
+     * `BalanceLedger::REASON_*` constants below — the cast on `reason`
+     * accepts either form, but the enum is statically verifiable.
      *
-     * Filament's `BalanceLedgerResource::reasonFilterOptions()` reads
-     * `self::REASON_LABELS` directly, so adding a new earning surface here
-     * also surfaces it in the admin filter on the next page render.
+     * Adding a new reason requires three coordinated edits:
+     *   1. New `case Foo = 'foo';` in `App\Enums\LedgerReason`
+     *   2. New `REASON_FOO` constant + `REASON_LABELS` entry in this
+     *      class (constants stay for migration compatibility; LABELS
+     *      is the single source of truth for the Filament filter
+     *      dropdown via `BalanceLedgerResource`)
+     *   3. Any analytics surface that does `whereIn('reason', [...])`
+     *      with hardcoded values (e.g. `PayoutVolumeChartWidget`)
+     *
+     * A typo at any new write site that uses a bare string literal
+     * silently routes a credit to the "unknown" bucket in the
+     * operator filter dropdown and breaks tier-distribution analytics
+     * — hence the strong preference for the enum form.
      */
     public const REASON_PTC_VIEW = 'ptc_view';
 

@@ -26,9 +26,11 @@ use App\Models\Withdrawal;
  *     code path.
  *
  * Throwing instead of returning a result is reserved for the
- * "broadcast never reached the wire" case — those exceptions fall out
- * to the job's retry machinery (see ProcessWithdrawalJob's
- * FaucetPayUnreachableException handling).
+ * "broadcast never reached the wire" case — those exceptions fall
+ * out to the job's retry machinery. ProcessWithdrawalJob is gateway-
+ * agnostic about which exception class signals "retryable"; each
+ * implementation defines its own marker subclass (e.g.
+ * `FaucetPayUnreachableException`).
  */
 interface PayoutGateway
 {

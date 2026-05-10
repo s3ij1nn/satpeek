@@ -13,17 +13,24 @@ class FaucetPayClient
     /**
      * Send a payout via FaucetPay's `/api/v1/send`.
      *
-     * Two failure modes the caller MUST distinguish:
+     * Direct caller is {@see Gateway\FaucetPayGateway::send()}, which
+     * adapts this array shape into a {@see Gateway\PayoutResult} for the
+     * gateway-agnostic `ProcessWithdrawalJob`. The retry-vs-terminal
+     * distinction below is enforced at the gateway/job layer; do NOT
+     * add a second direct caller of this method without preserving the
+     * same semantics.
+     *
+     * Two failure modes:
      *
      *   - **Unreachable** — TCP / DNS-layer failure before the request hit
      *     the wire (Guzzle `ConnectException`). Throws
-     *     {@see FaucetPayUnreachableException}; the caller is free to retry
-     *     because the server never started processing.
-     *   - **Anything else** — request reached FaucetPay but came back with
-     *     an error response, timed out mid-request, or returned an
-     *     unparseable body. Returns `['ok' => false, ...]`. The caller
-     *     MUST NOT retry: we cannot tell whether FaucetPay processed the
-     *     payout, and a retry could double-pay.
+     *     {@see FaucetPayUnreachableException}; safe to retry because the
+     *     server never started processing.
+     *   - **Anything else** — request reached FaucetPay but came back
+     *     with an error response, timed out mid-request, or returned an
+     *     unparseable body. Returns `['ok' => false, ...]`. MUST NOT
+     *     retry: we cannot tell whether FaucetPay processed the payout,
+     *     and a retry could double-pay.
      *
      * @return array{ok: bool, payout_id: ?string, message: string, raw: array}
      *
