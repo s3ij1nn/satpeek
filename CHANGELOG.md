@@ -6,6 +6,87 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-05-10
+
+Theme: Phase 2b — TRX onchain payouts ship end-to-end. The 0.18
+foundation (broadcast lifecycle columns + DepositObserver / wallet
+contracts) gets its first real consumer: a TronOnchainGateway that
+signs with simplito secp256k1 and broadcasts to TronGrid +
+publicnode, and a WatchOnchainConfirmationsJob that polls every
+minute and promotes Broadcast → Sent at TRX finality (19 blocks,
+~57 s).
+
+The pipeline is gated by `TRON_ONCHAIN_ENABLED=true` AND a populated
+`TRON_HOT_WALLET_ADDRESS` + `TRON_HOT_WALLET_PRIVATE_KEY` pair —
+without both, the gateway is never registered, the controller's
+allowed-methods list excludes `onchain_trx`, and users can't even
+submit a Tron withdrawal. Defence-in-depth against a misconfigured
+deploy that thinks it has the gateway when it doesn't.
+
+### Added
+
+- **`TronTxSigner`** — pure-crypto secp256k1 ECDSA signer using
+  `simplito/elliptic-php`. Signs the SHA256 of a TronGrid-returned
+  `raw_data_hex` payload and emits the 65-byte `r||s||v` hex shape
+  Tron's `/wallet/broadcasttransaction` endpoint expects in
+  `signature: [<this>]`. Canonical low-s form (BIP62 malleability
+  defence), RFC6979 deterministic-k (same input → same output, safe
+  under retry), v ∈ {0, 1} (raw — not Ethereum's 27/28). 7 tests
+  pin the contract.
+- **`TronOnchainGateway`** implements `PayoutGateway` with
+  `name='onchain_trx'`. Validates Tron Base58Check destination →
+  `createTransaction` → `TronTxSigner` → `broadcastTransaction` →
+  `PayoutResult::sent(txid)`. Decodes TronGrid's hex-encoded failure
+  messages (CONTRACT_VALIDATE_ERROR, BANDWITH_ERROR, etc) for
+  operator-readable logs. 7 unit tests + 2 controller-side feature
+  tests.
+- **`TronUnreachableException`** (extends `TronRpcException`) —
+  explicit retry signal when ALL configured RPC URLs are TCP/DNS
+  down. Mirrors `FaucetPayUnreachableException` semantics:
+  `ProcessWithdrawalJob` lets it escape so Laravel's retry machinery
+  re-enqueues with backoff. HTTP errors stay as plain
+  `TronRpcException` and become terminal failures (the broadcast
+  might already have been processed; can't safely retry).
+- **`Withdrawal::METHOD_ONCHAIN_TRX` const + `isOnchainMethod()`**
+  prefix helper. Every chain gets its own per-method gateway name
+  (future `onchain_btc`, `onchain_eth`, `onchain_usdt_trc20`); the
+  legacy bare `'onchain'` is kept ONLY so historical rows + the
+  prefix detector stay coherent.
+- **`WatchOnchainConfirmationsJob`** — `ShouldQueue` + `ShouldBeUnique`
+  (60 s lock window). Scheduled `everyMinute` from
+  `routes/console.php`. Caches the chain head once per run, polls
+  `getTransactionInfo` for every Broadcast row, ticks
+  `confirmations_seen`, and promotes Broadcast → Sent at the
+  per-currency threshold (TRX: 19) using the same atomic
+  `WHERE status='broadcast'` settle predicate ProcessWithdrawalJob
+  uses. Failure modes are non-fatal — a stuck oracle aborts the
+  whole run (don't poison every row with confirmations=0); a per-row
+  RPC failure skips that row and continues. 6 feature tests.
+- **`docker/php/Dockerfile`**: `ext-gmp` enabled (needed by simplito
+  for big-integer math) + `composer require simplito/elliptic-php`
+  (v1.0.12).
+
+### Changed
+
+- **`ProcessWithdrawalJob` settle path**: success path picks
+  `status='broadcast'` for onchain (vs `'sent'` for FaucetPay) and
+  stamps `broadcast_at` + `onchain_tx_hash`. The watcher promotes
+  Broadcast → Sent at finality.
+- **`WithdrawController`**: allowed_methods derived from the gateway
+  registry, so `onchain_trx` only surfaces when the gateway is
+  actually wired. Per-method destination validation:
+  `TronAddress::isValid` (Base58Check + double-SHA256 checksum) for
+  `onchain_trx`, email shape for FaucetPay. Allowed currencies
+  switch by method (TRX-only for onchain_trx).
+- **`config/satpeek.php`**: TRX `onchain_supported=true` (gated by
+  env, see `AppServiceProvider`'s registry binding).
+- **`TronHttpClient`**: `createTransaction(from, to, amountSun)`
+  helper added. All-URLs-down case now throws the more specific
+  `TronUnreachableException` (still a subclass of `TronRpcException`
+  so existing catches still work).
+
+499 tests pass; pint + phpstan green.
+
 ## [0.18.0] — 2026-05-10
 
 Theme: Phase-2b foundation — every schema column, enum case, and

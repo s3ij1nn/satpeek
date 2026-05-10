@@ -1,9 +1,17 @@
 <?php
 
+use App\Payout\WatchOnchainConfirmationsJob;
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('satpeek:sync-offerwalls')->everyFifteenMinutes();
 Schedule::command('satpeek:process-withdrawals')->everyMinute();
+
+// Onchain confirmation watcher — promotes Withdrawals from `Broadcast`
+// to `Sent` once the chain reaches per-currency finality (TRX 19,
+// future BTC 3, ETH 12). ShouldBeUnique on the job (60 s window)
+// prevents overlapping invocations from racing. See
+// App\Payout\WatchOnchainConfirmationsJob.
+Schedule::job(new WatchOnchainConfirmationsJob)->everyMinute();
 
 // Nightly housekeeping: expire stale issued captcha challenges + prune
 // resolved rows older than 30 days. 03:00 UTC is the global low-traffic
