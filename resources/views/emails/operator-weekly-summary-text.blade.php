@@ -15,6 +15,14 @@ On hold (review) {{ number_format($summary['payouts']['hold_count']) }}
 == Users ==
 New this week    {{ number_format($summary['users']['new_this_week']) }} (prev {{ number_format($summary['users']['new_previous_week']) }})
 
+@if (! empty($summary['hot_wallet']))
+== Hot-wallet runway ==
+@foreach ($summary['hot_wallet'] as $row)
+{{ str_pad($row['code'], 12) }} {{ $row['status'] }}@if ($row['status'] !== 'unavailable') · avail {{ $row['available'] }} · req {{ $row['required'] }} · gap {{ $row['gap'] }}@endif
+
+@endforeach
+
+@endif
 == Bot tier evaluations (this week, non-trust) ==
 suspect          {{ number_format($summary['tier_transitions']['suspect']) }}
 likely_bot       {{ number_format($summary['tier_transitions']['likely_bot']) }}

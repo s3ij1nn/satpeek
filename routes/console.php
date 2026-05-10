@@ -13,6 +13,12 @@ Schedule::command('satpeek:process-withdrawals')->everyMinute();
 // App\Payout\WatchOnchainConfirmationsJob.
 Schedule::job(new WatchOnchainConfirmationsJob)->everyMinute();
 
+// Hot-wallet low-balance alert — pages admins via email when any
+// hot-wallet monitor flips to `down` (gap < 0 or RPC failure).
+// Idempotent via cache (one alert per down-set per 6 h). 15 min
+// cadence is enough lead time without spamming on transient blips.
+Schedule::command('satpeek:hot-wallet-alert')->everyFifteenMinutes();
+
 // Nightly housekeeping: expire stale issued captcha challenges + prune
 // resolved rows older than 30 days. 03:00 UTC is the global low-traffic
 // trough and lands fresh signal in the morning-PST standup window.

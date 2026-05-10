@@ -11,6 +11,8 @@ use App\Models\PtcView;
 use App\Models\ShortlinkClick;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Payout\WalletBalanceMonitorRegistry;
+use App\Payout\WalletBalanceUnavailableException;
 use Illuminate\Support\Carbon;
 
 /**
@@ -59,7 +61,61 @@ class WeeklySummaryBuilder
                     ->count(),
             ],
             'tier_transitions' => $this->tierTransitions($thisStart, $reference),
+            'hot_wallet' => $this->hotWalletSnapshot(),
         ];
+    }
+
+    /**
+     * Per-currency hot-wallet runway at the moment the digest builds.
+     * Same shape the `/up` probe + dashboard widget use, denormalised
+     * for the email template. Empty array for FaucetPay-only deploys.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function hotWalletSnapshot(): array
+    {
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $monitors = $registry->all();
+        $rows = [];
+        foreach ($monitors as $monitor) {
+            $code = $monitor->currency();
+            try {
+                $available = $monitor->available();
+            } catch (WalletBalanceUnavailableException) {
+                $rows[] = [
+                    'code' => $code,
+                    'status' => 'unavailable',
+                    'available' => null,
+                    'required' => null,
+                    'gap' => null,
+                ];
+
+                continue;
+            }
+            $required = $monitor->required();
+            $gap = bcsub($available, $required, 0);
+            $rows[] = [
+                'code' => $code,
+                'status' => $this->runwayStatus($available, $required, $gap),
+                'available' => $available,
+                'required' => $required,
+                'gap' => $gap,
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function runwayStatus(string $available, string $required, string $gap): string
+    {
+        if (bccomp($gap, '0', 0) < 0) {
+            return 'down';
+        }
+        if (bccomp($required, '0', 0) > 0 && bccomp($gap, $required, 0) < 0) {
+            return 'degraded';
+        }
+
+        return 'ok';
     }
 
     /**

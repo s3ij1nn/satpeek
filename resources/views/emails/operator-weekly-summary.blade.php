@@ -54,6 +54,35 @@
             </p>
         </td></tr>
 
+@if (! empty($s['hot_wallet']))
+        <tr><td style="padding:24px 36px 8px;">
+            <p style="margin:0 0 8px;font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.14em;color:#71717a;text-transform:uppercase;">Hot-wallet runway</p>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+@foreach ($s['hot_wallet'] as $row)
+@php
+    $statusColor = match ($row['status']) {
+        'down' => '#dc2626',
+        'degraded' => '#fbbf24',
+        'unavailable' => '#71717a',
+        default => '#34d399',
+    };
+@endphp
+                <tr>
+                    <td style="padding:6px 0;font-family:ui-monospace,monospace;font-size:13px;color:#aab4c2;">{{ $row['code'] }}</td>
+                    <td align="right" style="padding:6px 0;font-family:ui-monospace,monospace;font-size:12px;color:#71717a;">
+                        @if ($row['status'] === 'unavailable')
+                            (rpc unavailable)
+                        @else
+                            avail {{ $row['available'] }} · req {{ $row['required'] }} · gap {{ $row['gap'] }}
+                        @endif
+                    </td>
+                    <td align="right" style="padding:6px 0 6px 16px;font-family:ui-monospace,monospace;font-size:12px;color:{{ $statusColor }};">{{ $row['status'] }}</td>
+                </tr>
+@endforeach
+            </table>
+        </td></tr>
+@endif
+
         <tr><td style="padding:24px 36px 8px;">
             <p style="margin:0 0 8px;font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.14em;color:#71717a;text-transform:uppercase;">Bot tier evaluations (non-trust)</p>
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">

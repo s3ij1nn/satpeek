@@ -6,6 +6,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-05-10
+
+Theme: Phase 2f — push-channel hot-wallet alerting. The 0.21
+dashboard widget covers visual inspection; 0.22 added the `/up`
+probe for external monitors. This release closes the operator-
+notification loop with two changes:
+
+- The Monday-morning weekly digest now includes a hot-wallet
+  runway section (every registered monitor's available / required /
+  gap, colour-coded).
+- A new `satpeek:hot-wallet-alert` command runs every 15 min and
+  emails admins when any monitor flips to `down`. Idempotent via
+  6-hour cache key — the same alert isn't re-sent until the wallet
+  recovers and re-degrades.
+
+### Added
+
+- **`HotWalletLowBalanceAlert` mailable** (HTML + text). Subject
+  shows the affected currency codes; body lists each down row with
+  available / required / gap (or "rpc unavailable" when the chain
+  probe failed).
+- **`satpeek:hot-wallet-alert` command**. Polls
+  `WalletBalanceMonitorRegistry`, mails admin users on `down`,
+  caches the down-set signature so a re-run is a no-op until either
+  (a) the wallet recovers (cache cleared on next clean run) or
+  (b) the down-set changes (different currencies / different
+  status). Scheduled `everyFifteenMinutes`.
+- **`WeeklySummaryBuilder::hot_wallet`** payload key — per-currency
+  available / required / gap / status. Empty array for FaucetPay-
+  only deploys. Wired into both HTML + text views.
+- 6 feature tests for the alert command:
+  - empty registry → no alert
+  - all monitors ok → cache cleared, no alert
+  - over-committed currency → mail queued + cache populated
+  - repeat run with same set → idempotent (no second mail)
+  - RPC failure surfaces as `unavailable` (still alerts)
+  - `--dry-run` prints without queueing
+
+524 tests pass; pint + phpstan green.
+
 ## [0.22.0] — 2026-05-10
 
 Theme: Phase 2e — `/up` extension surfaces hot-wallet runway to
