@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
+use App\Enums\LedgerReason;
 use App\Models\BalanceLedger;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Carbon;
@@ -75,7 +76,7 @@ class PayoutVolumeChartWidget extends ChartWidget
             // (string) cast covers any legacy row whose value isn't
             // a known enum case (e.g. partial migration mid-rollout).
             $reasonRaw = $r->getAttribute('reason');
-            $reason = $reasonRaw instanceof \App\Enums\LedgerReason
+            $reason = $reasonRaw instanceof LedgerReason
                 ? $reasonRaw->value
                 : (string) $reasonRaw;
             $sat = (int) $r->getAttribute('sat');

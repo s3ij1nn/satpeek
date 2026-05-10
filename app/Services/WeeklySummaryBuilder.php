@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\WithdrawalStatus;
 use App\Models\BotScoreHistory;
 use App\Models\InternalArticleView;
 use App\Models\PtcView;
@@ -106,7 +107,7 @@ class WeeklySummaryBuilder
             // the raw column value through the Eloquent cast pipeline,
             // so $r->getAttribute('status') is a WithdrawalStatus
             // instance — `->value` to get the string back for keyBy.
-            ->keyBy(fn ($r): string => $r->getAttribute('status') instanceof \App\Enums\WithdrawalStatus
+            ->keyBy(fn ($r): string => $r->getAttribute('status') instanceof WithdrawalStatus
                 ? $r->getAttribute('status')->value
                 : (string) $r->getAttribute('status'));
 
