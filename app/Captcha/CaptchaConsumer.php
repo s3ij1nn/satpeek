@@ -81,4 +81,41 @@ class CaptchaConsumer
             return $consumed === 1;
         });
     }
+
+    /**
+     * Compensating action: revert a previously-consumed challenge back
+     * to `verified` so the user can retry the same earn session.
+     *
+     * Why: `consume()` opens its own transaction (lockForUpdate) and
+     * commits the status flip BEFORE the caller's outer credit
+     * transaction begins. If that outer transaction fails (DB error,
+     * unique-constraint on the ledger insert, gateway exception
+     * mid-flight), the captcha row stays `consumed` permanently — the
+     * user loses their solved captcha with nothing credited. Calling
+     * `unconsume()` from the credit-failure branch puts the row back
+     * to `verified` so the next /complete attempt from the same user
+     * picks it up again.
+     *
+     * Atomicity: only flips rows where status currently equals
+     * `consumed` AND the user_id still matches. A row that's already
+     * been re-consumed by another path (extremely unlikely given the
+     * outer transaction failure path is sequential) is left alone.
+     *
+     * Returns true if the unconsume actually fired (caller can audit-
+     * log it), false if the row was no longer eligible to revert.
+     */
+    public static function unconsume(?string $challengeId, ?User $user): bool
+    {
+        if (! is_string($challengeId) || $challengeId === '' || $user === null) {
+            return false;
+        }
+
+        $reverted = CaptchaChallenge::query()
+            ->where('challenge_id', $challengeId)
+            ->where('status', 'consumed')
+            ->where('user_id', $user->id)
+            ->update(['status' => 'verified']);
+
+        return $reverted === 1;
+    }
 }

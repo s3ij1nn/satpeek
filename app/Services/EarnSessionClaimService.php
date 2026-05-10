@@ -95,51 +95,72 @@ class EarnSessionClaimService
             return EarnSessionClaim::rejected('too_fast');
         }
 
-        $credited = DB::transaction(function () use (
-            $session,
-            $user,
-            $reason,
-            $referenceType,
-            $rewardSat,
-            $postCredit,
-        ): bool {
-            // Atomic claim: only ONE concurrent request flips the row out of
-            // pending. The next request sees affected_rows=0 and bails — so a
-            // double-tap on the claim button or two parallel /complete posts
-            // can't double-pay. The earlier non-pending guard up the stack
-            // catches sequential replays cheaply; this is the race-condition
-            // backstop for true concurrency.
-            $claimed = $session->newQuery()
-                ->whereKey($session->getKey())
-                ->where('status', 'pending')
-                ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
-            if ($claimed === 0) {
-                return false;
-            }
+        // The credit transaction may throw (DB error, constraint
+        // violation, gateway exception inside the postCredit hook).
+        // The captcha was already consumed by CaptchaConsumer::consume()
+        // in its own committed transaction, so without a compensating
+        // unconsume the user loses their solved captcha with nothing
+        // credited — and can never retry the same earn session because
+        // the captcha row stays `consumed` forever. Catch + unconsume
+        // + re-throw so the caller still sees the error but the user
+        // can retry.
+        $credited = false;
+        try {
+            $credited = DB::transaction(function () use (
+                $session,
+                $user,
+                $reason,
+                $referenceType,
+                $rewardSat,
+                $postCredit,
+            ): bool {
+                // Atomic claim: only ONE concurrent request flips the row out of
+                // pending. The next request sees affected_rows=0 and bails — so a
+                // double-tap on the claim button or two parallel /complete posts
+                // can't double-pay. The earlier non-pending guard up the stack
+                // catches sequential replays cheaply; this is the race-condition
+                // backstop for true concurrency.
+                $claimed = $session->newQuery()
+                    ->whereKey($session->getKey())
+                    ->where('status', 'pending')
+                    ->update(['status' => 'verified', 'completed_at' => Carbon::now()]);
+                if ($claimed === 0) {
+                    return false;
+                }
 
-            BalanceLedger::create([
-                'user_id' => $user->id,
-                'delta_sat' => $rewardSat,
-                'reason' => $reason,
-                'reference_type' => $referenceType,
-                'reference_id' => $session->getKey(),
-            ]);
-            $user->increment('balance_sat', $rewardSat);
-            $user->increment('total_earned_sat', $rewardSat);
+                BalanceLedger::create([
+                    'user_id' => $user->id,
+                    'delta_sat' => $rewardSat,
+                    'reason' => $reason,
+                    'reference_type' => $referenceType,
+                    'reference_id' => $session->getKey(),
+                ]);
+                $user->increment('balance_sat', $rewardSat);
+                $user->increment('total_earned_sat', $rewardSat);
 
-            // Affiliate share — funded from the platform's commission pool,
-            // never deducted from the viewer's reward. See ReferralPayout
-            // for the funding invariant.
-            $this->referralPayout->settle($user, $rewardSat, $referenceType, (int) $session->getKey());
+                // Affiliate share — funded from the platform's commission pool,
+                // never deducted from the viewer's reward. See ReferralPayout
+                // for the funding invariant.
+                $this->referralPayout->settle($user, $rewardSat, $referenceType, (int) $session->getKey());
 
-            if ($postCredit !== null) {
-                $postCredit();
-            }
+                if ($postCredit !== null) {
+                    $postCredit();
+                }
 
-            return true;
-        });
+                return true;
+            });
+        } catch (\Throwable $e) {
+            CaptchaConsumer::unconsume($captchaId, $user);
+            throw $e;
+        }
 
+        // Atomic-claim loss path: row was no longer pending. Captcha
+        // WAS consumed but no credit happened — give the user back
+        // the captcha so they can retry the same session if it's
+        // still in flight.
         if (! $credited) {
+            CaptchaConsumer::unconsume($captchaId, $user);
+
             return EarnSessionClaim::rejected($notPendingError);
         }
 

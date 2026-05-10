@@ -16,7 +16,9 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use UnitEnum;
 
@@ -175,11 +177,22 @@ class WithdrawalResource extends Resource
                     ->requiresConfirmation()
                     ->visible(fn (Withdrawal $r) => $r->status === 'hold')
                     ->action(function (Withdrawal $r) {
-                        $r->update([
-                            'status' => 'queued',
-                            'requires_review' => false,
-                            'reviewed_by' => auth()->id(),
-                        ]);
+                        // Atomic claim: row MUST still be `hold` for the
+                        // transition to fire. visible() filters render-time
+                        // but two concurrent admin tabs both see `hold`,
+                        // both pass the visibility check, both enter here —
+                        // without this WHERE the second admin's audit log
+                        // shadows the first with no real state change.
+                        $changed = Withdrawal::where('id', $r->id)
+                            ->where('status', 'hold')
+                            ->update([
+                                'status' => 'queued',
+                                'requires_review' => false,
+                                'reviewed_by' => Auth::id(),
+                            ]);
+                        if ($changed === 0) {
+                            return; // another admin won the race; no audit
+                        }
                         AdminAuditor::record('withdrawal.approve', $r, [
                             'amount_sat' => (int) $r->amount_sat,
                         ]);
@@ -197,23 +210,44 @@ class WithdrawalResource extends Resource
                     ])
                     ->action(function (Withdrawal $r, array $data) {
                         $refunded = (int) $r->amount_sat;
-                        DB::transaction(function () use ($r, $data) {
+                        // Atomic claim INSIDE the transaction — two admin
+                        // tabs hitting Reject simultaneously both see
+                        // status=hold at render time, both pass visible(),
+                        // both reach this transaction. Without this WHERE
+                        // they would both refund and the second's
+                        // BalanceLedger::create would fatal on the partial
+                        // UNIQUE (reason, reference_type, reference_id)
+                        // — but the first refund's increment is already
+                        // committed, leaving the user double-credited
+                        // until the constraint surfaces. The marked === 0
+                        // bail-out handles the loser cleanly.
+                        $settled = DB::transaction(function () use ($r, $data, $refunded): bool {
+                            $marked = Withdrawal::where('id', $r->id)
+                                ->whereIn('status', ['hold', 'queued'])
+                                ->update([
+                                    'status' => 'rejected',
+                                    'requires_review' => false,
+                                    'reviewed_by' => Auth::id(),
+                                    'failure_reason' => $data['failure_reason'],
+                                    'processed_at' => Carbon::now(),
+                                ]);
+                            if ($marked === 0) {
+                                return false;
+                            }
                             BalanceLedger::create([
                                 'user_id' => $r->user_id,
-                                'delta_sat' => (int) $r->amount_sat,
+                                'delta_sat' => $refunded,
                                 'reason' => BalanceLedger::REASON_WITHDRAW_REJECTED,
                                 'reference_type' => Withdrawal::class,
                                 'reference_id' => $r->id,
                             ]);
-                            $r->user->increment('balance_sat', (int) $r->amount_sat);
-                            $r->update([
-                                'status' => 'rejected',
-                                'requires_review' => false,
-                                'reviewed_by' => auth()->id(),
-                                'failure_reason' => $data['failure_reason'],
-                                'processed_at' => Carbon::now(),
-                            ]);
+                            $r->user->increment('balance_sat', $refunded);
+
+                            return true;
                         });
+                        if (! $settled) {
+                            return; // another admin / job won the race
+                        }
                         AdminAuditor::record('withdrawal.reject', $r, [
                             'failure_reason' => $data['failure_reason'],
                             'refunded_sat' => $refunded,
@@ -221,7 +255,13 @@ class WithdrawalResource extends Resource
                         try {
                             Mail::to($r->user->email)->queue(new WithdrawalRejectedEmail($r->fresh()));
                         } catch (\Throwable $e) {
-                            // best-effort, status changes already persisted
+                            // Status changes + ledger refund are already
+                            // persisted; mail failure must not roll back
+                            // money state. Log so ops can replay.
+                            Log::warning('withdrawal rejected mail failed', [
+                                'withdrawal_id' => $r->id,
+                                'err' => $e->getMessage(),
+                            ]);
                         }
                     }),
                 Actions\EditAction::make(),

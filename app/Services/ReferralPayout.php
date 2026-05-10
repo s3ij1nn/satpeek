@@ -85,11 +85,17 @@ class ReferralPayout
             // Single UPDATE for both counters — two separate increment()
             // calls would issue two UPDATEs against the same row, doubling
             // the write cost on the referrer record on every credited event.
+            // The raw expression interpolates `$commission` as an int — the
+            // preceding `(int) floor(...)` cast guarantees non-injectable
+            // shape. We keep an explicit (int) here as belt-and-braces so a
+            // future refactor that loosens the upstream type silently fails
+            // PHPStan rather than turning into a SQL hole.
+            $delta = (int) $commission;
             DB::table('users')
                 ->where('id', $user->referrer_id)
                 ->update([
-                    'balance_sat' => DB::raw('balance_sat + '.$commission),
-                    'total_earned_sat' => DB::raw('total_earned_sat + '.$commission),
+                    'balance_sat' => DB::raw('balance_sat + '.$delta),
+                    'total_earned_sat' => DB::raw('total_earned_sat + '.$delta),
                 ]);
             Referral::query()
                 ->where('referrer_id', $user->referrer_id)

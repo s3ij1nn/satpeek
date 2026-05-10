@@ -73,6 +73,17 @@ class FaucetPayClient
     }
 
     /**
+     * Returns the FaucetPay account balance for `$currency` (in BTC sats
+     * for BTC, currency-smallest-unit for non-BTC routes).
+     *
+     * IMPORTANT for callers: the `balance_sat: 0` returned in the failure
+     * branch is a SENTINEL, not a "real zero balance". Always check `ok`
+     * before trusting `balance_sat` — using 0 as if it were valid would
+     * trigger false "insufficient FaucetPay balance" alerts and could
+     * suppress legitimate withdrawals. The /up health probe is the only
+     * current caller; new callers MUST mirror its `if (! $r['ok']) return`
+     * pattern.
+     *
      * @return array{ok: bool, balance_sat: int, raw: array}
      */
     public function balance(string $currency = 'BTC'): array

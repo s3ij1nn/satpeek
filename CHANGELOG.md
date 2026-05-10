@@ -6,6 +6,56 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Withdrawal admin reject: atomic claim guard inside the credit
+  transaction.** From the silent-failure-hunter audit (HIGH). Two
+  admin tabs both seeing `status=hold` could both pass the
+  visibility check, both enter the transaction, and both refund —
+  the user ends up double-credited until the
+  `balance_ledgers (reason, reference_type, reference_id)` partial
+  UNIQUE catches the second insert (by which point the first
+  refund's `balance_sat` increment is already committed). Reject
+  action now mirrors the `ProcessWithdrawalJob::markFailedAndRefund`
+  pattern: the inner UPDATE has `WHERE status IN ('hold','queued')`
+  and bails on `affected_rows === 0` before the ledger row + balance
+  bump fire. Approve action gets the same guard
+  (`WHERE status = 'hold'`). Reject mail-failure catch now logs at
+  `warning` (was a silent empty `catch`). 2 new tests pin the
+  loser-of-race semantics.
+
+- **PtcAd admin reject: stale `views_remaining` race fixed.** From
+  the silent-failure-hunter audit (HIGH). Refund amount was
+  computed from the Eloquent snapshot loaded at render time; a
+  concurrent PTC viewer's `EarnSessionClaimService::postCredit`
+  hook could decrement `views_remaining` between the load and
+  the transaction, leading to over-refund. Action now re-fetches
+  with `lockForUpdate()` inside the transaction and computes the
+  refund from the fresh row; status guard `WHERE status IN
+  ('pending_review','approved')` short-circuits the loser of any
+  race. Mail-failure catch now logs.
+
+- **Captcha unconsume on credit failure** — `CaptchaConsumer::consume()`
+  commits its own transaction before the caller's outer credit
+  transaction begins, so a credit failure (DB error, gateway
+  exception inside `postCredit`, etc.) leaves the captcha row
+  permanently `consumed` with no reward credited. New
+  `CaptchaConsumer::unconsume()` reverts the row to `verified`
+  (atomic, user-scoped, only flips `consumed → verified`).
+  `EarnSessionClaimService` calls it from both the throwing-credit
+  branch and the atomic-claim-loss branch so the user can retry
+  the same earn session. 4 new tests pin the unconsume contract
+  (revert, no-op for already-verified, cross-user refusal, garbage
+  input).
+
+- **Hygiene batch (LOW from audit):** `ReferralPayout::settle()`
+  now casts `$commission` to int explicitly inside the raw SQL
+  expression so a future refactor that loosens the upstream type
+  silently fails PHPStan rather than turning into an injectable
+  hole. `FaucetPayClient::balance()` docblock now warns callers
+  that the `balance_sat: 0` failure-branch return is a sentinel
+  not a real zero.
+
 ## [0.14.0] — 2026-05-09
 
 Theme: Tron onchain Phase 2a — infrastructure scaffold for the next

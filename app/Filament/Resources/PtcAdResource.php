@@ -20,7 +20,9 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use UnitEnum;
@@ -226,36 +228,58 @@ class PtcAdResource extends Resource
                             ->required(),
                     ])
                     ->action(function (PtcAd $r, array $data) {
-                        // Capture the refund amount BEFORE the transaction
-                        // mutates views_remaining → 0; otherwise the audit
-                        // entry below would always log 0.
-                        $refund = (int) ($r->views_remaining * $r->cost_per_view_sat);
-                        DB::transaction(function () use ($r, $data, $refund) {
+                        // Re-fetch with row-level lock + atomic status
+                        // guard inside the transaction. The Eloquent
+                        // instance loaded at render time has a stale
+                        // `views_remaining` snapshot — between page load
+                        // and this action, the EarnSessionClaimService
+                        // postCredit hook can have decremented the
+                        // counter via concurrent PTC views. Computing
+                        // the refund from the stale snapshot would
+                        // over-refund sat already spent serving views.
+                        // The lockForUpdate forces every concurrent
+                        // PTC view to wait until our transaction commits.
+                        $result = DB::transaction(function () use ($r, $data): array {
+                            /** @var PtcAd|null $fresh */
+                            $fresh = PtcAd::lockForUpdate()->find($r->id);
+                            if (! $fresh || ! in_array($fresh->status, ['pending_review', 'approved'], true)) {
+                                return ['settled' => false, 'refund' => 0];
+                            }
+                            $refund = (int) ($fresh->views_remaining * $fresh->cost_per_view_sat);
                             if ($refund > 0) {
                                 BalanceLedger::create([
-                                    'user_id' => $r->user_id,
+                                    'user_id' => $fresh->user_id,
                                     'delta_sat' => $refund,
                                     'reason' => BalanceLedger::REASON_AD_REFUND,
                                     'reference_type' => PtcAd::class,
-                                    'reference_id' => $r->id,
+                                    'reference_id' => $fresh->id,
                                 ]);
-                                $r->advertiser->increment('balance_sat', $refund);
+                                $fresh->advertiser->increment('balance_sat', $refund);
                             }
-                            $r->update([
+                            $fresh->update([
                                 'status' => 'rejected',
                                 'is_active' => false,
                                 'rejection_reason' => $data['rejection_reason'],
-                                'reviewed_by' => auth()->id(),
+                                'reviewed_by' => Auth::id(),
                                 'views_remaining' => 0,
                             ]);
+
+                            return ['settled' => true, 'refund' => $refund];
                         });
+                        if (! $result['settled']) {
+                            return; // raced — another admin / status flip won
+                        }
                         AdminAuditor::record('ptc_ad.reject', $r, [
                             'rejection_reason' => $data['rejection_reason'],
-                            'refunded_sat' => $refund,
+                            'refunded_sat' => $result['refund'],
                         ]);
                         try {
                             Mail::to($r->advertiser->email)->queue(new AdRejectedEmail($r->fresh()));
                         } catch (\Throwable $e) {
+                            Log::warning('ad rejected mail failed', [
+                                'ad_id' => $r->id,
+                                'err' => $e->getMessage(),
+                            ]);
                         }
                     }),
                 // Operator-side iframe preflight. Mirrors the advertiser-
