@@ -14,6 +14,7 @@ use App\Models\Withdrawal;
 use App\Payout\WalletBalanceMonitorRegistry;
 use App\Payout\WalletBalanceUnavailableException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Aggregates the past-week activity buckets that go into the operator
@@ -61,24 +62,33 @@ class WeeklySummaryBuilder
                     ->count(),
             ],
             'tier_transitions' => $this->tierTransitions($thisStart, $reference),
-            'hot_wallet' => $this->hotWalletSnapshot(),
+            'hot_wallet' => $this->hotWalletSnapshot($thisStart),
         ];
     }
 
     /**
      * Per-currency hot-wallet runway at the moment the digest builds.
      * Same shape the `/up` probe + dashboard widget use, denormalised
-     * for the email template. Empty array for FaucetPay-only deploys.
+     * for the email template. Each row also carries a 7-day burn rate
+     * (avg sat/day across `sent` onchain withdrawals) so the operator
+     * can size topup intervals — `runway_days = available / burn_per_day`
+     * gives the number of days before the wallet runs dry at the
+     * current pace. Empty array for FaucetPay-only deploys.
      *
      * @return array<int, array<string, mixed>>
      */
-    private function hotWalletSnapshot(): array
+    private function hotWalletSnapshot(Carbon $windowStart): array
     {
         $registry = app(WalletBalanceMonitorRegistry::class);
         $monitors = $registry->all();
+        if ($monitors === []) {
+            return [];
+        }
+        $burnByCode = $this->burnRatePastWeek($windowStart);
         $rows = [];
         foreach ($monitors as $monitor) {
             $code = $monitor->currency();
+            $burnPerDay = (string) ($burnByCode[$code] ?? '0');
             try {
                 $available = $monitor->available();
             } catch (WalletBalanceUnavailableException) {
@@ -88,6 +98,8 @@ class WeeklySummaryBuilder
                     'available' => null,
                     'required' => null,
                     'gap' => null,
+                    'burn_per_day' => $burnPerDay,
+                    'runway_days' => null,
                 ];
 
                 continue;
@@ -100,10 +112,58 @@ class WeeklySummaryBuilder
                 'available' => $available,
                 'required' => $required,
                 'gap' => $gap,
+                'burn_per_day' => $burnPerDay,
+                'runway_days' => $this->runwayDays($available, $burnPerDay),
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * Past-7-day average payout volume per currency (smallest unit
+     * per day). Rows in `sent` status only — pending / failed don't
+     * actually leave the wallet. Returns a code → decimal-string map.
+     *
+     * @return array<string, string>
+     */
+    private function burnRatePastWeek(Carbon $start): array
+    {
+        $sums = DB::table('withdrawals')
+            ->where('status', 'sent')
+            ->where('created_at', '>=', $start)
+            ->where('payout_method', 'like', 'onchain_%')
+            ->selectRaw('payout_currency, sum(payout_amount) as total')
+            ->groupBy('payout_currency')
+            ->get();
+
+        $out = [];
+        foreach ($sums as $row) {
+            $code = (string) $row->payout_currency;
+            $total = (string) ($row->total ?? '0');
+            $out[$code] = bcdiv($total, '7', 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Days of runway at the current burn rate. Returns:
+     *   - null when burn is 0 (no recent payouts → infinite runway,
+     *     don't divide by zero)
+     *   - integer day count otherwise
+     *
+     * Uses bcdiv so wei × multi-ETH math doesn't overflow.
+     */
+    private function runwayDays(string $available, string $burnPerDay): ?int
+    {
+        if (bccomp($burnPerDay, '0', 0) <= 0) {
+            return null;
+        }
+
+        // bcdiv with scale=0 floors — operator wants the conservative
+        // "days until dry" estimate.
+        return (int) bcdiv($available, $burnPerDay, 0);
     }
 
     private function runwayStatus(string $available, string $required, string $gap): string

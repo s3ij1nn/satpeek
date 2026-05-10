@@ -6,6 +6,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-05-10
+
+Theme: Phase 4a — per-currency burn-rate metrics in the operator
+weekly digest. Until this release the digest's hot-wallet section
+showed available + required + gap (a snapshot) but no temporal
+context — operators couldn't size topup intervals without trial-
+and-error. Now each row also reports `burn_per_day` (avg
+sat/wei/sun per day across `sent` onchain payouts in the past 7
+days) + `runway_days` (available ÷ burn_per_day, floored), so
+"TRX runway ~30 days" appears next to the current balance.
+
+### Added
+
+- **`WeeklySummaryBuilder::burnRatePastWeek`** — sums
+  `payout_amount` across `sent` onchain rows from the past 7 days,
+  grouped by `payout_currency`, divided by 7. Returns a
+  decimal-string map keyed by currency code.
+- **`WeeklySummaryBuilder::runwayDays`** — `bcdiv(available,
+  burn_per_day, scale=0)` for arbitrary precision (wei × multi-ETH
+  overflows int64). Returns `null` when burn is 0 (no recent
+  activity = "infinite runway"; don't divide by zero).
+- New `burn_per_day` + `runway_days` keys per row in the
+  `hot_wallet` payload.
+- Email templates (HTML + text) render the new keys conditionally —
+  rows with `burn_per_day = 0` skip the burn line entirely so a
+  fresh deploy doesn't surface meaningless "burn 0/day" noise.
+- 2 new feature tests pin: 4-row burn-rate computation with
+  out-of-window row excluded; null runway when no recent burn.
+
+### Changed
+
+- `hotWalletSnapshot()` now takes `Carbon $windowStart` so the
+  burn-rate query respects the same window the rest of the digest
+  uses (was previously calling `Carbon::now()` directly, which
+  ignored the test-injectable `$reference` arg).
+
+575 tests pass; pint + phpstan green.
+
 ## [0.27.0] — 2026-05-10
 
 Theme: Phase 3b — BTC onchain payouts (P2WPKH segwit / BIP143).

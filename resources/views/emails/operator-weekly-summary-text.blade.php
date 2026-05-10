@@ -19,6 +19,10 @@ New this week    {{ number_format($summary['users']['new_this_week']) }} (prev {
 == Hot-wallet runway ==
 @foreach ($summary['hot_wallet'] as $row)
 {{ str_pad($row['code'], 12) }} {{ $row['status'] }}@if ($row['status'] !== 'unavailable') · avail {{ $row['available'] }} · req {{ $row['required'] }} · gap {{ $row['gap'] }}@endif
+@if (! empty($row['burn_per_day']) && $row['burn_per_day'] !== '0')
+             burn {{ $row['burn_per_day'] }}/day@if (! empty($row['runway_days'])) · runway ~{{ $row['runway_days'] }} days@endif
+
+@endif
 
 @endforeach
 

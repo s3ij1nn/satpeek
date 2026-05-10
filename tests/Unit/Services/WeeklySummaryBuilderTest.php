@@ -9,6 +9,8 @@ use App\Models\PtcAd;
 use App\Models\PtcView;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Payout\WalletBalanceMonitor;
+use App\Payout\WalletBalanceMonitorRegistry;
 use App\Services\WeeklySummaryBuilder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -187,5 +189,102 @@ class WeeklySummaryBuilderTest extends TestCase
         $this->assertSame(1, $payload['tier_transitions']['banned']);
 
         Carbon::setTestNow();
+    }
+
+    public function test_hot_wallet_includes_burn_rate_and_runway_when_monitor_registered(): void
+    {
+        // Past 7 days: 4 sent TRX onchain payouts, payout_amount in
+        // sun. Total = 7_000_000 sun → burn = 1_000_000 sun/day.
+        // available = 30_000_000 → runway = 30 days.
+        $now = Carbon::parse('2026-05-10 12:00:00');
+        Carbon::setTestNow($now);
+
+        $u = User::factory()->create();
+        foreach ([1_000_000, 2_000_000, 2_000_000, 2_000_000] as $i => $amt) {
+            $row = Withdrawal::create([
+                'user_id' => $u->id,
+                'amount_sat' => 100,
+                'payout_amount' => (string) $amt,
+                'payout_method' => Withdrawal::METHOD_ONCHAIN_TRX,
+                'payout_currency' => 'TRX',
+                'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+                'status' => 'sent',
+            ]);
+            // created_at isn't fillable — set via forceFill so the
+            // window predicate sees the right age.
+            $row->forceFill(['created_at' => $now->copy()->subDays($i + 1)])->save();
+        }
+        // Ledger row outside the window — must NOT count.
+        $old = Withdrawal::create([
+            'user_id' => $u->id,
+            'amount_sat' => 100,
+            'payout_amount' => '999000000',
+            'payout_method' => Withdrawal::METHOD_ONCHAIN_TRX,
+            'payout_currency' => 'TRX',
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            'status' => 'sent',
+        ]);
+        $old->forceFill(['created_at' => $now->copy()->subDays(20)])->save();
+
+        // Stub a monitor that returns available=30_000_000 sun, required=0.
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $registry->register(new class implements WalletBalanceMonitor
+        {
+            public function currency(): string
+            {
+                return 'TRX';
+            }
+
+            public function available(): string
+            {
+                return '30000000';
+            }
+
+            public function required(): string
+            {
+                return '0';
+            }
+        });
+
+        $payload = (new WeeklySummaryBuilder)->build($now);
+
+        $rows = $payload['hot_wallet'];
+        $this->assertNotEmpty($rows);
+        $trx = $rows[0];
+        $this->assertSame('TRX', $trx['code']);
+        $this->assertSame('1000000', $trx['burn_per_day']);
+        $this->assertSame(30, $trx['runway_days']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_hot_wallet_runway_null_when_no_recent_burn(): void
+    {
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $registry->register(new class implements WalletBalanceMonitor
+        {
+            public function currency(): string
+            {
+                return 'TRX';
+            }
+
+            public function available(): string
+            {
+                return '30000000';
+            }
+
+            public function required(): string
+            {
+                return '0';
+            }
+        });
+
+        $payload = (new WeeklySummaryBuilder)->build();
+
+        $rows = $payload['hot_wallet'];
+        $trx = $rows[0];
+        $this->assertSame('0', $trx['burn_per_day']);
+        // Don't divide by zero — operator sees runway=null for "infinite".
+        $this->assertNull($trx['runway_days']);
     }
 }

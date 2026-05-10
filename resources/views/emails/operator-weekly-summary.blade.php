@@ -78,6 +78,16 @@
                     </td>
                     <td align="right" style="padding:6px 0 6px 16px;font-family:ui-monospace,monospace;font-size:12px;color:{{ $statusColor }};">{{ $row['status'] }}</td>
                 </tr>
+                @if (! empty($row['burn_per_day']) && $row['burn_per_day'] !== '0')
+                <tr>
+                    <td colspan="3" style="padding:0 0 8px 16px;font-family:ui-monospace,monospace;font-size:11px;color:#4a5260;">
+                        burn {{ $row['burn_per_day'] }}/day
+                        @if ($row['runway_days'] !== null)
+                            · runway ~{{ $row['runway_days'] }} days
+                        @endif
+                    </td>
+                </tr>
+                @endif
 @endforeach
             </table>
         </td></tr>
