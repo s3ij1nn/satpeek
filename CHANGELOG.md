@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-05-10
+
+Theme: type-design batch — close the HIGH/MEDIUM findings from the
+type-design-analyzer audit on money-touching types.
+
+The audit surfaced 3 actionable items: 2 HIGH (PriceOracle tuple
+slot-swap risk + Withdrawal.status as bare strings) and 1 MEDIUM
+(BalanceLedger.reason as string despite v0.10.0 constants). All 3
+fixed in this release. Lower-priority recommendations
+(PayoutResult sent() non-nullable, PayoutCurrency constructor
+asserts, User balance_sat observer) are deferred — over-engineering
+risk doesn't justify the change today.
+
+No user-visible behaviour change. Wire format unchanged for every
+JSON endpoint. The new enum casts are reads transparently — WHERE
+clauses by raw string still work; new code uses enum cases.
+
+472 tests pass; pint + phpstan green.
+
 ### Added
 
 - **`App\Enums\WithdrawalStatus` backed enum.** From the type-design
