@@ -12,6 +12,7 @@ use App\Filament\Widgets\InFlightWithdrawalsWidget;
 use App\Filament\Widgets\OnchainConfirmationsWidget;
 use App\Filament\Widgets\PayoutVolumeChartWidget;
 use App\Filament\Widgets\SharedIpDetectionsWidget;
+use App\Filament\Widgets\SystemAuditLogTailWidget;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -51,6 +52,7 @@ class AdminPanelProvider extends PanelProvider
                 EarningActivityWidget::class,
                 HotWalletBalanceWidget::class,
                 OnchainConfirmationsWidget::class,
+                SystemAuditLogTailWidget::class,
                 SharedIpDetectionsWidget::class,
                 PayoutVolumeChartWidget::class,
                 BotTierTrendChartWidget::class,

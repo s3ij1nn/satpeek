@@ -6,6 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-05-10
+
+Theme: Phase 4c — `SystemAuditLogTailWidget` on the dashboard.
+Closes the Phase 4b loop on visibility: 4b added the durable
+trail under `/admin/system-audit-logs`; this release surfaces the
+last 5 warning/error rows on the dashboard so operators see
+recent system events without drilling into the full resource.
+
+### Added
+
+- **`App\Filament\Widgets\SystemAuditLogTailWidget`** — Filament
+  `TableWidget`. Pulls the last 5 `SystemAuditLog` rows at level
+  `warning` or `error`, ordered by `occurred_at` desc. Hides
+  itself entirely (`canView() = false`) when there are no recent
+  warning/error rows — a clean deploy doesn't see "(empty)"
+  boilerplate cluttering the dashboard.
+- 4 feature tests pin the visibility contract: hidden on clean
+  deploy; visible when warning row exists; visible when error
+  row exists; hidden when only info-level rows exist (info is
+  noise on a dashboard digest).
+
+582 tests pass; pint + phpstan green.
+
 ## [0.29.0] — 2026-05-10
 
 Theme: Phase 4b — `SystemAuditLog` for cron + scheduled-job
