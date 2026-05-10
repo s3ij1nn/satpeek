@@ -33,10 +33,15 @@ use App\Models\ShortlinkProviderCredential;
 use App\Offerwall\AdapterRegistry;
 use App\Offerwall\BitcoTaskAdapter;
 use App\Offerwall\MockAdapter;
+use App\Payout\Btc\BtcHttpClient;
+use App\Payout\Btc\BtcTxSigner;
+use App\Payout\Btc\BtcUtxoSelector;
+use App\Payout\Btc\BtcWalletBalanceMonitor;
 use App\Payout\Eth\EthHttpClient;
 use App\Payout\Eth\EthTxSigner;
 use App\Payout\Eth\EthWalletBalanceMonitor;
 use App\Payout\FaucetPayClient;
+use App\Payout\Gateway\BtcOnchainGateway;
 use App\Payout\Gateway\EthOnchainGateway;
 use App\Payout\Gateway\FaucetPayGateway;
 use App\Payout\Gateway\PayoutGatewayRegistry;
@@ -223,6 +228,17 @@ class AppServiceProvider extends ServiceProvider
                 requestTimeoutSeconds: (int) ($eth['request_timeout_seconds'] ?? 10),
             );
         });
+        $this->app->singleton(BtcTxSigner::class);
+        $this->app->singleton(BtcUtxoSelector::class);
+        $this->app->singleton(BtcHttpClient::class, function ($app) {
+            $btc = (array) config('satpeek.payout.onchain.btc', []);
+
+            return new BtcHttpClient(
+                $app->make(Client::class),
+                apiBases: (array) ($btc['api_bases'] ?? ['https://mempool.space/api']),
+                requestTimeoutSeconds: (int) ($btc['request_timeout_seconds'] ?? 10),
+            );
+        });
         $this->app->singleton(PayoutGatewayRegistry::class, function ($app) {
             $registry = new PayoutGatewayRegistry;
             $registry->register(new FaucetPayGateway(
@@ -283,6 +299,21 @@ class AppServiceProvider extends ServiceProvider
                 ));
             }
 
+            // BTC onchain — same conditional gating as Tron / ETH.
+            $btc = (array) config('satpeek.payout.onchain.btc', []);
+            $btcEnabled = (bool) ($btc['enabled'] ?? false);
+            $btcAddress = (string) ($btc['hot_wallet_address'] ?? '');
+            $btcPriv = (string) ($btc['hot_wallet_private_key'] ?? '');
+            if ($btcEnabled && $btcAddress !== '' && $btcPriv !== '') {
+                $registry->register(new BtcOnchainGateway(
+                    $app->make(BtcHttpClient::class),
+                    $app->make(BtcTxSigner::class),
+                    $app->make(BtcUtxoSelector::class),
+                    hotWalletAddress: $btcAddress,
+                    hotWalletPrivateKey: $btcPriv,
+                ));
+            }
+
             return $registry;
         });
 
@@ -318,6 +349,16 @@ class AppServiceProvider extends ServiceProvider
                 $registry->register(new EthWalletBalanceMonitor(
                     $app->make(EthHttpClient::class),
                     $ethAddress,
+                ));
+            }
+            // BTC wallet monitor — same gating as the gateway.
+            $btc = (array) config('satpeek.payout.onchain.btc', []);
+            $btcEnabled = (bool) ($btc['enabled'] ?? false);
+            $btcAddress = (string) ($btc['hot_wallet_address'] ?? '');
+            if ($btcEnabled && $btcAddress !== '') {
+                $registry->register(new BtcWalletBalanceMonitor(
+                    $app->make(BtcHttpClient::class),
+                    $btcAddress,
                 ));
             }
 

@@ -6,6 +6,75 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-05-10
+
+Theme: Phase 3b — BTC onchain payouts (P2WPKH segwit / BIP143).
+Closes the "BTC + ETH + USDT(TRC)" coverage the user asked for in
+this sprint. The Tron / ETH machinery generalises one chain
+further: a new BtcOnchainGateway selects UTXOs largest-first from
+the operator's hot-wallet, signs P2WPKH segwit txs with simplito
+secp256k1 + BIP143 sighash, broadcasts via mempool.space + the
+Blockstream Esplora endpoint, and the existing
+WatchOnchainConfirmationsJob promotes BTC rows to Sent at 3
+confirmations.
+
+### Added
+
+- **`BtcAddress`** — bech32 P2WPKH validator + 20-byte pubkey-hash
+  extraction + scriptPubKey derivation. Built on `bitwasp/bech32`.
+  HRP-aware (mainnet `bc` vs testnet `tb`); rejects mixed-case,
+  P2WSH (32-byte program), corrupted checksums.
+- **`BtcHttpClient`** — Esplora REST wrapper (mempool.space +
+  blockstream.info). Multi-URL fallback identical to Tron / ETH.
+  Methods: tipHeight, addressUtxos, feeRecommended, broadcast,
+  txStatus.
+- **`BtcRpcException` + `BtcUnreachableException`** — same retry
+  semantics as Tron / ETH / FaucetPay.
+- **`BtcUtxoSelector`** — largest-first UTXO selection. Estimates
+  fee from segwit vBytes formula (input ~68 vB, output ~31 vB,
+  overhead 11 vB). Dust change (< 294 sat) is absorbed into the
+  miner fee. Throws on insufficient funds.
+- **`BtcTxSigner`** — BIP143 P2WPKH segwit transaction builder +
+  signer. Computes the three shared hashes (hashPrevouts,
+  hashSequence, hashOutputs) once per call; assembles per-input
+  preimage; signs sha256² digest with simplito (canonical low-s,
+  RFC6979 deterministic-k); appends SIGHASH_ALL byte; builds
+  witness stack [signature, compressed pubkey].
+- **`BtcOnchainGateway`** implements `PayoutGateway` with
+  `name='onchain_btc'`. Validates destination, reads UTXOs + fee
+  oracle, selects, signs, broadcasts.
+- **`BtcWalletBalanceMonitor`** — sums confirmed UTXO values from
+  mempool.space. Auto-registered alongside the gateway → lights
+  up dashboard widget + `/up` + weekly digest + alert mail
+  (registry pattern).
+- **`Withdrawal::METHOD_ONCHAIN_BTC`** const.
+- **`composer require bitwasp/bech32 ^0.0.1`** — pure-PHP bech32
+  encoder/decoder (the dependency for both BTC + future segwit
+  altcoins).
+
+### Changed
+
+- **`WatchOnchainConfirmationsJob`** picks up `sweepBtc` per-chain
+  handler. BTC has no contract-revert path (a confirmed-in-block
+  tx always succeeded), so no refund branch needed; just confirm-
+  and-promote at 3 blocks.
+- **`WithdrawController`**: `onchain_btc` in allowed methods +
+  `BTC`-only currency list + bech32 P2WPKH destination validation.
+- **`config/satpeek.php`**: BTC `onchain_supported=true` + new
+  `payout.onchain.btc` block.
+
+### Tests
+
+19 new BTC tests:
+- BtcAddress 8 (BIP173 reference + HRP discrimination + checksum +
+  P2WSH rejection + mixed-case rejection)
+- BtcUtxoSelector 4 (largest-first + unconfirmed filter + dust
+  absorption + insufficient-funds error)
+- BtcTxSigner 3 (segwit marker shape + RFC6979 determinism +
+  round-trip witness verification against simplito ECDSA verify)
+
+573 tests pass; pint + phpstan green.
+
 ## [0.26.0] — 2026-05-10
 
 Theme: Phase 3a — ETH onchain payouts. The Tron-family pipeline

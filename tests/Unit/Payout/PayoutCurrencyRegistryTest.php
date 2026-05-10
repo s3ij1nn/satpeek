@@ -66,6 +66,12 @@ class PayoutCurrencyRegistryTest extends TestCase
         $this->assertContains('TRX', $codes);
         $this->assertContains('USDT_TRC20', $codes);
         $this->assertContains('ETH', $codes);
-        $this->assertNotContains('BTC', $codes);
+        $this->assertContains('BTC', $codes);
+        // LTC / DASH / XMR remain FaucetPay-only — no native gateway in
+        // this codebase yet (DASH + XMR are spec-excluded; LTC is a
+        // future option but no operator demand).
+        $this->assertNotContains('LTC', $codes);
+        $this->assertNotContains('DASH', $codes);
+        $this->assertNotContains('XMR', $codes);
     }
 }

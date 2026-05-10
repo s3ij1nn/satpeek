@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\WithdrawalQueuedEmail;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use App\Payout\Btc\BtcAddress;
 use App\Payout\Eth\EthAddress;
 use App\Payout\Gateway\PayoutGatewayRegistry;
 use App\Payout\PayoutCurrencyRegistry;
@@ -49,6 +50,9 @@ class WithdrawController extends Controller
         if ($method === Withdrawal::METHOD_ONCHAIN_ETH) {
             return ['ETH'];
         }
+        if ($method === Withdrawal::METHOD_ONCHAIN_BTC) {
+            return ['BTC'];
+        }
 
         return array_map(
             fn ($c) => $c->code,
@@ -76,6 +80,9 @@ class WithdrawController extends Controller
         }
         if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_ETH)) {
             $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_ETH;
+        }
+        if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_BTC)) {
+            $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_BTC;
         }
         // Allowed currencies depend on the chosen method; default to
         // FaucetPay-supported until we see the request's `payout_method`.
@@ -132,6 +139,13 @@ class WithdrawController extends Controller
             return response()->json([
                 'error' => 'invalid_destination',
                 'reason' => 'onchain_eth_requires_eth_address',
+            ], 422);
+        }
+        if ($method === Withdrawal::METHOD_ONCHAIN_BTC
+            && ! BtcAddress::isValid($validated['destination'])) {
+            return response()->json([
+                'error' => 'invalid_destination',
+                'reason' => 'onchain_btc_requires_bech32_p2wpkh_address',
             ], 422);
         }
 

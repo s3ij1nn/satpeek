@@ -6,6 +6,8 @@ namespace App\Payout;
 
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use App\Payout\Btc\BtcHttpClient;
+use App\Payout\Btc\BtcRpcException;
 use App\Payout\Eth\EthHttpClient;
 use App\Payout\Eth\EthRpcException;
 use App\Payout\Tron\TronHttpClient;
@@ -35,7 +37,8 @@ use Illuminate\Support\Facades\Log;
  * Per-currency thresholds:
  *   - TRX / USDT-TRC20:  19 confirmations (~57 s, official Tron finality)
  *   - ETH:               12 confirmations (~2.5 min, beacon chain finality)
- *   - BTC:               (Phase 3b)
+ *   - BTC:               3 confirmations (~30 min, conservative below
+ *                        exchange standard 6, traded for faster UX)
  *
  * Failure modes (every one is non-fatal — the cron tries again next
  * minute):
@@ -71,6 +74,16 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
     /** ETH mainnet finality (12 blocks ≈ 2.5 min). Beacon-chain anchored. */
     private const ETH_FINALITY = 12;
 
+    /**
+     * BTC finality threshold. 3 blocks (~30 min) is conservative for a
+     * payout cron — well below the 6-block exchange standard but
+     * acceptable here because (a) the operator already pre-debited the
+     * user's balance, (b) reorgs deeper than 3 blocks on Bitcoin
+     * mainnet are vanishingly rare and cost the attacker millions of
+     * dollars per attempt, (c) faster confirmations is a real UX win.
+     */
+    private const BTC_FINALITY = 3;
+
     public function handle(): void
     {
         $rows = Withdrawal::query()
@@ -79,6 +92,7 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
                 Withdrawal::METHOD_ONCHAIN_TRX,
                 Withdrawal::METHOD_ONCHAIN_USDT_TRC20,
                 Withdrawal::METHOD_ONCHAIN_ETH,
+                Withdrawal::METHOD_ONCHAIN_BTC,
             ])
             ->whereNotNull('onchain_tx_hash')
             ->get();
@@ -95,6 +109,7 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
             true,
         ));
         $ethRows = $rows->filter(fn ($w): bool => $w->payout_method === Withdrawal::METHOD_ONCHAIN_ETH);
+        $btcRows = $rows->filter(fn ($w): bool => $w->payout_method === Withdrawal::METHOD_ONCHAIN_BTC);
 
         if ($tronRows->isNotEmpty()) {
             $this->sweepTron($tronRows->all());
@@ -102,6 +117,57 @@ class WatchOnchainConfirmationsJob implements ShouldBeUnique, ShouldQueue
         if ($ethRows->isNotEmpty()) {
             $this->sweepEth($ethRows->all());
         }
+        if ($btcRows->isNotEmpty()) {
+            $this->sweepBtc($btcRows->all());
+        }
+    }
+
+    /**
+     * @param  array<int, Withdrawal>  $rows
+     */
+    private function sweepBtc(array $rows): void
+    {
+        $http = App::make(BtcHttpClient::class);
+        try {
+            $btcHead = $http->tipHeight();
+        } catch (BtcRpcException $e) {
+            Log::warning('onchain confirmations: cannot fetch btc chain head, skipping btc sweep', [
+                'err' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+        foreach ($rows as $w) {
+            $this->checkBtcRow($w, $http, $btcHead);
+        }
+    }
+
+    private function checkBtcRow(Withdrawal $w, BtcHttpClient $http, int $btcHead): void
+    {
+        $txid = (string) $w->onchain_tx_hash;
+        try {
+            $status = $http->txStatus($txid);
+        } catch (BtcRpcException $e) {
+            Log::warning('onchain confirmations: btc txStatus failed', [
+                'withdrawal_id' => $w->id, 'tx_hash' => $txid, 'err' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        // Empty array = node doesn't know the tx (yet — mempool ≠ confirmed).
+        // confirmed=false = in mempool but not in a block.
+        if (! (bool) ($status['confirmed'] ?? false)) {
+            return;
+        }
+        $txBlock = (int) ($status['block_height'] ?? 0);
+        if ($txBlock === 0) {
+            return;
+        }
+        $confirmations = max(0, $btcHead - $txBlock + 1);
+        // BTC has no contract-level revert path — confirmed-in-a-block
+        // means the value transfer succeeded. No refund branch needed.
+        $this->advanceOrPromote($w, $confirmations, self::BTC_FINALITY, $txid);
     }
 
     /**

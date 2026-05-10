@@ -193,7 +193,10 @@ return [
                 'decimals' => 8,
                 'min_withdraw_sat' => (int) env('PAYOUT_MIN_BTC_SAT', 1000),
                 'faucetpay_supported' => true,
-                'onchain_supported' => false, // Phase 2: BTC onchain
+                // Phase 3b: BtcOnchainGateway is wired up. Same gating
+                // story — BTC_ONCHAIN_ENABLED + hot wallet env pair
+                // both required, otherwise the gateway never registers.
+                'onchain_supported' => true,
                 'coingecko_id' => 'bitcoin',
             ],
             'LTC' => [
@@ -342,6 +345,24 @@ return [
                 'hot_wallet_address' => env('ETH_HOT_WALLET_ADDRESS', ''),
                 'hot_wallet_private_key' => env('ETH_HOT_WALLET_PRIVATE_KEY', ''),
                 'request_timeout_seconds' => (int) env('ETH_RPC_TIMEOUT', 10),
+            ],
+
+            // BIP143 P2WPKH segwit BTC onchain payouts. Same gating
+            // story as Tron / ETH. Default API bases are mempool.space
+            // + blockstream.info — both no-key, generous rate limits,
+            // Esplora-shaped REST API.
+            'btc' => [
+                'enabled' => filter_var(env('BTC_ONCHAIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+                'api_bases' => array_values(array_filter(array_map(
+                    'trim',
+                    explode(',', (string) env(
+                        'BTC_API_BASES',
+                        'https://mempool.space/api,https://blockstream.info/api'
+                    )),
+                ))),
+                'hot_wallet_address' => env('BTC_HOT_WALLET_ADDRESS', ''),
+                'hot_wallet_private_key' => env('BTC_HOT_WALLET_PRIVATE_KEY', ''),
+                'request_timeout_seconds' => (int) env('BTC_API_TIMEOUT', 10),
             ],
         ],
     ],
