@@ -37,7 +37,28 @@ class Withdrawal extends Model
 {
     public const METHOD_FAUCETPAY = 'faucetpay';
 
+    /**
+     * Legacy "any onchain" placeholder kept ONLY so pre-Phase-2b
+     * historical rows + the prefix detector below stay coherent. New
+     * code MUST use the per-chain `METHOD_ONCHAIN_*` constants below;
+     * `WithdrawController` rejects bare `onchain` at validation time
+     * because the gateway registry no longer routes it.
+     */
     public const METHOD_ONCHAIN = 'onchain';
+
+    public const METHOD_ONCHAIN_TRX = 'onchain_trx';
+
+    /**
+     * Returns true when `payout_method` selects an onchain gateway —
+     * either a per-chain method (`onchain_trx`, `onchain_btc`, etc) or
+     * the legacy `onchain` placeholder. ProcessWithdrawalJob uses this
+     * to pick `Broadcast` vs `Sent` on settle and to decide which
+     * external_id column receives the gateway reference.
+     */
+    public static function isOnchainMethod(?string $method): bool
+    {
+        return $method !== null && str_starts_with($method, 'onchain');
+    }
 
     protected $fillable = [
         'user_id',

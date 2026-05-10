@@ -37,7 +37,7 @@ use InvalidArgumentException;
  * is small enough to own (signing + tx-build helpers) without
  * dragging in an abandoned wrapper.
  */
-final class TronTxSigner
+class TronTxSigner
 {
     private readonly EC $ec;
 

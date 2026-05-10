@@ -6,6 +6,7 @@ namespace Tests\Unit\Payout\Tron;
 
 use App\Payout\Tron\TronHttpClient;
 use App\Payout\Tron\TronRpcException;
+use App\Payout\Tron\TronUnreachableException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
@@ -72,6 +73,22 @@ class TronHttpClientTest extends TestCase
 
         $this->expectException(TronRpcException::class);
         $this->expectExceptionMessageMatches('/unreachable/i');
+        $client->getNowBlock();
+    }
+
+    public function test_all_urls_failed_throws_unreachable_subclass(): void
+    {
+        // ProcessWithdrawalJob distinguishes "request never reached the
+        // wire" (safe to retry) from "RPC accepted but errored" (treat
+        // as terminal — could already be processed). The Unreachable
+        // subclass is the retry signal; pin that all-down throws the
+        // specific class, not just the parent TronRpcException.
+        $client = $this->clientFromResponses([
+            new ConnectException('refused 1', new Psr7Request('POST', 'https://api.trongrid.io')),
+            new ConnectException('refused 2', new Psr7Request('POST', 'https://tron-rpc.publicnode.com')),
+        ], rpcUrls: ['https://api.trongrid.io', 'https://tron-rpc.publicnode.com']);
+
+        $this->expectException(TronUnreachableException::class);
         $client->getNowBlock();
     }
 

@@ -7,9 +7,11 @@ use App\Http\Controllers\Controller;
 use App\Mail\WithdrawalQueuedEmail;
 use App\Models\BalanceLedger;
 use App\Models\Withdrawal;
+use App\Payout\Gateway\PayoutGatewayRegistry;
 use App\Payout\PayoutCurrencyRegistry;
 use App\Payout\PriceOracle;
 use App\Payout\PriceOracleUnavailableException;
+use App\Payout\Tron\TronAddress;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +25,29 @@ class WithdrawController extends Controller
         private readonly PolicyEnforcer $policy,
         private readonly PayoutCurrencyRegistry $currencies,
         private readonly PriceOracle $priceOracle,
+        private readonly PayoutGatewayRegistry $gateways,
     ) {}
+
+    /**
+     * Return the currency codes the user may pick under `$method`.
+     * FaucetPay route shows everything FP supports; onchain_trx is
+     * single-currency by definition (TRX). Future onchain_btc /
+     * onchain_eth gateways slot in here as their own per-currency
+     * single-element arrays.
+     *
+     * @return array<int, string>
+     */
+    private function currenciesForMethod(string $method): array
+    {
+        if ($method === Withdrawal::METHOD_ONCHAIN_TRX) {
+            return ['TRX'];
+        }
+
+        return array_map(
+            fn ($c) => $c->code,
+            $this->currencies->faucetpaySupported(),
+        );
+    }
 
     public function store(Request $request): JsonResponse
     {
@@ -32,14 +56,18 @@ class WithdrawController extends Controller
             return response()->json(['error' => 'banned_or_blocked'], 403);
         }
 
-        // The form posts `payout_method=faucetpay` by default. Add an
-        // entry here when a new gateway registers (see
-        // `PayoutGatewayRegistry`) so the validator accepts it.
+        // The form posts `payout_method=faucetpay` by default. Onchain
+        // methods are only listed when the matching gateway is actually
+        // registered — keeps the validator honest with what
+        // `PayoutGatewayRegistry::forMethod()` will accept on dispatch.
         $allowedMethods = [Withdrawal::METHOD_FAUCETPAY];
-        $allowedCurrencies = array_map(
-            fn ($c) => $c->code,
-            $this->currencies->faucetpaySupported(),
-        );
+        if ($this->gateways->has(Withdrawal::METHOD_ONCHAIN_TRX)) {
+            $allowedMethods[] = Withdrawal::METHOD_ONCHAIN_TRX;
+        }
+        // Allowed currencies depend on the chosen method; default to
+        // FaucetPay-supported until we see the request's `payout_method`.
+        $methodForCurrencies = (string) $request->input('payout_method', Withdrawal::METHOD_FAUCETPAY);
+        $allowedCurrencies = $this->currenciesForMethod($methodForCurrencies);
 
         $validated = $request->validate([
             'amount_sat' => ['required', 'integer', 'min:1'],
@@ -59,14 +87,23 @@ class WithdrawController extends Controller
             ], 422);
         }
 
-        // FaucetPay route → destination must be email-shaped (FP keys
-        // accounts on email). Onchain route (Phase 2+) → address shape
-        // checked by the per-chain gateway.
+        // Per-method destination shape check. FaucetPay keys accounts
+        // on email; onchain_trx requires a valid Base58Check Tron
+        // address (TronAddress::isValid runs the double-SHA256
+        // checksum so a typo'd address is refused before the funds
+        // ever leave SatPeek's custody).
         if ($method === Withdrawal::METHOD_FAUCETPAY
             && filter_var($validated['destination'], FILTER_VALIDATE_EMAIL) === false) {
             return response()->json([
                 'error' => 'invalid_destination',
                 'reason' => 'faucetpay_requires_email',
+            ], 422);
+        }
+        if ($method === Withdrawal::METHOD_ONCHAIN_TRX
+            && ! TronAddress::isValid($validated['destination'])) {
+            return response()->json([
+                'error' => 'invalid_destination',
+                'reason' => 'onchain_trx_requires_tron_address',
             ], 422);
         }
 

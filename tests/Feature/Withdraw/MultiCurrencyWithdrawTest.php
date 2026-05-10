@@ -99,10 +99,14 @@ class MultiCurrencyWithdrawTest extends TestCase
         $response->assertJsonValidationErrors(['payout_currency']);
     }
 
-    public function test_onchain_method_is_rejected_in_phase_1(): void
+    public function test_legacy_onchain_method_string_is_rejected(): void
     {
-        // Phase 1 ships only FaucetPay; the validator's Rule::in
-        // intentionally excludes 'onchain' until per-chain gateways register.
+        // The bare 'onchain' placeholder is no longer routable — every
+        // chain has its own per-method gateway name now (onchain_trx,
+        // future onchain_btc / onchain_eth / onchain_usdt_trc20). The
+        // validator's allowed-methods list comes from the gateway
+        // registry, so a generic 'onchain' string can never reach the
+        // dispatcher with no matching gateway.
         $user = User::factory()->create(['balance_sat' => 50000]);
 
         $response = $this->actingAs($user)->postJson('/api/withdraw', [
@@ -114,6 +118,91 @@ class MultiCurrencyWithdrawTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['payout_method']);
+    }
+
+    public function test_onchain_trx_method_accepted_when_gateway_registered(): void
+    {
+        // Wire up the TRX onchain gateway via the registry singleton so
+        // the controller's allowed-methods check picks it up. We don't
+        // exercise the gateway itself here (that's TronOnchainGatewayTest);
+        // we just prove the controller surfaces the method when the
+        // gateway is present, validates the destination as a Tron
+        // address, persists payout_method=onchain_trx, and debits the
+        // user's balance.
+        $registry = app(\App\Payout\Gateway\PayoutGatewayRegistry::class);
+        $stubGateway = new class implements \App\Payout\Gateway\PayoutGateway
+        {
+            public function name(): string
+            {
+                return 'onchain_trx';
+            }
+
+            public function send(\App\Models\Withdrawal $withdrawal): \App\Payout\Gateway\PayoutResult
+            {
+                return \App\Payout\Gateway\PayoutResult::sent('stub-txid', 'stub', []);
+            }
+        };
+        $registry->register($stubGateway);
+
+        // Mock PriceOracle so the test doesn't hit CoinGecko.
+        $oracle = Mockery::mock(PriceOracle::class);
+        $oracle->shouldReceive('convertBtcSatToTarget')
+            ->once()
+            ->andReturn(new PayoutConversion('5000000', '1234567'));
+        $this->app->instance(PriceOracle::class, $oracle);
+
+        $user = User::factory()->create(['balance_sat' => 100_000]);
+
+        $response = $this->actingAs($user)->postJson('/api/withdraw', [
+            'amount_sat' => 50_000,
+            'payout_method' => 'onchain_trx',
+            'payout_currency' => 'TRX',
+            // Real Base58Check-valid Tron address.
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+        ]);
+
+        $response->assertStatus(202);
+        $this->assertDatabaseHas('withdrawals', [
+            'user_id' => $user->id,
+            'payout_method' => 'onchain_trx',
+            'payout_currency' => 'TRX',
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            // faucetpay_email NEVER populated for onchain rows.
+            'faucetpay_email' => null,
+        ]);
+        $this->assertSame(50_000, (int) $user->fresh()->balance_sat);
+    }
+
+    public function test_onchain_trx_rejects_non_tron_destination(): void
+    {
+        $registry = app(\App\Payout\Gateway\PayoutGatewayRegistry::class);
+        $registry->register(new class implements \App\Payout\Gateway\PayoutGateway
+        {
+            public function name(): string
+            {
+                return 'onchain_trx';
+            }
+
+            public function send(\App\Models\Withdrawal $w): \App\Payout\Gateway\PayoutResult
+            {
+                return \App\Payout\Gateway\PayoutResult::sent('x', '', []);
+            }
+        });
+
+        $user = User::factory()->create(['balance_sat' => 100_000]);
+
+        $response = $this->actingAs($user)->postJson('/api/withdraw', [
+            'amount_sat' => 50_000,
+            'payout_method' => 'onchain_trx',
+            'payout_currency' => 'TRX',
+            // BTC bech32, not a Tron address — must be rejected before
+            // any DB row is created.
+            'destination' => 'bc1qxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error', 'invalid_destination');
+        $this->assertSame(100_000, (int) $user->fresh()->balance_sat);
     }
 
     public function test_oracle_outage_returns_503_without_debiting_balance(): void

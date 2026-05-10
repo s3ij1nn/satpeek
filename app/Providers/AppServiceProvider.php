@@ -36,8 +36,11 @@ use App\Offerwall\MockAdapter;
 use App\Payout\FaucetPayClient;
 use App\Payout\Gateway\FaucetPayGateway;
 use App\Payout\Gateway\PayoutGatewayRegistry;
+use App\Payout\Gateway\TronOnchainGateway;
 use App\Payout\PayoutCurrencyRegistry;
 use App\Payout\PriceOracle;
+use App\Payout\Tron\TronHttpClient;
+use App\Payout\Tron\TronTxSigner;
 use App\Shortlinks\Providers\GenericShortenerClient;
 use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\Providers\ShortenerClient;
@@ -192,12 +195,43 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(PayoutCurrencyRegistry::class),
             );
         });
+        $this->app->singleton(TronTxSigner::class);
+        $this->app->singleton(TronHttpClient::class, function ($app) {
+            $tron = (array) config('satpeek.payout.onchain.tron', []);
+
+            return new TronHttpClient(
+                $app->make(Client::class),
+                rpcUrls: (array) ($tron['rpc_urls'] ?? []),
+                requestTimeoutSeconds: (int) ($tron['request_timeout_seconds'] ?? 10),
+            );
+        });
         $this->app->singleton(PayoutGatewayRegistry::class, function ($app) {
             $registry = new PayoutGatewayRegistry;
             $registry->register(new FaucetPayGateway(
                 $app->make(FaucetPayClient::class),
                 $app->make(PayoutCurrencyRegistry::class),
             ));
+
+            // Tron gateway is only registered when the operator has
+            // explicitly opted in (TRON_ONCHAIN_ENABLED=true) AND the
+            // hot-wallet env pair is present. Without both,
+            // PayoutGatewayRegistry::has('onchain_trx') returns false →
+            // WithdrawController removes 'onchain_trx' from
+            // allowed-methods → users can't even submit a Tron
+            // withdrawal. Defence-in-depth against a misconfigured
+            // deploy that thinks it has the gateway when it doesn't.
+            $tron = (array) config('satpeek.payout.onchain.tron', []);
+            $tronEnabled = (bool) ($tron['enabled'] ?? false);
+            $hotAddress = (string) ($tron['hot_wallet_address'] ?? '');
+            $hotPriv = (string) ($tron['hot_wallet_private_key'] ?? '');
+            if ($tronEnabled && $hotAddress !== '' && $hotPriv !== '') {
+                $registry->register(new TronOnchainGateway(
+                    $app->make(TronHttpClient::class),
+                    $app->make(TronTxSigner::class),
+                    hotWalletAddress: $hotAddress,
+                    hotWalletPrivateKey: $hotPriv,
+                ));
+            }
 
             return $registry;
         });

@@ -83,6 +83,29 @@ class TronHttpClient
     }
 
     /**
+     * Build an unsigned native-TRX transfer. Returns the parsed envelope
+     * with `raw_data` + `raw_data_hex` + `txID` — the caller signs
+     * `raw_data_hex` with {@see TronTxSigner}, drops the hex signature
+     * into `signature: [<sig>]`, and posts the result back through
+     * {@see broadcastTransaction()}.
+     *
+     * `amountSun` is in sun (1 TRX = 1,000,000 sun). TronGrid silently
+     * 422s a non-positive amount, so callers MUST pre-validate against
+     * the per-currency floor.
+     *
+     * @return array<string, mixed>
+     */
+    public function createTransaction(string $fromAddress, string $toAddress, int $amountSun): array
+    {
+        return $this->post('/wallet/createtransaction', [
+            'owner_address' => $fromAddress,
+            'to_address' => $toAddress,
+            'amount' => $amountSun,
+            'visible' => true,
+        ]);
+    }
+
+    /**
      * Broadcast a signed transaction. Caller is responsible for the
      * full sign-and-package step (Phase 2b). Returns the parsed
      * response — `result=true` indicates the node accepted the tx
@@ -158,7 +181,7 @@ class TronHttpClient
             }
         }
 
-        throw new TronRpcException(
+        throw new TronUnreachableException(
             'all tron rpc urls unreachable; last error: '.($lastError?->getMessage() ?? 'unknown'),
             previous: $lastError,
         );

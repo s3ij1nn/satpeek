@@ -145,16 +145,22 @@ class ProcessWithdrawalJob implements ShouldBeUnique, ShouldQueue
                 // this update to fire. Parallel-worker race (cache-lock
                 // evicted) → losing worker sees affected_rows=0 and
                 // skips the total_withdrawn_sat increment.
+                // FaucetPay = publisher-confirmed at API return → Sent.
+                // Onchain = gateway accepted broadcast but the chain
+                // hasn't reached SatPeek's per-currency finality yet →
+                // Broadcast. WatchOnchainConfirmationsJob (Phase 2b+)
+                // promotes Broadcast → Sent once confirmations_seen
+                // crosses the threshold.
+                $isOnchain = Withdrawal::isOnchainMethod($w->payout_method);
+                $now = Carbon::now();
                 $update = [
-                    'status' => 'sent',
-                    'processed_at' => Carbon::now(),
+                    'status' => $isOnchain ? 'broadcast' : 'sent',
+                    'processed_at' => $now,
                     'meta' => array_merge((array) $w->meta, ['response' => $result->raw]),
                 ];
-                // Stamp the gateway-specific external reference into
-                // the right column. FaucetPay → faucetpay_payout_id;
-                // onchain → onchain_tx_hash.
-                if ($w->payout_method === Withdrawal::METHOD_ONCHAIN) {
+                if ($isOnchain) {
                     $update['onchain_tx_hash'] = $result->externalId;
+                    $update['broadcast_at'] = $now;
                 } else {
                     $update['faucetpay_payout_id'] = $result->externalId;
                 }

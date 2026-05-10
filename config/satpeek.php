@@ -229,7 +229,11 @@ return [
                 'decimals' => 6,
                 'min_withdraw_sat' => (int) env('PAYOUT_MIN_TRX_SAT', 1000),
                 'faucetpay_supported' => true,
-                'onchain_supported' => false, // Phase 2: TRX onchain
+                // Phase 2b: TronOnchainGateway is wired up. Whether this
+                // surfaces to the user UI is gated by `TRON_ONCHAIN_ENABLED`
+                // (must be true) AND the hot-wallet env pair being set —
+                // see AppServiceProvider's PayoutGatewayRegistry binding.
+                'onchain_supported' => true,
                 'coingecko_id' => 'tron',
             ],
             'DASH' => [
