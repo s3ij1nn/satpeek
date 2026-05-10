@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Withdraw;
 
 use App\Models\User;
+use App\Models\Withdrawal;
+use App\Payout\Gateway\PayoutGateway;
+use App\Payout\Gateway\PayoutGatewayRegistry;
+use App\Payout\Gateway\PayoutResult;
 use App\Payout\PayoutConversion;
 use App\Payout\PriceOracle;
 use App\Payout\PriceOracleUnavailableException;
@@ -129,17 +133,17 @@ class MultiCurrencyWithdrawTest extends TestCase
         // gateway is present, validates the destination as a Tron
         // address, persists payout_method=onchain_trx, and debits the
         // user's balance.
-        $registry = app(\App\Payout\Gateway\PayoutGatewayRegistry::class);
-        $stubGateway = new class implements \App\Payout\Gateway\PayoutGateway
+        $registry = app(PayoutGatewayRegistry::class);
+        $stubGateway = new class implements PayoutGateway
         {
             public function name(): string
             {
                 return 'onchain_trx';
             }
 
-            public function send(\App\Models\Withdrawal $withdrawal): \App\Payout\Gateway\PayoutResult
+            public function send(Withdrawal $withdrawal): PayoutResult
             {
-                return \App\Payout\Gateway\PayoutResult::sent('stub-txid', 'stub', []);
+                return PayoutResult::sent('stub-txid', 'stub', []);
             }
         };
         $registry->register($stubGateway);
@@ -175,17 +179,17 @@ class MultiCurrencyWithdrawTest extends TestCase
 
     public function test_onchain_trx_rejects_non_tron_destination(): void
     {
-        $registry = app(\App\Payout\Gateway\PayoutGatewayRegistry::class);
-        $registry->register(new class implements \App\Payout\Gateway\PayoutGateway
+        $registry = app(PayoutGatewayRegistry::class);
+        $registry->register(new class implements PayoutGateway
         {
             public function name(): string
             {
                 return 'onchain_trx';
             }
 
-            public function send(\App\Models\Withdrawal $w): \App\Payout\Gateway\PayoutResult
+            public function send(Withdrawal $w): PayoutResult
             {
-                return \App\Payout\Gateway\PayoutResult::sent('x', '', []);
+                return PayoutResult::sent('x', '', []);
             }
         });
 
