@@ -6,6 +6,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-05-10
+
+Theme: Phase 2g — visibility into the onchain confirmation watcher.
+Catches the silent failure mode where the
+`WatchOnchainConfirmationsJob` cron stalls (queue worker dead, RPC
+down for hours, hot-wallet recipient permanently blacklisted).
+Without this signal, `Withdrawal::status=Broadcast` rows would
+accumulate invisibly until users start asking why their payout
+"hasn't shown up".
+
+### Added
+
+- **`OnchainConfirmationsWidget`** — Filament `StatsOverviewWidget`.
+  Counts in-flight onchain Withdrawals (status=broadcast,
+  payout_method LIKE 'onchain_%'), surfaces the oldest broadcast
+  age, colour-coded:
+  - 0 rows → success ("all confirmed")
+  - oldest < 30 min → success (within finality window)
+  - 30 ≤ oldest < 120 min → warning ("slower than usual")
+  - oldest ≥ 120 min → danger ("watcher likely stalled")
+- **`/up` `onchain_watcher` probe**. Same thresholds; reports
+  `in_flight` count + `oldest_minutes`. Non-critical (the API is
+  healthy; this signals an operations issue, not a service outage).
+- 3 feature tests: no in-flight rows → ok; oldest 60 min → degraded;
+  oldest 180 min → down (with HTTP 200 because non-critical).
+
+527 tests pass; pint + phpstan green.
+
 ## [0.23.0] — 2026-05-10
 
 Theme: Phase 2f — push-channel hot-wallet alerting. The 0.21

@@ -14,6 +14,7 @@ use App\Payout\WalletBalanceUnavailableException;
 use App\Shortlinks\ShortlinkProviderRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -47,6 +48,7 @@ class HealthController extends Controller
             'earning_inventory' => $this->checkEarningInventory(),
             'trusted_proxies' => $this->checkTrustedProxies($request),
             'hot_wallet_balance' => $this->checkHotWalletBalance(),
+            'onchain_watcher' => $this->checkOnchainWatcher(),
         ];
 
         $hasCriticalDown = false;
@@ -528,6 +530,65 @@ class HealthController extends Controller
             // unaffected, app process is healthy).
             'critical' => false,
             'currencies' => $currencies,
+        ];
+    }
+
+    /**
+     * Watcher liveness probe — looks at the oldest in-flight
+     * `Withdrawal::status=Broadcast` row and infers whether the
+     * `WatchOnchainConfirmationsJob` cron is still ticking.
+     *
+     * Under healthy operation the oldest row is < 30 min (TRX
+     * finality is ~57 s, USDT-TRC20 same). A row sitting in
+     * `broadcast` for > 30 min suggests the watcher cron is stalled
+     * (queue worker dead, RPC down for hours, etc); > 120 min is a
+     * near-certainty.
+     *
+     * Status:
+     *   - ok       — no broadcast rows OR oldest < 30 min
+     *   - degraded — 30 ≤ oldest < 120 min
+     *   - down     — oldest ≥ 120 min
+     *
+     * Non-critical (the API process is healthy; this signals an
+     * operations issue, not a service outage).
+     *
+     * @return array{status: string, critical: bool, in_flight: int, oldest_minutes: int|null}
+     */
+    private function checkOnchainWatcher(): array
+    {
+        $row = Withdrawal::query()
+            ->where('status', 'broadcast')
+            ->where('payout_method', 'like', 'onchain_%')
+            ->whereNotNull('broadcast_at')
+            ->selectRaw('count(*) as cnt, min(broadcast_at) as oldest')
+            ->first();
+
+        $count = (int) ($row?->cnt ?? 0);
+        if ($count === 0) {
+            return [
+                'status' => 'ok',
+                'critical' => false,
+                'in_flight' => 0,
+                'oldest_minutes' => null,
+            ];
+        }
+
+        $oldest = $row->oldest ? Carbon::parse($row->oldest) : null;
+        $oldestMin = $oldest ? (int) $oldest->diffInMinutes(now()) : 0;
+
+        if ($oldestMin >= 120) {
+            $status = 'down';
+        } elseif ($oldestMin >= 30) {
+            $status = 'degraded';
+        } else {
+            $status = 'ok';
+        }
+
+        return [
+            'status' => $status,
+            'critical' => false,
+            'in_flight' => $count,
+            'oldest_minutes' => $oldestMin,
         ];
     }
 }

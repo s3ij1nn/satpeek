@@ -50,6 +50,7 @@ class HealthEndpointTest extends TestCase
                 'earning_inventory' => ['status', 'critical'],
                 'trusted_proxies' => ['status', 'critical'],
                 'hot_wallet_balance' => ['status', 'critical'],
+                'onchain_watcher' => ['status', 'critical'],
             ],
         ]);
         $this->assertContains($response->json('status'), ['ok', 'degraded', 'down']);
@@ -494,6 +495,69 @@ class HealthEndpointTest extends TestCase
         $this->assertSame('down', $response->json('checks.hot_wallet_balance.status'));
         $this->assertSame('down', $response->json('checks.hot_wallet_balance.currencies.0.status'));
         $this->assertSame('TRX', $response->json('checks.hot_wallet_balance.currencies.0.code'));
+    }
+
+    public function test_onchain_watcher_ok_when_no_in_flight_rows(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('ok', $response->json('checks.onchain_watcher.status'));
+        $this->assertSame(0, $response->json('checks.onchain_watcher.in_flight'));
+        $this->assertNull($response->json('checks.onchain_watcher.oldest_minutes'));
+    }
+
+    public function test_onchain_watcher_degraded_when_oldest_broadcast_30_to_120_min(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $user = User::factory()->create();
+        Withdrawal::create([
+            'user_id' => $user->id,
+            'amount_sat' => 1000,
+            'payout_amount' => '1000000',
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            'payout_method' => Withdrawal::METHOD_ONCHAIN_TRX,
+            'payout_currency' => 'TRX',
+            'status' => 'broadcast',
+            'onchain_tx_hash' => 'tx-old',
+            'broadcast_at' => now()->subMinutes(60),
+        ]);
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('degraded', $response->json('checks.onchain_watcher.status'));
+        $this->assertSame(1, $response->json('checks.onchain_watcher.in_flight'));
+        $this->assertGreaterThanOrEqual(30, $response->json('checks.onchain_watcher.oldest_minutes'));
+    }
+
+    public function test_onchain_watcher_down_when_oldest_over_2_hours(): void
+    {
+        Redis::shouldReceive('connection')->andReturnSelf();
+        Redis::shouldReceive('ping')->andReturn(true);
+
+        $user = User::factory()->create();
+        Withdrawal::create([
+            'user_id' => $user->id,
+            'amount_sat' => 1000,
+            'payout_amount' => '1000000',
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            'payout_method' => Withdrawal::METHOD_ONCHAIN_TRX,
+            'payout_currency' => 'TRX',
+            'status' => 'broadcast',
+            'onchain_tx_hash' => 'tx-stalled',
+            'broadcast_at' => now()->subMinutes(180),
+        ]);
+
+        $response = $this->getJson('/up');
+
+        $this->assertSame('down', $response->json('checks.onchain_watcher.status'));
+        $this->assertSame(1, $response->json('checks.onchain_watcher.in_flight'));
+        // Probe is non-critical; HTTP layer still 200 (degraded overall).
+        $response->assertStatus(200);
     }
 
     public function test_hot_wallet_balance_unavailable_surfaces_as_down(): void

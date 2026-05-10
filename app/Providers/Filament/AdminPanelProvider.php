@@ -9,6 +9,7 @@ use App\Filament\Widgets\CaptchaOutcomeChartWidget;
 use App\Filament\Widgets\EarningActivityWidget;
 use App\Filament\Widgets\HotWalletBalanceWidget;
 use App\Filament\Widgets\InFlightWithdrawalsWidget;
+use App\Filament\Widgets\OnchainConfirmationsWidget;
 use App\Filament\Widgets\PayoutVolumeChartWidget;
 use App\Filament\Widgets\SharedIpDetectionsWidget;
 use Filament\Http\Middleware\Authenticate;
@@ -49,6 +50,7 @@ class AdminPanelProvider extends PanelProvider
                 BotTierDistributionWidget::class,
                 EarningActivityWidget::class,
                 HotWalletBalanceWidget::class,
+                OnchainConfirmationsWidget::class,
                 SharedIpDetectionsWidget::class,
                 PayoutVolumeChartWidget::class,
                 BotTierTrendChartWidget::class,
