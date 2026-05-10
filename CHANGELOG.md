@@ -6,6 +6,57 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-05-10
+
+Theme: Phase 2d — operator visibility for the Tron hot wallet. The
+0.18 `WalletBalanceMonitor` interface gets its first concrete
+implementations (TRX + USDT-TRC20), backed by a Filament dashboard
+widget that surfaces "available vs required" per currency. An
+operator can now see the topup runway at a glance instead of
+discovering the wallet is dry only when withdrawals start failing.
+
+### Added
+
+- **`TronWalletBalanceMonitor`** — TRX hot-wallet probe via
+  `/wallet/getaccount`. `available()` returns the spendable sun
+  balance (frozen TRX excluded). `required()` sums in-flight
+  TRX withdrawals (queued / hold / processing / broadcast).
+- **`TronUsdtWalletBalanceMonitor`** — USDT-TRC20 hot-wallet probe
+  via the new `triggerConstantContract` (read-only contract call,
+  no broadcast / no energy burn). Encodes the `balanceOf(address)`
+  parameter, parses the 64-hex `constant_result[0]` uint256, and
+  reports the spendable USDT base units. Required = sum of
+  in-flight USDT-TRC20 payouts.
+- **`TronHttpClient::triggerConstantContract(...)`** wraps
+  `/wallet/triggerconstantcontract` for read-only contract reads.
+  Same multi-URL fallback + transport error semantics as the rest
+  of the client.
+- **`WalletBalanceMonitorRegistry`** — lookup table mirroring
+  `PayoutGatewayRegistry`. Wired in `AppServiceProvider` to register
+  TRX + USDT monitors when the Tron gateway is enabled.
+- **`HotWalletBalanceWidget`** — Filament `StatsOverviewWidget` on
+  the dashboard. One Stat per registered monitor: shows
+  `<available> <CODE> / required <required>` with a colour-coded
+  description (success / warning / danger) and the gap value.
+  Colour rules: gap < 0 = danger; gap < required = warning; else
+  success. RPC failure renders "(unavailable)" instead of a
+  misleading zero. Empty for FaucetPay-only deploys.
+
+### Tests
+
+- `tests/Feature/Payout/TronWalletBalanceMonitorTest.php` —
+  6 tests pin both monitors:
+  - TRX `available()` reads from `getAccount`
+  - TRX `available()` returns "0" for fresh-wallet (`{}` body)
+  - TRX `available()` throws `WalletBalanceUnavailableException`
+    on RPC failure
+  - TRX `required()` sums only the in-flight statuses for the
+    correct method (FaucetPay rows + sent / failed rows excluded)
+  - USDT `available()` parses the 64-hex `constant_result[0]`
+  - USDT `available()` throws when `constant_result` is empty
+
+515 tests pass; pint + phpstan green.
+
 ## [0.20.0] — 2026-05-10
 
 Theme: Phase 2c — USDT-TRC20 onchain payouts ride alongside TRX on the

@@ -42,6 +42,9 @@ use App\Payout\PayoutCurrencyRegistry;
 use App\Payout\PriceOracle;
 use App\Payout\Tron\TronHttpClient;
 use App\Payout\Tron\TronTxSigner;
+use App\Payout\Tron\TronUsdtWalletBalanceMonitor;
+use App\Payout\Tron\TronWalletBalanceMonitor;
+use App\Payout\WalletBalanceMonitorRegistry;
 use App\Shortlinks\Providers\GenericShortenerClient;
 use App\Shortlinks\Providers\OuoShortenerClient;
 use App\Shortlinks\Providers\ShortenerClient;
@@ -248,6 +251,34 @@ class AppServiceProvider extends ServiceProvider
                         hotWalletAddress: $hotAddress,
                         hotWalletPrivateKey: $hotPriv,
                         contractAddress: $contract,
+                    ));
+                }
+            }
+
+            return $registry;
+        });
+
+        // Wallet balance monitors are populated alongside their
+        // gateway. Empty when Tron isn't enabled — dashboard widget
+        // renders no rows in that case.
+        $this->app->singleton(WalletBalanceMonitorRegistry::class, function ($app) {
+            $registry = new WalletBalanceMonitorRegistry;
+            $tron = (array) config('satpeek.payout.onchain.tron', []);
+            $tronEnabled = (bool) ($tron['enabled'] ?? false);
+            $hotAddress = (string) ($tron['hot_wallet_address'] ?? '');
+            if ($tronEnabled && $hotAddress !== '') {
+                $registry->register(new TronWalletBalanceMonitor(
+                    $app->make(TronHttpClient::class),
+                    $hotAddress,
+                ));
+                $network = (string) ($tron['network'] ?? 'mainnet');
+                $contracts = (array) ($tron['usdt_trc20_contract'] ?? []);
+                $contract = (string) ($contracts[$network] ?? '');
+                if ($contract !== '') {
+                    $registry->register(new TronUsdtWalletBalanceMonitor(
+                        $app->make(TronHttpClient::class),
+                        $hotAddress,
+                        $contract,
                     ));
                 }
             }

@@ -119,6 +119,29 @@ class TronHttpClient
      *
      * @return array<string, mixed>
      */
+    /**
+     * Read-only contract call (no broadcast, no energy burn) for
+     * balanceOf / decimals / name / symbol style getters. Returns
+     * `constant_result` — a hex-string array; callers parse the
+     * single uint256 / string out of slot 0.
+     *
+     * @return array<string, mixed>
+     */
+    public function triggerConstantContract(
+        string $ownerAddress,
+        string $contractAddress,
+        string $functionSelector,
+        string $parameter,
+    ): array {
+        return $this->post('/wallet/triggerconstantcontract', [
+            'owner_address' => $ownerAddress,
+            'contract_address' => $contractAddress,
+            'function_selector' => $functionSelector,
+            'parameter' => $parameter,
+            'visible' => true,
+        ]);
+    }
+
     public function triggerSmartContract(
         string $ownerAddress,
         string $contractAddress,
