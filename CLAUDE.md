@@ -217,17 +217,36 @@ Models:
 
 Admin triage: `/admin/internal-articles`, `/admin/internal-article-views` (read-only, like PtcView). API: `/api/internal-articles` (paginated), `/api/internal-articles/auth/{token}/complete`.
 
-## Payout — `app/Payout/FaucetPayClient.php`
+## Payout — gateway registry
 
-Calls `POST {FAUCETPAY_API_BASE}/send`. Withdrawals enter `withdrawals` table → `ProcessWithdrawalJob` runs from the queue, with `requires_review` for `suspect+` tiers held for admin approval in Filament.
+Multi-route payout pipeline behind `App\Payout\Gateway\PayoutGateway` interface. `Withdrawal.payout_method` selects the route; `PayoutGatewayRegistry::forMethod()` dispatches to the matching gateway. `ProcessWithdrawalJob` is gateway-agnostic — same retry/refund/dead-letter machinery for every transport.
 
-Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPayUnreachableException` ONLY when the API host is unreachable at the TCP / DNS layer (Guzzle `ConnectException` — request never sent). The job has `$tries = 3` + `backoff() = [60, 300, 1800]` so a brief FaucetPay outage retries automatically over ~35 min. `ShouldBeUnique` keyed by withdrawal id (40-min lock) prevents the cron from racing the active retry. Every other failure mode (HTTP error, body status != 200, timeout mid-request) is treated as terminal — `status='failed'`, balance refunded, rejection email queued — because we can't tell whether FaucetPay processed the payout and a duplicate send is much worse than a delayed one. The `failed()` callback handles the final-exhaustion path with the same refund + notify sequence so funds are never silently stranded.
+Routes shipped (v0.13.0–v0.20.0):
+- `faucetpay` — `App\Payout\Gateway\FaucetPayGateway` wrapping `FaucetPayClient`. Any FaucetPay-supported coin (BTC/LTC/ETH/DASH/XMR/USDT-TRC20/TRX). `POST {FAUCETPAY_API_BASE}/send` form-encoded.
+- `onchain_trx` — `App\Payout\Gateway\TronOnchainGateway`. Native TRX transfer via TronGrid `/wallet/createtransaction` → `TronTxSigner` (simplito secp256k1, RFC6979 deterministic-k, canonical low-s) → `/wallet/broadcasttransaction`.
+- `onchain_usdt_trc20` — `App\Payout\Gateway\TronUsdtTrc20Gateway`. TRC20 contract call via `/wallet/triggersmartcontract` for `transfer(address,uint256)`. ABI-encoded by `TronAbi::encodeTransfer` (12-zero-byte address pad + 32-byte uint256). Same signer + http client.
+
+Both onchain methods are gated by `TRON_ONCHAIN_ENABLED=true` AND a populated `TRON_HOT_WALLET_ADDRESS` + `TRON_HOT_WALLET_PRIVATE_KEY` pair. `WithdrawController` derives its allowed-methods list from `PayoutGatewayRegistry::has()` so the validator + dispatcher stay in lock-step. `TronAddress::isValid` (Base58Check + double-SHA256 checksum) refuses typo'd destinations before any DB row is created.
+
+Lifecycle (v0.18.0): onchain rows go `queued` → `processing` → `broadcast` → `sent` (or `failed` on gateway / contract revert). `WithdrawalStatus::Broadcast` was added between `Hold` and `Sent` so `Sent` strictly means "confirmed at finality". FaucetPay rows skip `Broadcast` entirely (FP is publisher-confirmed at API return). Schema additions: `broadcast_at` / `confirmed_at` / `confirmations_seen` columns + UNIQUE on `onchain_tx_hash` (last-line-of-defence behind the watcher's own dedupe).
+
+Confirmation watcher (`App\Payout\WatchOnchainConfirmationsJob`, v0.19.0+v0.20.0): scheduled every minute, polls `getTransactionInfo` for every Broadcast onchain row, ticks `confirmations_seen`, promotes to Sent at the per-currency threshold (TRX 19). Atomic settle uses `WHERE status='broadcast'` so a parallel run can't double-promote. For TRC20: also reads `receipt.result` and refunds the user atomically on REVERT (insufficient contract balance, paused contract, blacklisted recipient) — a contract revert means the chain mined the tx but the state change never happened.
+
+Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPayUnreachableException` ONLY when the API host is unreachable at the TCP / DNS layer (Guzzle `ConnectException` — request never sent). The Tron client mirrors this with `TronUnreachableException` (subclass of `TronRpcException`) for the all-RPC-down case. The job has `$tries = 3` + `backoff() = [60, 300, 1800]` so a brief outage retries automatically over ~35 min. `ShouldBeUnique` keyed by withdrawal id (40-min lock) prevents the cron from racing the active retry. Every other failure mode (HTTP error, body status != 200, timeout mid-request) is treated as terminal — `status='failed'`, balance refunded, rejection email queued — because we can't tell whether the gateway processed the payout and a duplicate send is much worse than a delayed one. The `failed()` callback handles the final-exhaustion path with the same refund + notify sequence so funds are never silently stranded.
+
+Hot-wallet runway (v0.21.0+v0.22.0+v0.23.0): per-currency `WalletBalanceMonitor` implementations (TRX via `getAccount.balance` excluding frozen TRX; USDT-TRC20 via `triggerConstantContract` for `balanceOf(address)`) report `available()` and `required()` (sum of in-flight payouts in queued/hold/processing/broadcast). Surfaces:
+- `HotWalletBalanceWidget` on `/admin` dashboard (per-currency stat with colour-coded gap; "(unavailable)" on RPC failure).
+- `/up` `hot_wallet_balance` probe (per-currency status: ok if gap≥required, degraded if 0≤gap<required, down if gap<0 or RPC failed). Non-critical.
+- `WeeklySummaryBuilder::hot_wallet` payload key in the Monday digest.
+- `satpeek:hot-wallet-alert` cron (every 15 min) — emails admins on `down` status. Cache-backed idempotency (one alert per down-set per 6 h; cache cleared on recovery).
+
+Watcher liveness (v0.24.0): `OnchainConfirmationsWidget` + `/up` `onchain_watcher` probe report the count of in-flight Broadcast rows + oldest broadcast age. Thresholds: <30 min ok (within finality window); 30-120 min degraded; >120 min down (likely stalled cron / queue worker).
 
 ## Operations
 
 - **`/up`** — structured JSON health check. Returns 503 on critical down (DB / Redis), 200 with `status: degraded` on non-critical degradation. Probes:
   - **Critical**: DB, Redis
-  - **Non-critical**: MaxMind file, shortlink provider config, IP reputation sources, FaucetPay config + queue backlog, bot-detection signal liveness (BotScoreHistory row count in last 24h), earning inventory liveness (PtcAd + ShortlinkProviderCredential + InternalArticle active counts)
+  - **Non-critical**: MaxMind file, shortlink provider config, IP reputation sources, FaucetPay config + queue backlog, bot-detection signal liveness (BotScoreHistory row count in last 24h), earning inventory liveness (PtcAd + ShortlinkProviderCredential + InternalArticle active counts), hot-wallet balance per currency (gap < 0 or RPC failure → status=down on that row), onchain confirmation watcher liveness (oldest Broadcast row age — stalled cron triggers degraded/down)
   
 - **Admin debug resources** (Operations group, read-only to prevent bypassing reward guards):
   - `/admin/ptc-views` — PtcView listing with Auth URL action, copyable token
@@ -240,6 +259,8 @@ Retry / dead-letter (transient-only): `FaucetPayClient::send()` throws `FaucetPa
   - `EarningActivityWidget` — earning event volume (PTC / shortlink / article / referral)
   - `PayoutVolumeChartWidget` — withdrawal volume / FaucetPay status
   - `BotTierTrendChartWidget`, `BotTierDistributionWidget` — ban/suspect/trust distribution and tier transition timeline
+  - `HotWalletBalanceWidget` — per-currency available/required/gap for the operator-managed hot wallet (Tron / future BTC / future ETH). Empty for FaucetPay-only deploys.
+  - `OnchainConfirmationsWidget` — count of in-flight Broadcast onchain rows + oldest broadcast age. Catches stalled `WatchOnchainConfirmationsJob` cron.
   
 - **Admin action trail** — `AdminAuditLog` model + read-only Filament resource (`/admin/admin-audit-logs`) logs all resource mutations (create/update/delete) by admin user + timestamp + old/new values.
   
@@ -267,4 +288,7 @@ CI must keep `tests/BotSimulation/` green — that is how captcha strength is me
 
 ## Open follow-ups
 
-(none — JA4 capture, ASN datacenter lookup, and BitcoTasks publisher API all shipped; see CHANGELOG.md for the closing commits.)
+- **BTC onchain payouts.** TRX + USDT-TRC20 ship in v0.19/v0.20. BTC needs a UTXO-aware signing layer (PSBTs / `bitwasp/bitcoin-php` or similar), a fee-rate oracle (mempool.space / blockstream esplora), and a per-currency `WalletBalanceMonitor` that reads the wallet's UTXO set instead of an account balance. Threshold = 3 confirmations.
+- **ETH onchain payouts.** Account-based — simpler than BTC. Needs EIP-1559 tx construction (priorityFee + maxFee), a gas oracle, and a `WalletBalanceMonitor` against `eth_getBalance`. Threshold = 12 confirmations. Reuse simplito for the secp256k1 + keccak256 signing.
+- **Per-currency burn-rate metrics in the weekly digest** — would let the operator size topup intervals without trial-and-error.
+- **`SystemAuditLog` for cron + scheduled job failures** (architect's D2 recommendation, deferred from Phase 2b). Currently a stalled watcher only surfaces via `/up` + dashboard widget; an audit trail would help post-incident review.

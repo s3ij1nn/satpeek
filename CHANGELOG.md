@@ -6,6 +6,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-05-10
+
+Theme: documentation catch-up after the v0.18.0 → v0.24.0 onchain
+sprint. CLAUDE.md was still describing payout as "calls
+{FAUCETPAY_API_BASE}/send" with no mention of the gateway registry,
+Tron family, hot-wallet monitors, or watcher cron — a gap that
+would mislead any code-explorer agent or fresh reader. No code
+change in this release; only the architectural docs catch up to
+match the shipped state.
+
+### Changed
+
+- **`CLAUDE.md` Payout section** rewritten to describe the gateway
+  registry pattern, three shipped routes (faucetpay / onchain_trx /
+  onchain_usdt_trc20), broadcast → confirmed lifecycle, watcher
+  cron, hot-wallet monitor surfaces (widget + `/up` + digest +
+  alert mail), and watcher liveness probe.
+- **`CLAUDE.md` Operations section** now lists the new
+  `hot_wallet_balance` + `onchain_watcher` `/up` probes and the
+  `HotWalletBalanceWidget` + `OnchainConfirmationsWidget` Filament
+  widgets.
+- **`CLAUDE.md` Open follow-ups** rewritten with the next-step list:
+  BTC onchain (UTXO + PSBT signing), ETH onchain (EIP-1559 + gas
+  oracle), per-currency burn-rate metrics, SystemAuditLog for cron
+  failures.
+
+527 tests pass; pint + phpstan green (no code change in this
+release).
+
 ## [0.24.0] — 2026-05-10
 
 Theme: Phase 2g — visibility into the onchain confirmation watcher.
