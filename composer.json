@@ -7,6 +7,7 @@
     "require": {
         "php": "^8.3",
         "ext-bcmath": "*",
+        "ext-gmp": "*",
         "ext-redis": "*",
         "filament/filament": "^4.0",
         "geoip2/geoip2": "^3.1",
@@ -14,7 +15,8 @@
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
-        "predis/predis": "^2.2"
+        "predis/predis": "^2.2",
+        "simplito/elliptic-php": "^1.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
