@@ -261,8 +261,9 @@ Watcher liveness (v0.24.0): `OnchainConfirmationsWidget` + `/up` `onchain_watche
   - `EarningActivityWidget` — earning event volume (PTC / shortlink / article / referral)
   - `PayoutVolumeChartWidget` — withdrawal volume / FaucetPay status
   - `BotTierTrendChartWidget`, `BotTierDistributionWidget` — ban/suspect/trust distribution and tier transition timeline
-  - `HotWalletBalanceWidget` — per-currency available/required/gap for the operator-managed hot wallet (Tron / future BTC / future ETH). Empty for FaucetPay-only deploys.
+  - `HotWalletBalanceWidget` — per-currency available/required/gap for the operator-managed hot wallet (Tron, ETH, BTC). Empty for FaucetPay-only deploys.
   - `OnchainConfirmationsWidget` — count of in-flight Broadcast onchain rows + oldest broadcast age. Catches stalled `WatchOnchainConfirmationsJob` cron.
+  - `SystemAuditLogTailWidget` — last 5 warning/error rows from `system_audit_logs`. Hidden on a clean deploy; appears the moment a watcher cron fails or a job dead-letters.
   
 - **Admin action trail** — `AdminAuditLog` model + read-only Filament resource (`/admin/admin-audit-logs`) logs all resource mutations (create/update/delete) by admin user + timestamp + old/new values.
   

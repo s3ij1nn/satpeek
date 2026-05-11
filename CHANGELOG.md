@@ -6,6 +6,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-05-11
+
+Theme: Phase 4d — `system_audit_logs` retention + nightly pruning.
+Phase 4b shipped the durable trail without a sweep, so a sustained
+outage (e.g. RPC down for a day) would mint ~1440 rows for a single
+chain. This release adds `satpeek:prune-system-audit-logs`
+scheduled daily at 03:30 UTC, defaulting to a 90-day retention
+window that matches `bot_score_history`.
+
+### Added
+
+- **`PruneSystemAuditLogsCommand`** — chunked delete (default 5000
+  rows per iteration to avoid long-held locks) of `system_audit_logs`
+  rows older than `--days` (default 90, env-tunable via
+  `SYSTEM_AUDIT_LOG_RETENTION_DAYS`). `--dry-run` reports the count
+  without deleting. Mirrors the `PruneBotScoreHistoryCommand`
+  pattern verbatim — same Postgres "DELETE ... LIMIT not supported"
+  workaround (pluck IDs first, DELETE WHERE id IN).
+- **`config('satpeek.system_audit_log_retention_days')`** — env
+  override sits in config so phpstan's `noEnvCallsOutsideOfConfig`
+  rule stays happy.
+- Schedule entry in `routes/console.php` — `dailyAt('03:30')`,
+  staggered 15 min after the bot-score sweep.
+- 4 feature tests pin: prunes rows older than the window; dry-run
+  reports without deleting; no-op when empty; custom `--days`
+  override.
+
+586 tests pass; pint + phpstan green.
+
 ## [0.30.0] — 2026-05-10
 
 Theme: Phase 4c — `SystemAuditLogTailWidget` on the dashboard.

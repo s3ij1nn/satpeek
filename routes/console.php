@@ -29,6 +29,11 @@ Schedule::command('satpeek:cleanup-captcha')->dailyAt('03:00');
 // share an IO window — same low-traffic trough, no contention.
 Schedule::command('satpeek:prune-bot-score-history')->dailyAt('03:15');
 
+// Prune system_audit_logs older than the retention window (default 90 d,
+// SYSTEM_AUDIT_LOG_RETENTION_DAYS env-tunable). Same low-traffic trough,
+// staggered another 15 min after bot_score_history.
+Schedule::command('satpeek:prune-system-audit-logs')->dailyAt('03:30');
+
 // Operator weekly summary email — past-7-days digest of earning
 // activity, payouts, new users, and bot tier evaluations. Mondays
 // 09:00 UTC catches PST early-morning standup + EU lunch + JP

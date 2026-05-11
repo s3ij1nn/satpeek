@@ -520,4 +520,9 @@ return [
         // force every probe to re-query (used in tests).
         'probe_cache_seconds' => (int) env('HEALTH_PROBE_CACHE_SECONDS', 30),
     ],
+
+    // Retention window for `system_audit_logs` (cron + scheduled-job
+    // failure trail). 90 days matches `bot_score_history`. Bumped in
+    // env when an operator wants longer post-incident lookback.
+    'system_audit_log_retention_days' => (int) env('SYSTEM_AUDIT_LOG_RETENTION_DAYS', 90),
 ];
