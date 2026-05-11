@@ -6,6 +6,7 @@ namespace Tests\Feature\Payout;
 
 use App\Mail\HotWalletLowBalanceAlert;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Payout\WalletBalanceMonitor;
 use App\Payout\WalletBalanceMonitorRegistry;
 use App\Payout\WalletBalanceUnavailableException;
@@ -106,6 +107,60 @@ class HotWalletLowBalanceCommandTest extends TestCase
 
         Mail::assertQueued(HotWalletLowBalanceAlert::class, 1);
         $this->assertSame('TRX:unavailable', (string) Cache::get('hot-wallet-alert:last-down-set'));
+    }
+
+    public function test_low_runway_alerts_before_wallet_runs_dry(): void
+    {
+        // Hot wallet has 5 sats available, 0 in-flight (gap = +5 →
+        // would NOT alert under the legacy gap < 0 rule). But past-7-day
+        // burn = 7 sats/day → runway = 0 days < threshold (3 by default).
+        // This is exactly the scenario the early-warning catches.
+        Mail::fake();
+        User::factory()->create(['is_admin' => true, 'email' => 'admin@example.com']);
+
+        $u = User::factory()->create();
+        for ($i = 0; $i < 7; $i++) {
+            $row = Withdrawal::create([
+                'user_id' => $u->id, 'amount_sat' => 1, 'payout_amount' => '7',
+                'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+                'payout_method' => Withdrawal::METHOD_ONCHAIN_TRX,
+                'payout_currency' => 'TRX', 'status' => 'sent',
+            ]);
+            $row->forceFill(['created_at' => now()->subDays($i + 1)])->save();
+        }
+
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $registry->register($this->okMonitor('TRX', '5', '0'));
+
+        $this->artisan('satpeek:hot-wallet-alert')->assertOk();
+
+        Mail::assertQueued(HotWalletLowBalanceAlert::class, 1);
+        $this->assertSame('TRX:low_runway', (string) Cache::get('hot-wallet-alert:last-down-set'));
+    }
+
+    public function test_low_runway_does_not_fire_above_threshold(): void
+    {
+        // Burn = 1 sat/day, available = 100 → runway = 100 days > 3
+        // (default threshold) → no alert.
+        Mail::fake();
+        User::factory()->create(['is_admin' => true, 'email' => 'admin@example.com']);
+
+        $u = User::factory()->create();
+        $row = Withdrawal::create([
+            'user_id' => $u->id, 'amount_sat' => 1, 'payout_amount' => '7',
+            'destination' => 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            'payout_method' => Withdrawal::METHOD_ONCHAIN_TRX,
+            'payout_currency' => 'TRX', 'status' => 'sent',
+        ]);
+        $row->forceFill(['created_at' => now()->subDays(2)])->save();
+        // burn = 7/7 = 1 sat/day; available = 100 → runway = 100 days
+
+        $registry = app(WalletBalanceMonitorRegistry::class);
+        $registry->register($this->okMonitor('TRX', '100', '0'));
+
+        $this->artisan('satpeek:hot-wallet-alert')->assertOk();
+
+        Mail::assertNothingQueued();
     }
 
     public function test_dry_run_prints_without_queueing_mail(): void

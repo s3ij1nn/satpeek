@@ -266,6 +266,20 @@ return [
                 'coingecko_id' => 'monero',
             ],
         ],
+        // Days-of-runway threshold for the early-warning hot-wallet
+        // alert. `runway_alert_days_default` is the global default
+        // applied to every chain unless overridden per-chain via
+        // `runway_alert_days.<CODE>`. Operator can tune per-chain
+        // because BTC's UTXO consolidation needs more lead time than
+        // an account-model chain like ETH.
+        'runway_alert_days_default' => (int) env('RUNWAY_ALERT_DAYS_DEFAULT', 3),
+        'runway_alert_days' => [
+            'BTC' => (int) env('RUNWAY_ALERT_DAYS_BTC', 7),
+            'ETH' => (int) env('RUNWAY_ALERT_DAYS_ETH', 3),
+            'TRX' => (int) env('RUNWAY_ALERT_DAYS_TRX', 2),
+            'USDT_TRC20' => (int) env('RUNWAY_ALERT_DAYS_USDT_TRC20', 3),
+        ],
+
         // PriceOracle settings — see App\Payout\PriceOracle.
         'price_oracle' => [
             'cache_ttl_seconds' => (int) env('PRICE_ORACLE_CACHE_TTL', 60),

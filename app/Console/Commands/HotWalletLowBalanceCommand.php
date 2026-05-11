@@ -9,7 +9,9 @@ use App\Models\User;
 use App\Payout\WalletBalanceMonitorRegistry;
 use App\Payout\WalletBalanceUnavailableException;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -53,6 +55,15 @@ class HotWalletLowBalanceCommand extends Command
             return self::SUCCESS;
         }
 
+        // 7-day burn-rate per currency for runway calculation. Same
+        // shape WeeklySummaryBuilder uses; computing once up front
+        // saves N DB queries inside the per-monitor loop.
+        $burnByCode = $this->burnRatePastWeek();
+        // Per-chain runway threshold (days). Operator can tune
+        // per-chain via env (BTC_RUNWAY_ALERT_DAYS, ETH_RUNWAY_ALERT_DAYS,
+        // TRX_RUNWAY_ALERT_DAYS, etc); falls back to global default.
+        $defaultThreshold = (int) config('satpeek.payout.runway_alert_days_default', 3);
+
         $downRows = [];
         foreach ($monitors as $monitor) {
             $code = $monitor->currency();
@@ -65,15 +76,20 @@ class HotWalletLowBalanceCommand extends Command
                     'available' => null,
                     'required' => null,
                     'gap' => null,
+                    'runway_days' => null,
                 ];
 
                 continue;
             }
             $required = $monitor->required();
             $gap = bcsub($available, $required, 0);
-            // Only `down` (gap < 0) — degraded is a "soon" signal that
-            // the dashboard surfaces; alerting on it would page-out
-            // way too often.
+
+            // Two alert triggers, in priority order:
+            //   1. gap < 0 → already over-committed; emergency.
+            //   2. runway_days < threshold → early warning before dry.
+            // Either fires; the cache-key signature treats them as
+            // distinct states so a transition (e.g. early-warning → down)
+            // re-alerts.
             if (bccomp($gap, '0', 0) < 0) {
                 $downRows[] = [
                     'code' => $code,
@@ -81,6 +97,25 @@ class HotWalletLowBalanceCommand extends Command
                     'available' => $available,
                     'required' => $required,
                     'gap' => $gap,
+                    'runway_days' => null,
+                ];
+
+                continue;
+            }
+            $burnPerDay = (string) ($burnByCode[$code] ?? '0');
+            $runwayDays = $this->runwayDays($available, $burnPerDay);
+            $threshold = (int) config(
+                "satpeek.payout.runway_alert_days.{$code}",
+                $defaultThreshold,
+            );
+            if ($runwayDays !== null && $runwayDays < $threshold) {
+                $downRows[] = [
+                    'code' => $code,
+                    'status' => 'low_runway',
+                    'available' => $available,
+                    'required' => $required,
+                    'gap' => $gap,
+                    'runway_days' => $runwayDays,
                 ];
             }
         }
@@ -146,5 +181,49 @@ class HotWalletLowBalanceCommand extends Command
         sort($codes);
 
         return implode(',', $codes);
+    }
+
+    /**
+     * Past-7-day per-currency burn (smallest-unit per day across
+     * onchain `sent` rows). Same query shape WeeklySummaryBuilder
+     * uses; kept private here to avoid coupling the alert command
+     * to the report builder. Returns code → decimal-string map.
+     *
+     * @return array<string, string>
+     */
+    private function burnRatePastWeek(): array
+    {
+        $start = Carbon::now()->subDays(7);
+        $sums = DB::table('withdrawals')
+            ->where('status', 'sent')
+            ->where('created_at', '>=', $start)
+            ->where('payout_method', 'like', 'onchain_%')
+            ->selectRaw('payout_currency, sum(payout_amount) as total')
+            ->groupBy('payout_currency')
+            ->get();
+
+        $out = [];
+        foreach ($sums as $row) {
+            $code = (string) $row->payout_currency;
+            $total = (string) ($row->total ?? '0');
+            $out[$code] = bcdiv($total, '7', 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Days of runway at the current burn rate. Returns:
+     *   - null when burn is 0 (no recent payouts → infinite runway,
+     *     don't divide by zero, no early-warning alert)
+     *   - integer day count otherwise
+     */
+    private function runwayDays(string $available, string $burnPerDay): ?int
+    {
+        if (bccomp($burnPerDay, '0', 0) <= 0) {
+            return null;
+        }
+
+        return (int) bcdiv($available, $burnPerDay, 0);
     }
 }

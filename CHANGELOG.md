@@ -6,6 +6,45 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-05-11
+
+Theme: Phase 4e — early-warning hot-wallet alerts based on runway
+days. Until this release, `satpeek:hot-wallet-alert` only fired on
+`gap < 0` (already over-committed — operator finds out AFTER users
+start failing). Phase 4a's burn-rate metric is now wired into the
+alert command so the operator gets paged BEFORE the wallet runs
+dry: alert when `runway_days < threshold` (per-chain configurable,
+default 3 days globally; 7 for BTC, 3 for ETH, 2 for TRX, 3 for
+USDT-TRC20).
+
+### Added
+
+- New `low_runway` status in the `HotWalletLowBalanceAlert`
+  payload, distinct from `down` (gap < 0) and `unavailable` (RPC
+  failure). Cache-key signature treats them as separate states so
+  a transition (low_runway → down) re-alerts.
+- **`config('satpeek.payout.runway_alert_days_default')`** —
+  global default (env: `RUNWAY_ALERT_DAYS_DEFAULT`, default 3).
+- **`config('satpeek.payout.runway_alert_days.<CODE>')`** — per-
+  chain override (env: `RUNWAY_ALERT_DAYS_BTC=7`,
+  `RUNWAY_ALERT_DAYS_ETH=3`, `RUNWAY_ALERT_DAYS_TRX=2`,
+  `RUNWAY_ALERT_DAYS_USDT_TRC20=3`). Defaults reflect the typical
+  operator response time per chain — BTC needs more lead because
+  UTXO consolidation takes longer than an account-model topup.
+- 2 new feature tests: `low_runway` fires when burn × time exceeds
+  available; does NOT fire when runway > threshold.
+
+### Changed
+
+- `HotWalletLowBalanceCommand`: now computes 7-day burn rate per
+  currency (same query shape as `WeeklySummaryBuilder`) up front,
+  derives `runway_days` per monitor, and emits a `low_runway`
+  alert row when below the per-chain threshold. The alert mail
+  templates render the `low_runway` rows with `runway ~N days`
+  instead of the `gap` figure.
+
+588 tests pass; pint + phpstan green.
+
 ## [0.31.0] — 2026-05-11
 
 Theme: Phase 4d — `system_audit_logs` retention + nightly pruning.

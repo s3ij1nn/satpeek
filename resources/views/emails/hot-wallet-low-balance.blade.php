@@ -21,6 +21,8 @@
                     <td align="right" style="padding:8px 0;font-family:ui-monospace,monospace;font-size:12px;color:#71717a;">
 @if (($row['status'] ?? '') === 'unavailable')
                         rpc unavailable
+@elseif (($row['status'] ?? '') === 'low_runway')
+                        avail {{ $row['available'] ?? '?' }} · runway ~{{ $row['runway_days'] ?? '?' }} days
 @else
                         avail {{ $row['available'] ?? '?' }} · req {{ $row['required'] ?? '?' }} · gap {{ $row['gap'] ?? '?' }}
 @endif
