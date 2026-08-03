@@ -9,7 +9,7 @@
         "ext-bcmath": "*",
         "ext-gmp": "*",
         "ext-redis": "*",
-        "filament/filament": "^4.0",
+        "filament/filament": "^5.7",
         "geoip2/geoip2": "^3.1",
         "guzzlehttp/guzzle": "^7.9",
         "laravel/framework": "^13.0",
