@@ -11,6 +11,7 @@ use App\Services\IframeEmbedProbe;
 use Filament\Notifications\Notification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
+use Tests\Concerns\ActsInFilamentPanel;
 use Tests\TestCase;
 
 /**
@@ -27,7 +28,14 @@ use Tests\TestCase;
  */
 class PtcAdResourceIframeProbeActionTest extends TestCase
 {
+    use ActsInFilamentPanel;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->enterFilamentPanel();
+    }
 
     public function test_test_iframe_action_runs_probe_and_emits_success_for_clean_destination(): void
     {

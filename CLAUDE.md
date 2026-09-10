@@ -5,7 +5,7 @@ PTC site (paid-to-click) + URL-shortener interstitial earnings, with intentional
 ## Stack
 
 - PHP 8.3 + Laravel 13
-- Filament 4 admin panel at `/admin`
+- Filament 5 admin panel at `/admin` (Livewire 4 underneath)
 - PostgreSQL 16 + Redis 7
 - Docker Compose for everything (no host PHP/composer needed)
 
@@ -284,6 +284,12 @@ Watcher liveness (v0.24.0): `OnchainConfirmationsWidget` + `/up` `onchain_watche
 - `tests/Feature/Shortlinks/` — provider-keyed click flow + auth landing + credential override + provider registry boot.
 - `tests/Feature/Advertise/` — display_mode + edit flow.
 - `tests/Feature/Admin/DebugResourceAccessTest.php` — Filament debug resources scoping.
+- `tests/Feature/Admin/AdminLoginCaptchaTest.php` — the admin login captcha over Livewire.
+  Any test that drives a panel component with `Livewire::test()` must first call
+  `enterFilamentPanel()` (`Tests\Concerns\ActsInFilamentPanel`). `Livewire::test()`
+  skips routing, so without it Filament 5 boots the component with no current panel:
+  the render never dehydrates, `instance()` is null, and `set()`/`call()` silently
+  no-op — the failures read like app bugs, not harness misconfiguration.
 - `tests/Feature/Health/HealthEndpointTest.php` — `/up` payload + status-code contract.
 - `tests/BotSimulation/PlaywrightHeadlessTest.php` — synthetic uniform-Δt CDP-style attacks must be rejected.
 

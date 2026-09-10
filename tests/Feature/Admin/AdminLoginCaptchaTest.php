@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Livewire;
+use Tests\Concerns\ActsInFilamentPanel;
 use Tests\Concerns\SolvesTrajectoryCaptcha;
 use Tests\TestCase;
 
@@ -36,12 +37,14 @@ use Tests\TestCase;
  */
 class AdminLoginCaptchaTest extends TestCase
 {
+    use ActsInFilamentPanel;
     use RefreshDatabase;
     use SolvesTrajectoryCaptcha;
 
     protected function setUp(): void
     {
         parent::setUp();
+        $this->enterFilamentPanel();
         $this->applyCaptchaTestConfig();
     }
 
