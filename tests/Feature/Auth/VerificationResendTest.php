@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Auth;
 
-use App\Captcha\TrajectoryTraceProvider;
-use App\Models\CaptchaChallenge;
 use App\Models\User;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
+use Tests\Concerns\SolvesTrajectoryCaptcha;
 use Tests\TestCase;
 
 /**
@@ -32,26 +30,12 @@ use Tests\TestCase;
 class VerificationResendTest extends TestCase
 {
     use RefreshDatabase;
+    use SolvesTrajectoryCaptcha;
 
     protected function setUp(): void
     {
         parent::setUp();
-        // Same captcha tuning as RegisterFlowTest so the humanoid trace
-        // we synthesise here passes the same shape/jerk thresholds.
-        config()->set('satpeek.captcha', [
-            'ttl_ms' => 30000,
-            'min_solve_ms' => 800,
-            'max_solve_ms' => 25000,
-            'min_points' => 20,
-            'max_points' => 2000,
-            'shape_tolerance_px' => 48.0,
-            'expected_dt_median_ms_min' => 8,
-            'expected_dt_median_ms_max' => 80,
-            'min_dt_jitter_ratio' => 0.10,
-            'min_completion_dwell_ms' => 100,
-            'completion_dwell_radius_px' => 8.0,
-            'min_jerk_entropy' => 1.2,
-        ]);
+        $this->applyCaptchaTestConfig();
         Notification::fake();
     }
 
@@ -136,64 +120,5 @@ class VerificationResendTest extends TestCase
 
         $response->assertRedirect(route('dashboard'));
         Notification::assertNothingSent();
-    }
-
-    /** @return array{0: CaptchaChallenge, 1: array<int, array{x: float, y: float, t: float}>} */
-    private function seedChallenge(): array
-    {
-        $shape = TrajectoryTraceProvider::sampleCurve('sine', 30, 120, 280, 120, 40, 2, 8000, 60);
-        $issuedAt = Carbon::now()->subSeconds(3);
-        $challenge = CaptchaChallenge::create([
-            'challenge_id' => 'cc_test_'.uniqid('', true),
-            'user_id' => null,
-            'session_id' => 'test',
-            'provider' => 'trajectory_trace',
-            'seed' => 'test-seed',
-            'expected_shape' => $shape,
-            'fingerprint_hash' => null,
-            'client_ip' => '127.0.0.1',
-            'ja4' => null,
-            'user_agent' => 'phpunit',
-            'status' => 'issued',
-            'issued_at' => $issuedAt,
-            'expires_at' => $issuedAt->copy()->addSeconds(30),
-        ]);
-
-        return [$challenge, $shape];
-    }
-
-    /**
-     * Humanoid trace pattern lifted from RegisterFlowTest — Δt jitter,
-     * sub-pixel positional jitter, and a dwell at the goal so the
-     * verifier's shape + jerk-entropy + dwell checks all pass.
-     *
-     * @param  array<int, array{x: float, y: float, t: float}>  $shape
-     * @return array<int, array{x: float, y: float, t: float, pressure: float}>
-     */
-    private function humanoidTrace(array $shape): array
-    {
-        $points = [];
-        $tCursor = 0.0;
-        for ($i = 0; $i < 80; $i++) {
-            $idx = (int) round(($i / 79) * (count($shape) - 1));
-            $tCursor += 16.0 + (mt_rand(-100, 100) / 100.0) * 4.0;
-            $points[] = [
-                'x' => $shape[$idx]['x'] + (mt_rand(-100, 100) / 100.0) * 1.5,
-                'y' => $shape[$idx]['y'] + (mt_rand(-100, 100) / 100.0) * 1.5,
-                't' => round($tCursor, 2),
-                'pressure' => 0.4 + (mt_rand(0, 60) / 100.0),
-            ];
-        }
-        for ($k = 0; $k < 20; $k++) {
-            $tCursor += 15.5;
-            $points[] = [
-                'x' => $shape[count($shape) - 1]['x'] + (mt_rand(-50, 50) / 100.0),
-                'y' => $shape[count($shape) - 1]['y'] + (mt_rand(-50, 50) / 100.0),
-                't' => round($tCursor, 2),
-                'pressure' => 0.5,
-            ];
-        }
-
-        return $points;
     }
 }
