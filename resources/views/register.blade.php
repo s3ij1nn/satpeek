@@ -513,9 +513,18 @@
         const p = payload;
         const x = p.start.x + (p.end.x - p.start.x) * u;
         const baseY = p.start.y + (p.end.y - p.start.y) * u;
+        // Mirrors TrajectoryTraceProvider::sampleCurve(). Every entry in
+        // TrajectoryTraceProvider::CURVES needs a branch here — a curve the
+        // client can't draw renders the target on the straight baseline while
+        // the server scores against the real curve, so even a flawless drag
+        // comes back shape_mismatch. CaptchaCurveParityTest pins the set.
+        const wobble = Math.sin(u * Math.PI * 2 * p.frequency) * p.amplitude;
         let y = baseY;
-        if (p.curve === 'sine') y = baseY + Math.sin(u * Math.PI * 2 * p.frequency) * p.amplitude;
-        else if (p.curve === 'lissajous') y = baseY + Math.sin(u * Math.PI * 2 * p.frequency) * p.amplitude * Math.cos(u * Math.PI);
+        if (p.curve === 'sine') y = baseY + wobble;
+        else if (p.curve === 'lissajous') y = baseY + wobble * Math.cos(u * Math.PI);
+        else if (p.curve === 'damped_sine') y = baseY + wobble * (1 - u);
+        else if (p.curve === 'growing_sine') y = baseY + wobble * u;
+        else if (p.curve === 'triangle') y = baseY + (p.amplitude * 2 / Math.PI) * Math.asin(Math.sin(u * Math.PI * 2 * p.frequency));
         return [x, y];
     }
 
