@@ -17,7 +17,7 @@
         "laravel/tinker": "^3.0",
         "bitwasp/bech32": "^0.0.1",
         "kornrunner/keccak": "^1.1",
-        "predis/predis": "^2.2",
+        "predis/predis": "^3.6",
         "simplito/elliptic-php": "^1.0"
     },
     "require-dev": {
